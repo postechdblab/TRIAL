@@ -1,0 +1,108 @@
+_global:
+    is_debug: False
+    seed: 10
+    nway: 64
+    tag: "default"
+    root_dir: "/root/ColBERT/runs"
+indexing:
+    dir_path: /root/ColBERT/index/
+    nbits: 2
+    bsize: 256
+training:
+    resume_ckpt_path: Null
+    # Batch size
+    gradient_accumulation_steps: 2
+    per_device_train_batch_size: 4
+    per_device_eval_batch_size: 4
+    # Use distllation
+    is_use_distillation: False
+    # Optimization
+    swa_start_batch_idx: 40000
+    is_use_swa: False
+    warmup_steps: 2000
+    gradient_clip_val: 2.0
+    weight_decay: 0.01
+    head_learning_rate: 1e-4
+    llm_learning_rate: 1e-5
+    # Evaluation
+    val_check_interval_by_step: 1000
+    # eval_steps: 100
+    evaluation_strategy: steps
+    # Precision
+    precision: "bf16-mixed"
+    # Saving
+    save_steps: 1000
+    output_dir: ./results
+    # Logging
+    logging_dir: ./logs
+    logging_steps: 20
+dataset:
+    name: beir-msmarco
+    dir_path: /root/ColBERT/data/
+    corpus_file: corpus.jsonl
+    data_cache_file: dataset.cache.lz4
+    query_file: queries.jsonl
+    d_word_range_file: word_indices.doc.pkl
+    d_phrase_range_file: phrase_indices.doc.pkl
+    cache_nway: 64
+    train:
+        # For debugging
+        sample_size: -1
+        debug_sample_size: 1000
+        negative_start_offset: 50
+        data_file: train.jsonl
+        qrel_file: qrels/train.tsv
+        distillation_data_file: train_distillation.jsonl
+        # Cache for Indices
+        q_word_range_file: word_indices.query.pkl
+        q_phrase_range_file: phrase_indices.query.pkl
+    val:
+        sample_size: -1
+        debug_sample_size: 200
+        negative_start_offset: 0
+        override_nway: 100
+        data_file: dev.jsonl
+        # Cache for Indices
+        q_word_range_file: word_indices.query.pkl
+        q_phrase_range_file: phrase_indices.query.pkl
+model:
+    name: bert-base-uncased
+    out_dim: 128
+    # Quantization
+    is_use_quantization: False
+    quantization_bit: 8
+    is_use_lora: False
+    # ideas
+    is_use_dynamic_granularity_coeff: False
+    is_use_q_weight: True
+    is_use_d_weight: False
+    is_use_fine_grained_loss: False
+    is_only_phrase_score: False
+    granularity_level: token
+    # granularity_level: word
+    # granularity_level: phrase
+    is_d_independent: False
+    w_regularize_strategy: l1
+    # Loss coefficient
+    inter_loss_coeff: 1.0
+    intra_loss_coeff: 1.0
+    fine_grained_loss_coeff: 1.0
+    q_weight_coeff: 0.01
+    d_weight_coeff: 0.0000005
+    # q_weight_strategy: sigmoid
+    q_weight_strategy: relu
+    # q_weight_strategy: attention
+    # d_weight_strategy: sigmoid
+    d_weight_strategy: relu
+    # d_weight_strategy: attention
+    reduce_strategy: mean
+    # reduce_strategy: max
+    # reduce_strategy: min
+q_tokenizer:
+    name: bert-base-uncased
+    special_tok: "[QXQ]"
+    max_len: 32
+d_tokenizer:
+    name: bert-base-uncased
+    special_tok: "[DXD]"
+    max_len: 220
