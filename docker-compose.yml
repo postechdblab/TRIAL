@@ -1,0 +1,25 @@
+version: "3"
+
+services:
+    ColBERT:
+        shm_size: 4gb
+        image: hyukkyukang/eagle:latest
+        container_name: EAGLE
+        stdin_open: true
+        tty: true
+        network_mode: "host"
+        environment:
+            - TZ=Asia/Seoul
+        volumes:
+            - /etc/timezone:/etc/timezone:ro 
+            - ./:/root/EAGLE/
+            - /mnt/sdc/hkkang:/mnt/md0/hkkang
+        working_dir: /root
+        user: $UID:$GID
+        command: sh -c "echo root | su root -c 'useradd -s /bin/bash -m user -u ${UID}' && tail -f /dev/null"
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - capabilities: [gpu]
+
