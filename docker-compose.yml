@@ -1,5 +1,3 @@
-version: "3"
-
 services:
     ColBERT:
         shm_size: 4gb
