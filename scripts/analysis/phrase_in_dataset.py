@@ -18,7 +18,7 @@ from scripts.analysis.check_token_length import draw_histogram, get_token_stats
 from scripts.evaluate.utils import load_beir_data
 from scripts.utils import BEIR_DATASET_NAMES
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 logger = logging.getLogger("PhraseStats")
 

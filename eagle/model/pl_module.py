@@ -1,6 +1,7 @@
 from typing import *
 
 import bitsandbytes as bnb
+import hkkang_utils.time as time_utils
 import pytorch_lightning as pl
 import torch
 import tqdm
@@ -9,11 +10,12 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
-from eagle.model import NewModel
+from eagle.metrics import compute_metrics
+from eagle.model.late_interaction import NewModel
 from eagle.model.utils import append_dummy_pid
 from eagle.search import PLAID
 from eagle.tokenizer import NewTokenizer
-from eagle.utils import compute_metrics, handle_old_ckpt
+from eagle.utils import handle_old_ckpt
 
 
 class LightningNewModel(pl.LightningModule):
@@ -49,6 +51,8 @@ class LightningNewModel(pl.LightningModule):
         self.index_dir_path = index_dir_path
         self.searcher = None
         self.prank: Dict[str, int] = {}
+        self.timer = time_utils.Timer()
+        self.timer_is_started = False
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -252,10 +256,18 @@ class LightningNewModel(pl.LightningModule):
 
         # Compute loss
         loss_dic: Dict = self.model(**batch)
-        self.log_dict(loss_dic, batch_size=bsize, sync_dist=True)
         loss = loss_dic["loss"] / self.cfg.gradient_accumulation_steps
 
+        # Backward
         self.manual_backward(loss)
+
+        # Convert tensor to values Log
+        loss_dic = {
+            key: value.item() if type(value) == torch.Tensor else value
+            for key, value in loss_dic.items()
+            if "loss" in key
+        }
+        self.log_dict(loss_dic, batch_size=bsize, sync_dist=True)
 
         # accumulate gradients of N batches
         if (batch_idx + 1) % self.cfg.gradient_accumulation_steps == 0:
@@ -285,8 +297,8 @@ class LightningNewModel(pl.LightningModule):
             # Zero the gradients
             llm_opt.zero_grad()
             head_opt.zero_grad()
-
-        return loss_dic["loss"]
+        # Return
+        return None
 
     def forward(self, *args, **kwargs) -> Tuple[Dict, List[List[float]]]:
         """For examine the weights of query terms"""

@@ -14,7 +14,7 @@ from transformers import AutoTokenizer
 from scripts.utils import BEIR_DATASET_NAMES
 
 # Data path
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 logger = logging.getLogger("Evaluate")
 

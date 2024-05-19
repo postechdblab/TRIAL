@@ -1,14 +1,9 @@
-import os
-import torch
-import ujson
 import dataclasses
-
-from typing import Any
-from collections import defaultdict
+import os
 from dataclasses import dataclass, fields
-from colbert.utils.utils import timestamp, torch_load_dnn
+from typing import Any
 
-from utility.utils.save_metadata import get_metadata_only
+import ujson
 
 
 @dataclass

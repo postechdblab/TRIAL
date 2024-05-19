@@ -9,7 +9,7 @@ from colbert.noun_extraction.identify_noun import extract_nouns_indices_batch
 
 logger = logging.getLogger("AnalyzeNounExtraction")
 
-base_dir = "/root/ColBERT/data/"
+base_dir = "/root/EAGLE/data/"
 hotpotqa_corpus_path = os.path.join(base_dir, "hotpotqa/collection.tsv")
 hotpotqa_query_path = os.path.join(base_dir, "hotpotqa/dev.json")
 msmarco_corpus_path = os.path.join(base_dir, "msmarco/collection.tsv")

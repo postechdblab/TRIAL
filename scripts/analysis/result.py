@@ -23,7 +23,7 @@ from scripts.evaluate.utils import load_data
 
 logger = logging.getLogger("TokenScore")
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 # Possible keys
 TYPE_KEYS = ["all", "noun", "prop_noun", "stop", "special", "others"]
@@ -482,7 +482,7 @@ def parse_args():
         type=str,
         # required=True,
         help="Path to the result file.",
-        default="/root/ColBERT/debug/result.fever_baseline_nway32_q4_less_hard_lr2_distill.pkl",
+        default="/root/EAGLE/debug/result.fever_baseline_nway32_q4_less_hard_lr2_distill.pkl",
     )
     parser.add_argument(
         "--dataset",

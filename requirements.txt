@@ -7,6 +7,7 @@ tqdm
 transformers
 torch
 pytorch-lightning
+bitsandbytes
 hkkang_utils
 tensorboard
 beir

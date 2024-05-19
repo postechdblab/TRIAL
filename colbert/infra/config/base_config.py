@@ -10,7 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass, fields
 from colbert.utils.utils import timestamp, torch_load_dnn
 
-from utility.utils.save_metadata import get_metadata_only
 from .core_config import *
 
 
@@ -103,10 +102,6 @@ class BaseConfig(CoreConfig):
 
         with open(path, "w") as f:
             args = self.export()  # dict(self.__config)
-            args["meta"] = get_metadata_only()
-            args["meta"]["version"] = "colbert-v0.4"
-            # TODO: Add git_status details.. It can't be too large! It should be a path that Runs() saves on exit, maybe!
-
             f.write(ujson.dumps(args, indent=4) + "\n")
 
     def save_for_checkpoint(self, checkpoint_path):

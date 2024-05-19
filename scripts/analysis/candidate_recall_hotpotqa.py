@@ -11,7 +11,7 @@ from model import RetrievalResult
 from model.late_encoder import ColBERTRetriever
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
+ROOT = "/root/EAGLE/experiments/"
 EXPERIMENT = "hotpotqa"
 INDEX = "hotpotqa.nbits=2"
 # INDEX = "hotpotqa.distillation2.nbits=2"
@@ -19,7 +19,7 @@ IS_USE_NOUN = False
 IS_USE_WEIGHTED_SUM = False
 IS_USE_MIN_THRESHOLD = False
 # Data path
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 dev_path = os.path.join(DATASET_DIR, "hotpotqa/dev.json")
 # dev_path = os.path.join(DATASET_DIR, "beerqa/test_new.json")
 

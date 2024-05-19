@@ -9,7 +9,7 @@ from colbert.noun_extraction.identify_noun import SpacyModel, Text, Token
 from colbert.noun_extraction.utils import unidecode_text
 from colbert.utils.utils import stem
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 nltk_words = stopwords.words("english")
 spacy_words = stop_words.STOP_WORDS
@@ -105,15 +105,15 @@ def test() -> None:
 
 
 def main(
-    train_file_path: str = "/root/ColBERT/data/msmarco_old/train_data_nhards256.jsonl",
-    query_file_path: str = "/root/ColBERT/data/msmarco_old/queries.train.tsv",
-    collection_file_path: str = "/root/ColBERT/data/msmarco/collection.tsv",
+    train_file_path: str = "/root/EAGLE/data/msmarco_old/train_data_nhards256.jsonl",
+    query_file_path: str = "/root/EAGLE/data/msmarco_old/queries.train.tsv",
+    collection_file_path: str = "/root/EAGLE/data/msmarco/collection.tsv",
 ) -> None:
     # Read in training queries
     print("Loading training data...")
     train_data: List[Dict] = file_utils.read_jsonl_file(train_file_path)
 
-    # queries_file_path = "/root/ColBERT/data/msmarco_old/queries.train.tsv"
+    # queries_file_path = "/root/EAGLE/data/msmarco_old/queries.train.tsv"
     queries: List[Tuple[str, str]] = file_utils.read_csv_file(
         query_file_path, delimiter="\t", first_row_as_header=False
     )

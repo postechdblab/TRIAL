@@ -9,13 +9,13 @@ from model.late_encoder import ColBERTRetriever, RetrievalResult
 from scripts.utils import read_qrels, read_queries
 
 # Data path
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 collection_path = os.path.join(DATASET_DIR, "msmarco_old/collection.tsv")
 train_query_path = os.path.join(DATASET_DIR, "msmarco_old/queries.train.tsv")
 train_qrels_path = os.path.join(DATASET_DIR, "msmarco_old/qrels.train.tsv")
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
+ROOT = "/root/EAGLE/experiments/"
 EXPERIMENT = "msmarco_unidecode"
 INDEX = "msmarco.colbertv2.0.nbits=2"
 

@@ -210,7 +210,7 @@ def indexing(cfg: DictConfig, ckpt_path: str) -> None:
     bsize = cfg.indexing.bsize
     dir_path = cfg.indexing.dir_path
     dataset_name = cfg.dataset.name
-    collection_path = os.path.join("/root/ColBERT/data", dataset_name, "corpus.jsonl")
+    collection_path = os.path.join("/root/EAGLE/data", dataset_name, "corpus.jsonl")
 
     index_name = f"{dataset_name}.{cfg._global.tag}.nbits={cfg.indexing.nbits}"
     total_visible_gpus = torch.cuda.device_count()
@@ -272,7 +272,7 @@ def check_arguments(cfg: DictConfig) -> DictConfig:
     return cfg.args
 
 
-@hydra.main(version_base=None, config_path="/root/ColBERT/config", config_name="config")
+@hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:
     cfg: DictConfig = add_global_configs(cfg, exclude_keys=["args"])
 

@@ -327,7 +327,7 @@ class IndexScorer(IndexLoader, CandidateGeneration):
                     )
                     approx_scores_ = colbert_score_reduce(
                         approx_scores_padded, approx_scores_mask
-                    )
+                    )[0]
                     approx_scores.append(approx_scores_)
                 approx_scores = torch.cat(approx_scores, dim=0)
                 assert approx_scores.is_cuda, approx_scores.device

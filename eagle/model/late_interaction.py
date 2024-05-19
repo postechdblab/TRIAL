@@ -1,3 +1,4 @@
+import hkkang_utils.time as time_utils
 import logging
 from typing import *
 
@@ -21,6 +22,7 @@ from eagle.model.utils import (
     modify_execution_device,
     modify_grad,
 )
+from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
 
@@ -351,7 +353,6 @@ class NewModel(torch.nn.Module):
             cls_coeff = tok_coeff = phrase_coeff = None
         else:
             cls_coeff = tok_coeff = phrase_coeff = None
-
         # Compute scores with cls
         if q_cls_projected is not None:
             (
@@ -505,7 +506,13 @@ class NewModel(torch.nn.Module):
             # Compute variance
             d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 1].var()
             if d_weight_inter is not None:
-                d_indices = doc_indices_for_ib_loss(bsize, nway, ib_nhard)
+                d_indices = doc_indices_for_ib_loss(
+                    bsize,
+                    nway,
+                    ib_nhard,
+                    return_as_tensor=True,
+                    device=doc_tok_mask.device,
+                )
                 d_mask_inter = doc_tok_mask[d_indices]
                 d_weight_inter_masked = d_weight_inter * d_mask_inter
                 d_weight_inter_ratio = d_weight_inter_masked.sum() / d_mask_inter.sum()
@@ -741,7 +748,13 @@ class NewModel(torch.nn.Module):
             if self.is_d_independent:
                 weights_intra = self.d_weight_layer(encoded_tok_vectors)
                 if not is_eval:
-                    doc_indices: List[int] = doc_indices_for_ib_loss(bsize, nway, nhard)
+                    doc_indices: List[int] = doc_indices_for_ib_loss(
+                        bsize,
+                        nway,
+                        nhard,
+                        return_as_tensor=True,
+                        device=encoded_tok_vectors.device,
+                    )
                     selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
                     weights_inter = self.d_weight_layer(selected_encoded_tok_vectors)
             else:
@@ -759,7 +772,13 @@ class NewModel(torch.nn.Module):
                 weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
                 if not is_eval:
                     # Further encode with q_vectors for inter-example weights
-                    doc_indices: List[int] = doc_indices_for_ib_loss(bsize, nway, nhard)
+                    doc_indices: List[int] = doc_indices_for_ib_loss(
+                        bsize,
+                        nway,
+                        nhard,
+                        return_as_tensor=True,
+                        device=encoded_tok_vectors.device,
+                    )
                     q_vectors_inter = q_vectors.repeat_interleave(
                         nhard * (bsize - 1) + 1, dim=0
                     )
@@ -832,8 +851,8 @@ class NewModel(torch.nn.Module):
             return_max_scores=return_max_scores,
             return_entire_scores=return_entire_scores,
         )
-        # For optimizing the memory usage
 
+        # For optimizing the memory usage
         inter_scores, inter_q_max_scores, inter_qd_scores = self.compute_inter_scores(
             q_encoded,
             d_encoded,
@@ -855,24 +874,6 @@ class NewModel(torch.nn.Module):
 
         return intra_scores, inter_scores, intra_q_max_scores, intra_qd_scores
 
-    def compute_sum_maxsim(
-        self,
-        q_encoded: torch.Tensor,
-        d_encoded: torch.Tensor,
-        return_max_scores: bool = False,
-        return_entire_scores: bool = False,
-    ) -> torch.Tensor:
-        scores = d_encoded @ q_encoded.transpose(1, 2)
-        max_scores = scores.max(dim=1).values
-        sum_scores = max_scores.sum(dim=1)
-
-        if not return_max_scores:
-            max_scores = None
-        if not return_entire_scores:
-            scores = None
-
-        return sum_scores, max_scores, scores
-
     def compute_intra_scores(
         self,
         q_encoded: torch.Tensor,
@@ -886,11 +887,11 @@ class NewModel(torch.nn.Module):
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
         q_encoded = q_encoded.repeat_interleave(nway, dim=0)
-        return self.compute_sum_maxsim(
-            q_encoded,
-            d_encoded,
+        return compute_sum_maxsim(
+            q_encoded=q_encoded,
+            k_encoded=d_encoded,
             return_max_scores=return_max_scores,
-            return_entire_scores=return_entire_scores,
+            return_element_wise_scores=return_entire_scores,
         )
 
     def compute_inter_scores(
@@ -905,18 +906,18 @@ class NewModel(torch.nn.Module):
     ) -> torch.Tensor:
         # Compute the scores for the ib_loss
         bsize = q_encoded.shape[0]
-        q_encoded_expanded = q_encoded.repeat_interleave(
-            ib_nhard * (bsize - 1) + 1, dim=0
+        q_encoded = q_encoded.repeat_interleave(ib_nhard * (bsize - 1) + 1, dim=0)
+        d_indices_tensor: List[int] = doc_indices_for_ib_loss(
+            bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
         )
-        d_indices = doc_indices_for_ib_loss(bsize, nway, ib_nhard)
-        d_encoded_selected = d_encoded[d_indices]
+        d_encoded = d_encoded[d_indices_tensor]
         if d_weight is not None:
-            d_encoded_selected = d_encoded_selected * d_weight
-        return self.compute_sum_maxsim(
-            q_encoded_expanded,
-            d_encoded_selected,
+            d_encoded = d_encoded * d_weight
+        return compute_sum_maxsim(
+            q_encoded=q_encoded,
+            k_encoded=d_encoded,
             return_max_scores=return_max_scores,
-            return_entire_scores=return_entire_scores,
+            return_element_wise_scores=return_entire_scores,
         )
 
     def compute_loss(
@@ -949,7 +950,7 @@ if __name__ == "__main__":
     from eagle.tokenizer import NewTokenizer
 
     @hydra.main(
-        version_base=None, config_path="/root/ColBERT/config", config_name="config"
+        version_base=None, config_path="/root/EAGLE/config", config_name="config"
     )
     def main(cfg: DictConfig) -> None:
         # Initialize tokenizer

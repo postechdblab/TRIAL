@@ -27,7 +27,7 @@ torch.set_float32_matmul_precision("high")
 logger = logging.getLogger("PL_Trainer")
 
 
-@hydra.main(version_base=None, config_path="/root/ColBERT/config", config_name="config")
+@hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:
     cfg: DictConfig = add_global_configs(cfg)
     # Get git hash

@@ -184,7 +184,7 @@ def filter(output_dir_path: str, index_type: str, prefix: str) -> None:
     return None
 
 
-@hydra.main(version_base=None, config_path="/root/ColBERT/config", config_name="config")
+@hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg) -> None:
     """
     Args:

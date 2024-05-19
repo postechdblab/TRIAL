@@ -20,7 +20,7 @@ from scripts.analysis.phrase_in_dataset import count_phrase_stats
 from scripts.evaluate.utils import load_beir_data
 from scripts.utils import BEIR_DATASET_NAMES
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 MAX_QUERY_TOKENS = 32
 MAX_DOC_TOKENS = 220
 

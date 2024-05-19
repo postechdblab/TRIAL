@@ -5,9 +5,6 @@ import hkkang_utils.file as file_utils
 import torch
 from omegaconf import open_dict
 
-from colbert.infra import ColBERTConfig
-from colbert.modeling.tokenization import DocTokenizer, QueryTokenizer
-
 BEIR_DATASET_NAMES = [
     "arguana",
     "climate-fever",
@@ -83,14 +80,14 @@ def validate_model_name(checkpoint_dir, model_name: str) -> bool:
     ), f"Invalid model name: {model_name}"
 
 
-def load_tokenizer(
-    is_for_query: bool = True, model_name: Optional[str] = None
-) -> Union[DocTokenizer, QueryTokenizer]:
-    if is_for_query:
-        tokenizer = QueryTokenizer(ColBERTConfig(checkpoint=model_name))
-    else:
-        tokenizer = DocTokenizer(ColBERTConfig(checkpoint=model_name))
-    return tokenizer
+# def load_tokenizer(
+#     is_for_query: bool = True, model_name: Optional[str] = None
+# ) -> Union[DocTokenizer, QueryTokenizer]:
+#     if is_for_query:
+#         tokenizer = QueryTokenizer(ColBERTConfig(checkpoint=model_name))
+#     else:
+#         tokenizer = DocTokenizer(ColBERTConfig(checkpoint=model_name))
+#     return tokenizer
 
 
 def read_qrels(qrels_path: str) -> List[str]:

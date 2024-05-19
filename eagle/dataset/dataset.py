@@ -182,10 +182,10 @@ if __name__ == "__main__":
 
     my_dataset = RawDataset(
         ColBERTConfig(),
-        "/root/ColBERT/data/msmarco/train_data.jsonl",
-        "/root/ColBERT/data/msmarco/queries.train.tsv",
+        "/root/EAGLE/data/msmarco/train_data.jsonl",
+        "/root/EAGLE/data/msmarco/queries.train.tsv",
     )
-    corpus = read_corpus("/root/ColBERT/data/msmarco/corpus.jsonl")
+    corpus = read_corpus("/root/EAGLE/data/msmarco/corpus.jsonl")
     logger.info("Length of dataset:", len(my_dataset))
     dataset = Dataset.from_dict(my_dataset.to_dict())
     logger.info("to dict complete")

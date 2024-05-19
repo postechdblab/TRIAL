@@ -1,77 +1,9 @@
 import logging
 from typing import *
 
-import diskcache as dc
 import torch
 from beir.retrieval.evaluation import EvaluateRetrieval
-from omegaconf import DictConfig, open_dict
 from transformers import EvalPrediction
-
-from eagle.metrics import get_recall_rates
-
-# Create a cache object
-cache = dc.Cache("/tmp/diskcache")
-
-
-# Decorator to cache function results
-def disk_cache():
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            key = (func.__name__, args, tuple(kwargs.items()))
-            if key in cache:
-                return cache[key]
-            result = func(*args, **kwargs)
-            cache[key] = result
-            return result
-
-        return wrapper
-
-    return decorator
-
-
-def handle_old_ckpt(cfg, key) -> Any:
-    if key not in cfg:
-        return None
-    return cfg[key]
-
-
-def overwrite_config(src: DictConfig, dst: DictConfig) -> DictConfig:
-    """Overwrite the src config with the dst config."""
-    with open_dict(src):
-        for key, value in dst.items():
-            if key in src:
-                if isinstance(value, DictConfig):
-                    src[key] = overwrite_config(src[key], value)
-                else:
-                    src[key] = value
-    return src
-
-
-def add_config(cfg: DictConfig, key: str, value: Any) -> DictConfig:
-    with open_dict(cfg):
-        cfg[key] = value
-    return cfg
-
-
-def add_global_configs(
-    cfg: DictConfig, global_dic: DictConfig = None, exclude_keys: List[str] = None
-) -> DictConfig:
-    if global_dic is None:
-        assert hasattr(cfg, "_global"), "Global configs are not found in the config"
-        global_dic = cfg._global
-
-    with open_dict(cfg):
-        for sub_cfg_name, sub_cfg in cfg.items():
-            if sub_cfg_name != "global" and isinstance(sub_cfg, DictConfig):
-                if exclude_keys and sub_cfg_name in exclude_keys:
-                    continue
-                # Append key to the sub_cfg
-                for key, value in global_dic.items():
-                    if key not in sub_cfg:
-                        sub_cfg[key] = value
-                # Recursively add global configs
-                add_global_configs(sub_cfg, global_dic=global_dic)
-    return cfg
 
 
 def result_to_beir_format(
@@ -160,6 +92,30 @@ def compute_metrics(eval_pred: EvalPrediction, prefix: str = None) -> Dict[str, 
             f"{prefix}_{key}": value for key, value in combined_metrics.items()
         }
     return combined_metrics
+
+
+def get_recall_rates(
+    ranked_pids: List[int], gold_pids: List[int], metric: str = "all"
+) -> Dict[str, float]:
+    """Get recall rates for top-k passages.
+    is_absolute: If True, mark as correct when every gold pids are retrieved."""
+    # Configure metric
+    if metric == "all":
+        is_correct = all
+    elif metric == "any":
+        is_correct = any
+    else:
+        raise ValueError(f"Invalid metric: {metric}")
+
+    recall_rates = {}
+    for k in [5, 10, 50, 100, 1000]:
+        # Pass if k is larger than the number of retrieved passages
+        if k > len(ranked_pids):
+            continue
+        # Calculate recall
+        recall = is_correct([pid in ranked_pids[:k] for pid in gold_pids])
+        recall_rates[f"@{k}"] = recall
+    return recall_rates
 
 
 def get_custom_metrics(logits: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:

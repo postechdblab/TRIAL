@@ -117,31 +117,10 @@ def get_loss_label(b_size: int, device: torch.dtype) -> torch.Tensor:
     return torch.zeros(b_size, dtype=torch.long, device=device, requires_grad=False)
 
 
-@functools.lru_cache(maxsize=1)
-def indices_to_select_docs_for_ib_loss(q_n: int, nway: int) -> List[int]:
-    all_docs_num_for_q = nway * q_n
-    indices = []
-    for j in range(q_n):
-        offset = all_docs_num_for_q * j
-        # Add neg docs from it's previous queries
-        tmps = []
-        for k in range(0, j):
-            start_idx = k * nway
-            tmps.extend(list(range(start_idx, start_idx + nway)))
-        # Add gold doc from it's query
-        tmps.append(j * nway)
-        # Add neg docs from it's next queries
-        for k in range(j + 1, q_n):
-            start_idx = k * nway
-            tmps.extend(list(range(start_idx, start_idx + nway)))
-        # Add offset
-        tmps = [tmp + offset for tmp in tmps]
-        indices.extend(tmps)
-    return indices
-
-
-@functools.lru_cache(maxsize=1)
-def doc_indices_for_ib_loss(q_n: int, nway: int, nhard: int) -> List[int]:
+@functools.lru_cache(maxsize=1000)
+def doc_indices_for_ib_loss(
+    q_n: int, nway: int, nhard: int, return_as_tensor: bool = False, device=None
+) -> Union[List[int], torch.Tensor]:
     indices = []
     for j in range(q_n):
         tmps = []
@@ -156,4 +135,8 @@ def doc_indices_for_ib_loss(q_n: int, nway: int, nhard: int) -> List[int]:
             tmps.extend(list(range(start_idx, start_idx + nhard)))
         # Add offset
         indices.extend(tmps)
+    if return_as_tensor:
+        indices = torch.tensor(
+            indices, dtype=torch.long, requires_grad=False, device=device
+        )
     return indices

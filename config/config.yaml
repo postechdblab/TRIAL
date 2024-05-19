@@ -3,15 +3,15 @@ _global:
     seed: 10
     nway: 64
     tag: "default"
-    root_dir: "/root/ColBERT/runs"
+    root_dir: "/root/EAGLE/runs"
 indexing:
-    dir_path: /root/ColBERT/index/
+    dir_path: /root/EAGLE/index/
     nbits: 2
     bsize: 256
 training:
     resume_ckpt_path: Null
     # Batch size
-    gradient_accumulation_steps: 2
+    gradient_accumulation_steps: 4
     per_device_train_batch_size: 4
     per_device_eval_batch_size: 4
     # Use distllation
@@ -38,7 +38,7 @@ training:
     logging_steps: 20
 dataset:
     name: beir-msmarco
-    dir_path: /root/ColBERT/data/
+    dir_path: /root/EAGLE/data/
     corpus_file: corpus.jsonl
     data_cache_file: dataset.cache.lz4
     query_file: queries.jsonl
@@ -74,7 +74,7 @@ model:
     is_use_lora: False
     # ideas
     is_use_dynamic_granularity_coeff: False
-    is_use_q_weight: True
+    is_use_q_weight: False
     is_use_d_weight: False
     is_use_fine_grained_loss: False
     is_only_phrase_score: False

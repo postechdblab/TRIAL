@@ -252,7 +252,7 @@ def main(dataset_names: List[str]):
     #### Download scifact.zip dataset and unzip the dataset
     failed_list = []
     for dataset_name in tqdm.tqdm(dataset_names):
-        download_path = "/root/ColBERT/data/beir/"
+        download_path = "/root/EAGLE/data/beir/"
         if os.path.exists(os.path.join(download_path, dataset_name)):
             logger.info(f"{dataset_name} already exists in {download_path}")
             continue
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     args = arg_parse()
 
     if args.all:
-        main(dataset_names=BEIR_DATASET_NAMES+LOTTE_SUB_DATASET_NAMES)
+        main(dataset_names=BEIR_DATASET_NAMES + LOTTE_SUB_DATASET_NAMES)
     elif args.dataset:
         main(dataset_names=[args.dataset])
     else:

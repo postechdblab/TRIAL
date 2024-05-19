@@ -2,16 +2,16 @@ from typing import *
 
 import hkkang_utils.file as file_utils
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 DATASET_NAME = "msmarco"
 
 
 def main():
     # Read in training queries
-    train_file_path = "/root/ColBERT/data/msmarco_old/train_data_nhards256.jsonl"
+    train_file_path = "/root/EAGLE/data/msmarco_old/train_data_nhards256.jsonl"
     train_data: List[Dict] = file_utils.read_jsonl_file(train_file_path)
 
-    queries_file_path = "/root/ColBERT/data/msmarco_old/queries.train.tsv"
+    queries_file_path = "/root/EAGLE/data/msmarco_old/queries.train.tsv"
     queries: List[Tuple[str, str]] = file_utils.read_csv_file(
         queries_file_path, delimiter="\t", first_row_as_header=False
     )
@@ -19,7 +19,7 @@ def main():
 
     # Read in collection
     collection = file_utils.read_csv_file(
-        "/root/ColBERT/data/msmarco/collection.tsv",
+        "/root/EAGLE/data/msmarco/collection.tsv",
         delimiter="\t",
         first_row_as_header=False,
         quotechar=None,

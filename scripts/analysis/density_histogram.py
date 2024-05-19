@@ -13,7 +13,7 @@ from model.late_encoder import ColBERTRetriever
 from scripts.utils import read_qrels, read_queries
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
+ROOT = "/root/EAGLE/experiments/"
 # EXPERIMENT = "hotpotqa"
 EXPERIMENT = "msmarco"
 # INDEX = "hotpotqa.no_padding.nbits=2"
@@ -24,7 +24,7 @@ IS_USE_NOUN = False
 IS_USE_MIN_THRESHOLD = False
 IS_USE_PHRASE_LEVEL = False
 # Data path
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 collection_path = os.path.join(DATASET_DIR, "msmarco/collection.tsv")
 dev_query_path = os.path.join(DATASET_DIR, "msmarco/queries.dev.tsv")

@@ -16,13 +16,13 @@ from scripts.retrieval import ColBERTRetriever
 from scripts.utils import read_collection, read_queries
 
 # Data path
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 collection_path = os.path.join(DATASET_DIR, "msmarco_old/collection.tsv")
 train_query_path = os.path.join(DATASET_DIR, "msmarco_old/queries.train.tsv")
 train_gold_path = os.path.join(DATASET_DIR, "msmarco_old/qrels.train.tsv")
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
+ROOT = "/root/EAGLE/experiments/"
 EXPERIMENT = "msmarco_old"
 INDEX = "msmarco.distillation.nbits=2"
 # Model configs
@@ -31,8 +31,8 @@ DEBUG = False
 
 logger = logging.getLogger("CreateDistillationData")
 
-RANKING_CACHE_PATH = "/root/ColBERT/ranking.jsonl.pkl"
-HARD_NEGATIVE_DATA_PATH = "/root/ColBERT/data/msmarco_old/train_data_nhards256.jsonl"
+RANKING_CACHE_PATH = "/root/EAGLE/ranking.jsonl.pkl"
+HARD_NEGATIVE_DATA_PATH = "/root/EAGLE/data/msmarco_old/train_data_nhards256.jsonl"
 
 
 def main(

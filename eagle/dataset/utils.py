@@ -1,5 +1,6 @@
 import copy
 import functools
+import math
 import pickle
 from typing import *
 
@@ -8,9 +9,11 @@ import hkkang_utils.list as list_utils
 import lz4.frame as lz4f
 import numpy as np
 import torch
+import tqdm
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.tokenizer import NewTokenizer
+from eagle.utils import disk_cache
 
 
 def is_token_included(src: set[int], target: List[int]) -> List[bool]:
@@ -93,7 +96,6 @@ def add_doc_ranges_and_mask(
             zip(word_ranges, phrase_ranges)
         ):
             max_len = len(input_dict["doc_tok_ids"][i])
-            # TODO: Need to know why we need this logic
             d_word_range = [
                 (start, end) for start, end in d_word_range if end <= max_len
             ]
@@ -534,3 +536,65 @@ def get_labels(bsize: int, neg_num: int) -> np.ndarray:
     return np.repeat(
         np.array([True] + [False] * neg_num, dtype=bool).reshape(1, -1), bsize, axis=0
     )
+
+
+# TODO: Create disk-based cache here
+@disk_cache()
+def get_indices_to_avoid_repeated_qids_in_minibatch(
+    qids: List[int], batch_size: int
+) -> List[int]:
+    """Returns a list of indices to avoid repeated qids in the minibatch."""
+
+    def get_item(dic: Dict, get_unique_qid: bool = False) -> int:
+        """Return the qid that appears the most in the dictionary."""
+        max_key = 1 if get_unique_qid else max(dic.keys())
+        qid = dic[max_key].pop(0)
+        if len(dic[max_key]) == 0:
+            dic.pop(max_key)
+        if max_key > 1:
+            # Append the qid back to the dictionary with a count of max_key-1
+            if max_key - 1 in dic:
+                dic[max_key - 1].append(qid)
+            else:
+                dic[max_key - 1] = [qid]
+        return qid
+
+    # List of indices of the qids
+    qid_indices = {}
+    for i, qid in enumerate(qids):
+        if qid not in qid_indices:
+            qid_indices[qid] = [i]
+        else:
+            qid_indices[qid].append(i)
+    # Create dictionary that counts the number of times each qid appears
+    dic: Dict[int, int] = {}
+    for qid in qids:
+        dic[qid] = dic.get(qid, 0) + 1
+
+    # Inverted index of the dictionary
+    new_dic: Dict[int, int] = {}
+    for key, value in dic.items():
+        if value not in new_dic:
+            new_dic[value] = [key]
+        else:
+            new_dic[value].append(key)
+
+    indices = []
+    for i in tqdm.tqdm(
+        range(0, math.ceil(len(qids) // batch_size)), desc="Shuffling train indices"
+    ):
+        # Add the index of the qid to the list of indices
+        get_unique_qid = False
+        tmp = []
+        for _ in range(i * batch_size, min((i + 1) * batch_size, len(qids))):
+            qid = get_item(new_dic, get_unique_qid)
+            indices.append(qid_indices[qid].pop())
+            get_unique_qid = True
+            if qid in tmp:
+                stop = 1
+            tmp.append(qid)
+    # Append the remaining indices
+    for qid, item_indices in qid_indices.items():
+        if dic:
+            indices.extend(item_indices)
+    return indices

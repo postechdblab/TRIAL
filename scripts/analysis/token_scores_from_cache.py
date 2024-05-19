@@ -23,7 +23,7 @@ from scripts.evaluate.utils import load_data
 
 logger = logging.getLogger("TokenScore")
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 # Possible keys
 TYPE_KEYS = ["all", "noun", "prop_noun", "stop", "special", "others"]
@@ -1194,10 +1194,10 @@ def main(
     else:
         suffix = ".json"
     file_utils.write_json_file(
-        new_eval_result, f"/root/ColBERT/{dataset_name}_eval_new{suffix}"
+        new_eval_result, f"/root/EAGLE/{dataset_name}_eval_new{suffix}"
     )
     file_utils.write_json_file(
-        originanl_eval_result, f"/root/ColBERT/{dataset_name}_eval_original{suffix}"
+        originanl_eval_result, f"/root/EAGLE/{dataset_name}_eval_original{suffix}"
     )
 
     # Calculate average for all differences
@@ -1356,7 +1356,7 @@ def parse_args():
         type=str,
         # required=True,
         help="Path to the result file.",
-        default="/root/ColBERT/debug/result.nq_baseline_nway32_q4_less_hard_lr2_distill.pkl",
+        default="/root/EAGLE/debug/result.nq_baseline_nway32_q4_less_hard_lr2_distill.pkl",
     )
     parser.add_argument(
         "--dataset",

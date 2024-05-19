@@ -8,11 +8,11 @@ from scripts.retrieval import Retriever
 
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
+ROOT = "/root/EAGLE/experiments/"
 EXPERIMENT = "msmarco"
 INDEX = "msmarco.nbits=2"
-QUERY_PATH = "/root/ColBERT/data/msmarco/queries.dev.tsv"
-QRELS_PATH = "/root/ColBERT/data/msmarco/qrels.dev.tsv"
+QUERY_PATH = "/root/EAGLE/data/msmarco/queries.dev.tsv"
+QRELS_PATH = "/root/EAGLE/data/msmarco/qrels.dev.tsv"
 
 logger = logging.getLogger("uniformityCheck")
 

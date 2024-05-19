@@ -13,13 +13,13 @@ from eagle.dataset import RawDataset
 from eagle.dataset.dataset_wrapper import DatasetWrapper
 from eagle.dataset.utils import (
     collate_fn,
+    get_indices_to_avoid_repeated_qids_in_minibatch,
     preprocess,
     read_compressed,
     read_corpus,
     save_compressed,
 )
 from eagle.tokenizer import NewTokenizer
-from colbert.training.utils import get_indices_to_avoid_repeated_qids_in_minibatch
 
 logger = logging.getLogger("DataModule")
 

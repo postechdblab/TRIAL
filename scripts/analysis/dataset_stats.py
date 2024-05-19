@@ -13,7 +13,7 @@ from scripts.analysis.check_token_length import draw_histogram, get_token_stats
 from scripts.evaluate.utils import load_dataset
 from scripts.utils import BEIR_DATASET_NAMES, LOTTE_DATASET_NAMES
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 MAX_QUERY_TOKENS = 32
 MAX_DOC_TOKENS = 220
 

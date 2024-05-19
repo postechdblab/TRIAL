@@ -1,14 +1,12 @@
-from struct import pack
+import os
+import pathlib
+
 import torch
-from torch._C import device
+from torch.utils.cpp_extension import load
 
 from colbert.utils.utils import flatten, print_message
 
 from .strided_tensor_core import StridedTensorCore, _create_mask, _create_view
-
-import os
-import pathlib
-from torch.utils.cpp_extension import load
 
 
 class StridedTensor(StridedTensorCore):

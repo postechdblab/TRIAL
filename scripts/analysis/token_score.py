@@ -11,17 +11,17 @@ from scripts.evaluate.utils import get_recall_rates, load_beir_data
 from scripts.utils import read_collection
 
 # # Retriever path
-# ROOT = "/root/ColBERT/experiments/"
+# ROOT = "/root/EAGLE/experiments/"
 # EXPERIMENT = "msmarco"
 # INDEX = "msmarco.nbits=2"
-# QUERY_PATH = "/root/ColBERT/data/msmarco/queries.dev.tsv"
-# QRELS_PATH = "/root/ColBERT/data/msmarco/qrels.dev.tsv"
-# COLLECTION_PATH = "/root/ColBERT/data/msmarco/collection.tsv"
+# QUERY_PATH = "/root/EAGLE/data/msmarco/queries.dev.tsv"
+# QRELS_PATH = "/root/EAGLE/data/msmarco/qrels.dev.tsv"
+# COLLECTION_PATH = "/root/EAGLE/data/msmarco/collection.tsv"
 
 # Retriever path
-ROOT = "/root/ColBERT/experiments/"
-DATASET_DIR = "/root/ColBERT/data"
-CHECKPOINT_DIR = "/root/ColBERT/checkpoint"
+ROOT = "/root/EAGLE/experiments/"
+DATASET_DIR = "/root/EAGLE/data"
+CHECKPOINT_DIR = "/root/EAGLE/checkpoint"
 NBITS = 2
 
 logger = logging.getLogger("TokenScore")

@@ -38,7 +38,7 @@ class PhraseExtractor:
         return q_phrases
 
 
-@hydra.main(version_base=None, config_path="/root/ColBERT/config", config_name="config")
+@hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg):
     tokenizer = NewTokenizer(cfg.q_tokenizer)
     extractor = PhraseExtractor(tokenizer=tokenizer)

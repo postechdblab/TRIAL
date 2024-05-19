@@ -12,7 +12,7 @@ from colbert.utils.utils import stem
 from model import RetrievalResult
 from scripts.evaluate.utils import load_data
 
-DATASET_DIR = "/root/ColBERT/data"
+DATASET_DIR = "/root/EAGLE/data"
 
 logger = logging.getLogger("tmp")
 
@@ -114,16 +114,16 @@ def test() -> None:
 
 
 def main(
-    train_file_path: str = "/root/ColBERT/data/msmarco_old/train_data_nhards256.jsonl",
-    query_file_path: str = "/root/ColBERT/data/msmarco_old/queries.train.tsv",
-    collection_file_path: str = "/root/ColBERT/data/msmarco/collection.tsv",
+    train_file_path: str = "/root/EAGLE/data/msmarco_old/train_data_nhards256.jsonl",
+    query_file_path: str = "/root/EAGLE/data/msmarco_old/queries.train.tsv",
+    collection_file_path: str = "/root/EAGLE/data/msmarco/collection.tsv",
 ) -> None:
     # Read in training queries
     print("Loading data...")
     # Load result data
     logger.info(f"Reading results cache data")
     result_data: List = file_utils.read_pickle_file(
-        "/root/ColBERT/debug/result.nq_baseline_nway32_q4_less_hard_lr2_distill.pkl"
+        "/root/EAGLE/debug/result.nq_baseline_nway32_q4_less_hard_lr2_distill.pkl"
     )
     # Load dev data
     dataset_name = "nq"
