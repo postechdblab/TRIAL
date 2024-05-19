@@ -121,6 +121,7 @@ class NewDataModule(pl.LightningDataModule):
                 dir_path=self.cfg.dir_path,
                 dataset_name=self.cfg.name,
                 queries=self.cfg.query_file,
+                override_nway=self.cfg.cache_nway,
                 is_use_distillation=self.cfg_training.is_use_distillation,
             )
             queries_data = train_raw_dataset.queries

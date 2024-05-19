@@ -43,23 +43,18 @@ class DatasetWrapper:
         self.corpus_mapping = corpus_mapping
         self.query_mapping = query_mapping
         self.data_path = data_path
-        self.raw_data = file_utils.read_json_file(data_path, auto_detect_extension=True)
         self.q_skip_ids = q_skip_ids
         self.d_skip_ids = d_skip_ids
         self.granularity_level = granularity_level
         self.is_use_fine_grained_loss = is_use_fine_grained_loss
         # Check if variables are valid
-        if len(self.raw_data) < len(self.dataset):
-            logger.info(
-                f"Sampling data. len(self.raw_data)={len(self.raw_data)}, len(self.dataset)={len(self.dataset)}"
-            )
-            self.raw_data = self.raw_data[: len(self.dataset)]
         assert len(self.dataset) == len(
             self.indices
         ), f"len(self.dataset)={len(self.dataset)}, len(self.indices)={len(self.indices)}"
         assert nway is not None, f"nway is None. Please provide nway."
         assert cache_nway is not None, f"cache_nway is None. Please provide cache_nway."
         assert cache_nway >= nway, f"cache_nway={cache_nway}, nway={nway}"
+        assert len(self.dataset[0]["neg_doc_ids"]) >= nway-1, f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
         assert self.granularity_level in ["token", "word", "phrase"]
         if q_word_ranges is not None:
             assert len(self.q_word_ranges) == len(
