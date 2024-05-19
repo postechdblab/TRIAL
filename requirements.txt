@@ -17,3 +17,6 @@ hydra-core
 lz4
 peft
 wget
+diskcache
+# Install torch-scatter==2.1.2+pt23cu121
+https://data.pyg.org/whl/torch-2.3.0+cu121/torch_scatter-2.1.2+pt23cu121-cp312-cp312-linux_x86_64.whl
