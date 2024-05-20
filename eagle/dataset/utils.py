@@ -558,12 +558,12 @@ def collate_fn(input_dics: List[Dict]) -> Dict:
             )
         elif key in ["q_tok_mask", "q_phrase_mask"]:
             values = [dic[key].clone().detach().unsqueeze(-1) for dic in input_dics]
-            padded_values = pad_sequence(values, batch_first=True)
+            padded_values = (pad_sequence(values, batch_first=True) == 0)
         elif key in ["doc_tok_mask", "doc_phrase_mask"]:
             values = list_utils.do_flatten_list(
                 [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
             )
-            padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1)
+            padded_values = (pad_sequence(values, batch_first=True).unsqueeze(-1) == 0)
         elif key == "fine_grained_label":
             values = []
             for dic in input_dics:

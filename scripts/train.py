@@ -57,8 +57,10 @@ def main(cfg: DictConfig) -> None:
     # Load data module and model
     data_module = NewDataModule(cfg)
     model = LightningNewModel(cfg=cfg, train_batch_num=train_batch_num)
-    # profiler = PyTorchProfiler(dirpath="./perf_logs", filename="perf-logs", profile_memory=True, with_stack=True)
+
+    # Create profiler
     profiler = "simple"
+    # profiler = PyTorchProfiler(dirpath="./perf_logs", filename="perf-logs")
 
     # Trainer initialization with your training args
     trainer = L.Trainer(
@@ -91,7 +93,6 @@ def main(cfg: DictConfig) -> None:
         logger.info(f"Resuming from checkpoint: {cfg.training.resume_ckpt_path}")
 
     trainer.fit(model, datamodule=data_module, ckpt_path=cfg.training.resume_ckpt_path)
-
 
 if __name__ == "__main__":
     logging.basicConfig(

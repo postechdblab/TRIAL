@@ -48,10 +48,12 @@ def compute_loss(
     nway: int,
     ib_nhard: int,
     device: torch.device,
-) -> Tuple[torch.Tensor]:
+    intra_loss_coeff: Optional[float]=None,
+    inter_loss_coeff: Optional[float]=None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     labels = get_loss_label(bsize, device=device)
     ib_labels = get_ib_loss_label(bsize, ib_nhard, device=device)
-    return compute_loss_c(scores, ib_scores, labels, ib_labels, nway)
+    return compute_loss_c(scores, ib_scores, labels, ib_labels, nway, intra_loss_coeff, inter_loss_coeff)
 
 
 def compute_fine_grained_loss(scores: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor]:

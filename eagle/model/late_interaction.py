@@ -401,11 +401,12 @@ class NewModel(torch.nn.Module):
             )
 
         # Sum scores across different granularity
-        intra_scores = 0
-        inter_scores = 0
-        if not self.is_only_phrase_score:
-            intra_scores = intra_scores + tok_intra_scores
-            inter_scores = inter_scores + tok_inter_scores
+        if self.is_only_phrase_score:
+            intra_scores = 0
+            inter_scores = 0
+        else:
+            intra_scores = tok_intra_scores
+            inter_scores = tok_inter_scores
         if q_cls_projected is not None:
             intra_scores = intra_scores + cls_intra_scores
             inter_scores = inter_scores + cls_inter_scores
@@ -415,15 +416,16 @@ class NewModel(torch.nn.Module):
 
         # Compute loss
         device = intra_scores.device
-        intra_loss, inter_loss = compute_loss(
+        loss, intra_loss, inter_loss = compute_loss(
             scores=intra_scores,
             ib_scores=inter_scores,
             bsize=bsize,
             nway=nway,
             ib_nhard=ib_nhard,
-            device=device
+            device=device,
+            intra_loss_coeff=self.intra_loss_coeff,
+            inter_loss_coeff=self.inter_loss_coeff,
         )
-        loss = self.intra_loss_coeff * intra_loss + self.inter_loss_coeff * inter_loss
 
         # Additional loss term
         fine_grained_loss = 0
@@ -611,14 +613,10 @@ class NewModel(torch.nn.Module):
         dtype = projected_tok_vectors.dtype
 
         # Mask
-        if tok_mask.dtype != dtype:
-            tok_mask = tok_mask.to(dtype)
         if not self.is_only_phrase_score:
-            projected_tok_vectors = tok_mask * projected_tok_vectors
+            projected_tok_vectors.masked_fill_(tok_mask, 0)
         if projected_phrase_vectors is not None:
-            if phrase_mask.dtype != dtype:
-                phrase_mask = phrase_mask.to(dtype)
-            projected_phrase_vectors = phrase_mask * projected_phrase_vectors
+            projected_tok_vectors.masked_fill_(phrase_mask, 0)
 
         # Weights
         tok_weights = None
@@ -631,22 +629,22 @@ class NewModel(torch.nn.Module):
                 )
 
         # Compute normalization scale for each query
-        num_valid_tokens = tok_mask.sum(dim=1).to(dtype)
-        token_scale_factor = 1 / num_valid_tokens * self.q_maxlen
+        num_valid_tokens = tok_mask.sum(dim=1)
+        token_scale_factor = self.q_maxlen / num_valid_tokens
 
         cls_scale_factor = None
         if projected_cls_vectors is not None:
-            cls_scale_factor = torch.ones(
-                (projected_cls_vectors.shape[:-1]),
+            cls_scale_factor = torch.full(
+                size=(projected_cls_vectors.shape[:-1]),
+                fill_value=self.q_maxlen,
                 dtype=projected_cls_vectors.dtype,
                 device=tok_ids.device,
             )
-            cls_scale_factor = cls_scale_factor * self.q_maxlen
 
         phrase_scale_factor = None
         if projected_phrase_vectors is not None:
-            num_valid_phrases = phrase_mask.sum(dim=1).to(phrase_mask.dtype)
-            phrase_scale_factor = 1 / num_valid_phrases * self.q_maxlen
+            num_valid_phrases = phrase_mask.sum(dim=1)
+            phrase_scale_factor = self.q_maxlen / num_valid_phrases
 
         # Normalize
         if not self.is_only_phrase_score:
@@ -717,13 +715,9 @@ class NewModel(torch.nn.Module):
 
         # Mask
         if not self.is_only_phrase_score:
-            if tok_mask.dtype != dtype:
-                tok_mask = tok_mask.to(dtype)
-            projected_tok_vectors = tok_mask * projected_tok_vectors
+            projected_tok_vectors.masked_fill_(tok_mask, 0)
         if projected_phrase_vectors is not None:
-            if phrase_mask.dtype != dtype:
-                phrase_mask = phrase_mask.to(dtype)
-            projected_phrase_vectors = phrase_mask * projected_phrase_vectors
+            projected_phrase_vectors.masked_fill_(phrase_mask, 0)
 
         # Create weight using q_vetors
         weights_intra = None
@@ -754,7 +748,7 @@ class NewModel(torch.nn.Module):
                         encoded_tok_vectors,
                         q_vectors_intra,
                         q_vectors_intra,
-                        key_padding_mask=(q_mask_intra == 0).squeeze(-1).bool(),
+                        key_padding_mask=q_mask_intra.squeeze(-1),
                     )
                 )
                 weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
@@ -779,7 +773,7 @@ class NewModel(torch.nn.Module):
                             selected_encoded_tok_vectors,
                             q_vectors_inter,
                             q_vectors_inter,
-                            key_padding_mask=(q_mask_inter == 0).squeeze(-1).bool(),
+                            key_padding_mask=q_mask_inter.squeeze(-1),
                         )
                     )
                     weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
@@ -895,7 +889,7 @@ class NewModel(torch.nn.Module):
         # Compute the scores for the ib_loss
         bsize = q_encoded.shape[0]
         q_encoded = q_encoded.repeat_interleave(ib_nhard * (bsize - 1) + 1, dim=0)
-        d_indices_tensor: List[int] = doc_indices_for_ib_loss(
+        d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
             bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
         )
         d_encoded = d_encoded[d_indices_tensor]

@@ -70,7 +70,7 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         bsize = batch["q_tok_ids"].size(0)
         self.log_dict(
-            metrics, batch_size=bsize, on_step=False, on_epoch=True, sync_dist=True
+            metrics, batch_size=bsize, on_step=False, on_epoch=True
         )
         is_analyze = True
         if is_analyze:
@@ -185,7 +185,7 @@ class LightningNewModel(L.LightningModule):
 
         # Log metrics
         self.log_dict(
-            metrics, batch_size=bsize, on_step=False, on_epoch=True, sync_dist=True
+            metrics, batch_size=bsize, on_step=False, on_epoch=True
         )
 
         return None
@@ -239,7 +239,7 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         all_dic = loss_dic | metrics
         self.log_dict(
-            all_dic, batch_size=bsize, on_step=False, on_epoch=True, sync_dist=True
+            all_dic, batch_size=bsize, on_step=False, on_epoch=True, sync_dist=True,
         )
 
     def training_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:
@@ -263,11 +263,11 @@ class LightningNewModel(L.LightningModule):
 
         # Convert tensor to values Log
         loss_dic = {
-            key: value.item() if type(value) == torch.Tensor else value
+            key: value.item() if value != 0 else value
             for key, value in loss_dic.items()
             if "loss" in key
         }
-        self.log_dict(loss_dic, batch_size=bsize, sync_dist=True)
+        self.log_dict(loss_dic, batch_size=bsize)
 
         # accumulate gradients of N batches
         if (batch_idx + 1) % self.cfg.gradient_accumulation_steps == 0:
