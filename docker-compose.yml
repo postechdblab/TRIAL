@@ -1,5 +1,5 @@
 services:
-    ColBERT:
+    EAGLE:
         shm_size: 4gb
         image: hyukkyukang/eagle:latest
         container_name: EAGLE
