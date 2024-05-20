@@ -24,10 +24,10 @@ def compute_loss_c(
     # Compute intra-data cross-entropy loss (i.e., in-batch negatives)
     ib_loss = torch.nn.CrossEntropyLoss()(ib_scores.view(q_n, -1), ib_labels)
 
-    if ce_loss_coeff is not None:
+    if ce_loss_coeff is not None and ce_loss_coeff != 1:
         ce_loss = ce_loss_coeff * ce_loss
 
-    if ib_loss_coeff is not None:
+    if ib_loss_coeff is not None and ib_loss_coeff != 1:
         ib_loss = ib_loss_coeff * ib_loss
 
     loss = ce_loss + ib_loss
