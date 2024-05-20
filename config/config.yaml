@@ -29,7 +29,7 @@ training:
     # eval_steps: 100
     evaluation_strategy: steps
     # Precision
-    precision: "bf16-mixed"
+    precision: "16-mixed"
     # Saving
     save_steps: 1000
     output_dir: ./results
