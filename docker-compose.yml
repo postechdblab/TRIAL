@@ -14,7 +14,7 @@ services:
             - /mnt/sdc/hkkang:/mnt/md0/hkkang
         working_dir: /root
         user: $UID:$GID
-        command: sh -c "echo root | su root -c 'useradd -s /bin/bash -m user -u ${UID}' && tail -f /dev/null"
+        command: sh -c "echo root | su root -c 'useradd -s /bin/bash -m user -u ${UID} && echo \"export PYTHONPATH=\$PYTHONPATH:/root/EAGLE/\" >> /home/user/.bashrc' && tail -f /dev/null"
         deploy:
             resources:
                 reservations:
