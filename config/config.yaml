@@ -1,7 +1,7 @@
 _global:
     is_debug: False
     seed: 10
-    nway: 64
+    nway: 32
     tag: "default"
     root_dir: "/root/EAGLE/runs"
 indexing:
@@ -35,7 +35,7 @@ training:
     output_dir: ./results
     # Logging
     logging_dir: ./logs
-    logging_steps: 20
+    logging_steps: 40
 dataset:
     name: beir-msmarco
     dir_path: /root/EAGLE/data/
