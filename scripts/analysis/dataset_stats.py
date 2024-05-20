@@ -9,8 +9,8 @@ import hkkang_utils.slack as slack_utils
 import tqdm
 from transformers import AutoTokenizer
 
+from eagle.dataset.utils import load_dataset
 from scripts.analysis.check_token_length import draw_histogram, get_token_stats
-from scripts.evaluate.utils import load_dataset
 from scripts.utils import BEIR_DATASET_NAMES, LOTTE_DATASET_NAMES
 
 DATASET_DIR = "/root/EAGLE/data"

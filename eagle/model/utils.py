@@ -1,4 +1,3 @@
-import functools
 from typing import *
 
 import torch
@@ -105,38 +104,3 @@ def get_weight_layer(
     else:
         raise ValueError(f"Unsupported weight strategy: {strategy}")
     return layer
-
-
-@functools.lru_cache(maxsize=32)
-def get_ib_loss_label(q_n: int, nway: int, device: torch.dtype) -> torch.Tensor:
-    return torch.arange(0, q_n, device=device, requires_grad=False) * nway
-
-
-@functools.lru_cache(maxsize=32)
-def get_loss_label(b_size: int, device: torch.dtype) -> torch.Tensor:
-    return torch.zeros(b_size, dtype=torch.long, device=device, requires_grad=False)
-
-
-@functools.lru_cache(maxsize=1000)
-def doc_indices_for_ib_loss(
-    q_n: int, nway: int, nhard: int, return_as_tensor: bool = False, device=None
-) -> Union[List[int], torch.Tensor]:
-    indices = []
-    for j in range(q_n):
-        tmps = []
-        for k in range(0, j):
-            start_idx = k * nway
-            tmps.extend(list(range(start_idx, start_idx + nhard)))
-        # Add gold doc from it's query
-        tmps.append(j * nway)
-        # Add neg docs from it's next queries
-        for k in range(j + 1, q_n):
-            start_idx = k * nway
-            tmps.extend(list(range(start_idx, start_idx + nhard)))
-        # Add offset
-        indices.extend(tmps)
-    if return_as_tensor:
-        indices = torch.tensor(
-            indices, dtype=torch.long, requires_grad=False, device=device
-        )
-    return indices

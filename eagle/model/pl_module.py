@@ -2,7 +2,7 @@ from typing import *
 
 import bitsandbytes as bnb
 import hkkang_utils.time as time_utils
-import pytorch_lightning as pl
+import lightning as L
 import torch
 import tqdm
 from omegaconf import DictConfig
@@ -18,7 +18,7 @@ from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
 
 
-class LightningNewModel(pl.LightningModule):
+class LightningNewModel(L.LightningModule):
     def __init__(
         self, cfg: DictConfig, train_batch_num: int = None, index_dir_path: str = None
     ):
@@ -414,10 +414,8 @@ class LightningNewModel(pl.LightningModule):
         assert bsize, "Please provide the batch size for the indexing."
 
         # Tensorize the documents
-        from colbert.modeling.tokenization.utils import (
-            _sort_by_length,
-            _split_into_batches,
-        )
+        from colbert.modeling.tokenization.utils import (_sort_by_length,
+                                                         _split_into_batches)
 
         # Tokenize
         result = self.d_tokenizer(docs, padding=True, return_tensors="pt")

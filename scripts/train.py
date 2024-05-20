@@ -6,16 +6,14 @@ from typing import *
 import git
 import hkkang_utils.slack as slack_utils
 import hydra
-import pytorch_lightning as pl
+import lightning as L
 import torch
+from lightning import seed_everything
+from lightning.pytorch.callbacks import (LearningRateMonitor, ModelCheckpoint,
+                                         ModelSummary)
+from lightning.pytorch.profilers import PyTorchProfiler
+from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
-from pytorch_lightning import seed_everything
-from pytorch_lightning.callbacks import (
-    LearningRateMonitor,
-    ModelCheckpoint,
-    ModelSummary,
-)
-from pytorch_lightning.strategies import DDPStrategy
 
 from eagle.dataset import NewDataModule
 from eagle.model import LightningNewModel
@@ -44,7 +42,7 @@ def main(cfg: DictConfig) -> None:
         cfg.training.logging_steps * cfg.training.gradient_accumulation_steps
     )
     val_check_interval = (
-        10
+        100
         if cfg._global.is_debug
         else cfg.training.val_check_interval_by_step
         * cfg.training.gradient_accumulation_steps
@@ -59,13 +57,15 @@ def main(cfg: DictConfig) -> None:
     # Load data module and model
     data_module = NewDataModule(cfg)
     model = LightningNewModel(cfg=cfg, train_batch_num=train_batch_num)
+    # profiler = PyTorchProfiler(dirpath="./perf_logs", filename="perf-logs", profile_memory=True, with_stack=True)
+    profiler = "simple"
 
     # Trainer initialization with your training args
-    trainer = pl.Trainer(
+    trainer = L.Trainer(
         deterministic=True,
         max_epochs=1,
         num_sanity_val_steps=2,
-        profiler="simple",
+        profiler=profiler,
         accelerator="gpu",
         devices=device_cnt,
         precision=cfg.training.precision,

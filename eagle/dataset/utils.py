@@ -1,6 +1,7 @@
 import copy
 import functools
 import math
+import os
 import pickle
 from typing import *
 
@@ -14,6 +15,62 @@ from torch.nn.utils.rnn import pad_sequence
 
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import disk_cache
+
+
+def load_dataset(
+    dataset_dir: str,
+    dataset_name: str,
+    return_unique: bool = False,
+) -> List[Tuple[str, str, List[str], List[str], List[int]]]:
+    """Load BEIR data.
+
+    :param dataset_dir: Directory of the dataset
+    :type dataset_dir: str
+    :param dataset_name: Name of the dataset
+    :type dataset_name: str
+    :param return_unique: Whether to combine the answers for the same query text, defaults to False
+    :type return_unique: bool, optional
+    :return: List of tuples (qid, query, pids, p_titles, scores)
+    :rtype: List[Tuple[str, str, List[str], List[str], List[int]]]
+    """
+    # Load query_path
+    query_path = os.path.join(dataset_dir, f"{dataset_name}/queries.jsonl")
+    data_path = os.path.join(dataset_dir, f"{dataset_name}/dev.jsonl")
+
+    # Load data
+    queries = file_utils.read_jsonl_file(query_path)
+    query_dict = {str(item["_id"]): item["text"] for item in queries}
+    data = file_utils.read_jsonl_file(data_path)
+
+    # Format data
+    final_data = []
+    skipping_items = []
+    for item in data:
+        qid = item["id"]
+        query = query_dict[str(qid)]
+        # Modify pid
+        final_data.append([qid, query, item["answers"], [None], [None]])
+    if skipping_items:
+        pass
+        # logger.info(f"Skipped {len(skipping_items)} items")
+
+    # Combine the answers for the same query text
+    if return_unique:
+        unique_data = []
+        unique_qids = []
+        for item in final_data:
+            qid, query, pids, p_titles, scores = item
+            if qid not in unique_qids:
+                unique_data.append(item)
+                unique_qids.append(qid)
+            else:
+                idx = unique_qids.index(qid)
+                unique_data[idx][2].extend(pids)
+                unique_data[idx][3].extend(p_titles)
+                unique_data[idx][4].extend(scores)
+        final_data = unique_data
+
+    return final_data
 
 
 def is_token_included(src: set[int], target: List[int]) -> List[bool]:

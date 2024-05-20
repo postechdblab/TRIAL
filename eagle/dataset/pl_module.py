@@ -4,7 +4,7 @@ import os
 from typing import *
 
 import hkkang_utils.file as file_utils
-import pytorch_lightning as pl
+import lightning as L
 from datasets import Dataset
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
@@ -12,19 +12,14 @@ from torch.utils.data import DataLoader
 from eagle.dataset import RawDataset
 from eagle.dataset.dataset_wrapper import DatasetWrapper
 from eagle.dataset.utils import (
-    collate_fn,
-    get_indices_to_avoid_repeated_qids_in_minibatch,
-    preprocess,
-    read_compressed,
-    read_corpus,
-    save_compressed,
-)
+    collate_fn, get_indices_to_avoid_repeated_qids_in_minibatch, preprocess,
+    read_compressed, read_corpus, save_compressed)
 from eagle.tokenizer import NewTokenizer
 
 logger = logging.getLogger("DataModule")
 
 
-class NewDataModule(pl.LightningDataModule):
+class NewDataModule(L.LightningDataModule):
     def __init__(self, cfg: DictConfig, skip_train: bool = False):
         super().__init__()
         self.cfg_global = cfg
@@ -399,7 +394,7 @@ class NewDataModule(pl.LightningDataModule):
         return DataLoader(
             self.train_dataset,
             batch_size=self.cfg_training.per_device_train_batch_size,
-            num_workers=8,
+            num_workers=4,
             collate_fn=collate_fn,
         )
 

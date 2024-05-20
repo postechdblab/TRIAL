@@ -4,20 +4,16 @@ from typing import *
 
 import hkkang_utils.slack as slack_utils
 import hydra
-import pytorch_lightning as pl
+import lightning as L
 import torch
 from omegaconf import DictConfig
-from pytorch_lightning import seed_everything
 
 from colbert.indexer import Indexer
 from colbert.infra import ColBERTConfig, Run, RunConfig
 from eagle.dataset import NewDataModule
-from eagle.dataset.utils import (
-    add_doc_ranges_and_mask,
-    add_query_ranges_and_mask,
-    collate_fn,
-    preprocess,
-)
+from eagle.dataset.utils import (add_doc_ranges_and_mask,
+                                 add_query_ranges_and_mask, collate_fn,
+                                 preprocess)
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import NewTokenizer
@@ -174,7 +170,7 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     assert ckpt_path, "Please provide the path to the checkpoint"
     model = LightningNewModel(cfg=cfg, index_dir_path=index_dir_path)
 
-    trainer = pl.Trainer(
+    trainer = L.Trainer(
         deterministic=True,
         accelerator="cuda",
         devices=torch.cuda.device_count(),
@@ -191,7 +187,7 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     # Load trained model
     assert ckpt_path, "Please provide the path to the checkpoint"
     model = LightningNewModel(cfg=cfg)
-    trainer = pl.Trainer(
+    trainer = L.Trainer(
         deterministic=True,
         accelerator="cuda",
         devices=torch.cuda.device_count(),
@@ -277,7 +273,7 @@ def main(cfg: DictConfig) -> None:
     cfg: DictConfig = add_global_configs(cfg, exclude_keys=["args"])
 
     # Set random seeds
-    seed_everything(cfg._global.seed, workers=True)
+    L.seed_everything(cfg._global.seed, workers=True)
 
     # Check arguments
     args = check_arguments(cfg)

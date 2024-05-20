@@ -6,7 +6,7 @@ spacy-transformers
 tqdm
 transformers
 torch
-pytorch-lightning
+lightning
 bitsandbytes
 hkkang_utils
 tensorboard

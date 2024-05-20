@@ -18,7 +18,6 @@ def compute_loss_c(
     # Compute intra-data cross-entropy loss (i.e., in-batch negatives)
     ib_loss = torch.nn.CrossEntropyLoss()(ib_scores.view(q_n, -1), ib_labels)
 
-    ce_loss + ib_loss
     return ce_loss, ib_loss
 
 
@@ -32,4 +31,4 @@ def l2_regularization(tensor: torch.Tensor) -> torch.Tensor:
 
 # Compile the functions
 # if CAPABILITY[0] >= 7:
-#     compute_loss_c = torch.compile(compute_loss_c, fullgraph=True, mode="max-autotune")
+#     compute_loss_c = torch.compile(compute_loss_c, dynamic=True, fullgraph=True, mode="max-autotune")
