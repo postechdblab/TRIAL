@@ -103,6 +103,7 @@ def get_weight_layer(
     if strategy == "sigmoid":
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
+            torch.nn.LayerNorm(intermediate_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.Sigmoid(),
@@ -110,6 +111,7 @@ def get_weight_layer(
     elif strategy == "relu":
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
+            torch.nn.LayerNorm(intermediate_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.ReLU(),
