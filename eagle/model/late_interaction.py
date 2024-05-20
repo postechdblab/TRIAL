@@ -8,7 +8,9 @@ from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoModel, BitsAndBytesConfig
 
 from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
-from eagle.model.objective import compute_fine_grained_loss, compute_loss, doc_indices_for_ib_loss
+from eagle.model.objective import (compute_fine_grained_loss, compute_loss,
+                                   doc_indices_for_ib_loss,
+                                   get_target_scale_tensor)
 from eagle.model.utils import (get_vectors_from_ranges, get_weight_layer,
                                modify_execution_device, modify_grad)
 from eagle.search.algorithm import compute_sum_maxsim
@@ -480,10 +482,10 @@ class NewModel(torch.nn.Module):
         q_weight_ratio = 0
         q_weight_var = 0
         if q_weight_reg_term:
-            num_valid = q_tok_mask.sum()
-            q_weight_masked = q_tok_weight * q_tok_mask
-            q_weight_ratio = q_weight_masked.sum() / num_valid
-            q_weight_var = q_weight_masked[q_tok_mask == 1].var()
+            num_valid = self.get_valid_num(q_tok_mask)
+            q_tok_weight.masked_fill_(q_tok_mask, 0)
+            q_weight_ratio = q_tok_weight.sum() / num_valid
+            q_weight_var = q_tok_weight[q_tok_mask==0].var()
         # Analyze document weights
         d_weight_intra_ratio = 0
         d_weight_inter_ratio = 0
@@ -494,7 +496,7 @@ class NewModel(torch.nn.Module):
             d_weight_intra_masked = d_weight_intra * d_mask_intra
             d_weight_intra_ratio = d_weight_intra_masked.sum() / d_mask_intra.sum()
             # Compute variance
-            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 1].var()
+            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 0].var()
             if d_weight_inter is not None:
                 d_indices = doc_indices_for_ib_loss(
                     bsize,
@@ -506,7 +508,7 @@ class NewModel(torch.nn.Module):
                 d_mask_inter = doc_tok_mask[d_indices]
                 d_weight_inter_masked = d_weight_inter * d_mask_inter
                 d_weight_inter_ratio = d_weight_inter_masked.sum() / d_mask_inter.sum()
-                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 1].var()
+                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 0].var()
         # Append more log information
         return_dict["avg_intra_scores"] = intra_scores.mean().item()
         return_dict["avg_inter_scores"] = inter_scores.mean().item()
@@ -629,8 +631,7 @@ class NewModel(torch.nn.Module):
                 )
 
         # Compute normalization scale for each query
-        num_valid_tokens = tok_mask.sum(dim=1)
-        token_scale_factor = self.q_maxlen / num_valid_tokens
+        token_scale_factor = self.get_scale_factor(mask=tok_mask)
 
         cls_scale_factor = None
         if projected_cls_vectors is not None:
@@ -643,8 +644,7 @@ class NewModel(torch.nn.Module):
 
         phrase_scale_factor = None
         if projected_phrase_vectors is not None:
-            num_valid_phrases = phrase_mask.sum(dim=1)
-            phrase_scale_factor = self.q_maxlen / num_valid_phrases
+            phrase_scale_factor = self.get_scale_factor(mask=phrase_mask)
 
         # Normalize
         if not self.is_only_phrase_score:
@@ -901,6 +901,16 @@ class NewModel(torch.nn.Module):
             return_max_scores=return_max_scores,
             return_element_wise_scores=return_entire_scores,
         )
+    
+    def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
+        num_non_valid_tokens = mask.sum(dim=1)
+        target_scale = get_target_scale_tensor(target_scale=self.q_maxlen, b_size=num_non_valid_tokens.shape[0], device=num_non_valid_tokens.device, dtype=num_non_valid_tokens.dtype)
+        num_valid_tokens = target_scale - num_non_valid_tokens
+        return num_valid_tokens
+    
+    def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
+        num_valid_tokens = self.get_valid_num(mask)
+        return self.q_maxlen / num_valid_tokens
 
 
 if __name__ == "__main__":

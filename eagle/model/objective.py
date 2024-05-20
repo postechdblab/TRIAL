@@ -7,6 +7,10 @@ from eagle.model.compiled_tensor_op import compute_loss_c
 
 
 @functools.lru_cache(maxsize=32)
+def get_target_scale_tensor(target_scale:int, b_size:int, device: torch.dtype, dtype:torch.dtype) -> torch.Tensor:
+    return torch.full((b_size, 1), fill_value=target_scale, dtype=dtype, device=device, requires_grad=False)
+
+@functools.lru_cache(maxsize=32)
 def get_ib_loss_label(q_n: int, nway: int, device: torch.dtype) -> torch.Tensor:
     return torch.arange(0, q_n, device=device, requires_grad=False) * nway
 
