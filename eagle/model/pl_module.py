@@ -12,7 +12,7 @@ from transformers import EvalPrediction, get_linear_schedule_with_warmup
 from eagle.dataset.utils import get_mask
 from eagle.metrics import compute_metrics
 from eagle.model.late_interaction import NewModel
-from eagle.model.utils import append_dummy_pid
+from eagle.model.utils import append_dummy_pid, unwrap_logging_items
 from eagle.search import PLAID
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
@@ -262,11 +262,7 @@ class LightningNewModel(L.LightningModule):
         self.manual_backward(loss)
 
         # Convert tensor to values Log
-        loss_dic = {
-            key: value.item() if value != 0 else value
-            for key, value in loss_dic.items()
-            if "loss" in key
-        }
+        loss_dic = unwrap_logging_items(loss_dic, target_key="loss")
         self.log_dict(loss_dic, batch_size=bsize)
 
         # accumulate gradients of N batches

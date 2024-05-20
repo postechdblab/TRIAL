@@ -4,6 +4,22 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
+def unwrap_logging_items(loss_dic: Dict, target_key:str=None) -> Dict:
+    """Remove zero loss items and unwrap torch.Tensor to float
+
+    :param loss_dic: Dictionary containing loss values
+    :type loss_dic: Dict
+    :return: Dictionary containing loss values with zero values removed
+    :rtype: Dict
+    """
+    if target_key is not None:
+        loss_dic = {
+                key: value.item() if type(value) == torch.Tensor else value
+                for key, value in loss_dic.items()
+                if target_key in key
+            }
+    return {key: value for key, value in loss_dic.items() if value != 0}
+
 
 def append_dummy_pid(
     pids: Union[List[int], torch.Tensor], target_pids: List[int]
