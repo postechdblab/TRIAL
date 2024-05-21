@@ -904,7 +904,7 @@ class NewModel(torch.nn.Module):
     
     def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
         num_non_valid_tokens = mask.sum(dim=1)
-        target_scale = get_target_scale_tensor(target_scale=self.q_maxlen, b_size=num_non_valid_tokens.shape[0], device=num_non_valid_tokens.device, dtype=num_non_valid_tokens.dtype)
+        target_scale = get_target_scale_tensor(target_scale=mask.shape[1], b_size=num_non_valid_tokens.shape[0], device=num_non_valid_tokens.device, dtype=num_non_valid_tokens.dtype)
         num_valid_tokens = target_scale - num_non_valid_tokens
         return num_valid_tokens
     
