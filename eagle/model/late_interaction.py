@@ -484,7 +484,7 @@ class NewModel(torch.nn.Module):
         if q_weight_reg_term:
             num_valid = self.get_valid_num(q_tok_mask)
             q_tok_weight.masked_fill_(q_tok_mask, 0)
-            q_weight_ratio = q_tok_weight.sum() / num_valid
+            q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
             q_weight_var = q_tok_weight[q_tok_mask==0].var()
         # Analyze document weights
         d_weight_intra_ratio = 0
