@@ -95,6 +95,8 @@ class NewModel(torch.nn.Module):
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
+        self.d_weight_layer_norm = torch.nn.LayerNorm(self.llm.config.hidden_size) if self.is_use_d_weight else None
+        
         # Cross-attention layer for interacting query and documents
         self.cross_att_layer = self.__create_cross_att_layer()
 
@@ -743,6 +745,7 @@ class NewModel(torch.nn.Module):
                 # Further encode with q_vectors for intra-example weights
                 q_vectors_intra = q_vectors.repeat_interleave(nway, dim=0)
                 q_mask_intra = q_mask.repeat_interleave(nway, dim=0)
+                # Perform cross-attention
                 cross_encoded_tok_vectors_intra, cross_attn_weights_intra = (
                     self.cross_att_layer(
                         encoded_tok_vectors,
@@ -751,9 +754,17 @@ class NewModel(torch.nn.Module):
                         key_padding_mask=q_mask_intra.squeeze(-1),
                     )
                 )
+                # Add and normalize
+                cross_encoded_tok_vectors_intra = cross_encoded_tok_vectors_intra + encoded_tok_vectors
+                cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(cross_encoded_tok_vectors_intra)
+
                 weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
                 if not is_eval:
                     # Further encode with q_vectors for inter-example weights
+                    repeat_n = nhard * (bsize - 1) + 1
+                    q_vectors_inter = q_vectors.repeat_interleave(repeat_n, dim=0)
+                    q_mask_inter = q_mask.repeat_interleave(repeat_n, dim=0)
+                    # Get indices for the inter-examples
                     doc_indices: List[int] = doc_indices_for_ib_loss(
                         bsize,
                         nway,
@@ -761,13 +772,8 @@ class NewModel(torch.nn.Module):
                         return_as_tensor=True,
                         device=encoded_tok_vectors.device,
                     )
-                    q_vectors_inter = q_vectors.repeat_interleave(
-                        nhard * (bsize - 1) + 1, dim=0
-                    )
-                    q_mask_inter = q_mask.repeat_interleave(
-                        nhard * (bsize - 1) + 1, dim=0
-                    )
                     selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
+                    # Perform cross-attention
                     cross_encoded_tok_vectors_inter, cross_attn_weights_inter = (
                         self.cross_att_layer(
                             selected_encoded_tok_vectors,
@@ -776,6 +782,10 @@ class NewModel(torch.nn.Module):
                             key_padding_mask=q_mask_inter.squeeze(-1),
                         )
                     )
+                    # Add and normalize
+                    cross_encoded_tok_vectors_inter = cross_encoded_tok_vectors_inter + selected_encoded_tok_vectors
+                    cross_encoded_tok_vectors_inter = self.d_weight_layer_norm(cross_encoded_tok_vectors_inter)
+                    # Predict the weights
                     weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
 
         # Normalize
@@ -904,13 +914,16 @@ class NewModel(torch.nn.Module):
         repeat_num = ib_nhard * (bsize - 1) + 1
         q_encoded = q_encoded.repeat_interleave(repeat_num, dim=0)
         q_mask = q_mask.repeat_interleave(repeat_num, dim=0)
+        # Get the indices
         d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
             bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
         )
         d_encoded = d_encoded[d_indices_tensor]
         d_mask = d_mask[d_indices_tensor]
+        # Apply weights if exists
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
+        # Compute the scores
         return compute_sum_maxsim(
             q_encoded=q_encoded,
             k_encoded=d_encoded,
