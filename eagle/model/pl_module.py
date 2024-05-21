@@ -262,7 +262,7 @@ class LightningNewModel(L.LightningModule):
         self.manual_backward(loss)
 
         # Convert tensor to values Log
-        loss_dic = unwrap_logging_items(loss_dic, target_key="loss")
+        loss_dic = unwrap_logging_items(loss_dic)
         self.log_dict(loss_dic, batch_size=bsize)
 
         # accumulate gradients of N batches
