@@ -2,12 +2,14 @@ from typing import *
 
 import torch
 
+
 from colbert.search.strided_tensor import StridedTensor
 
 
 def compute_sum_maxsim(
     q_encoded: torch.Tensor,
     k_encoded: torch.Tensor,
+    q_mask: Optional[torch.Tensor] = None,
     k_mask: Optional[torch.Tensor] = None,
     k_lengths: Optional[torch.Tensor] = None,
     return_max_scores: bool = False,
@@ -36,7 +38,14 @@ def compute_sum_maxsim(
         return_element_wise_scores=return_element_wise_scores,
     )
 
-    sum_maxsim_scores = max_sim_scores.sum(1)
+    if q_mask is None:
+        sum_maxsim_scores = max_sim_scores.sum(1)
+    else:
+        q_mask = q_mask.squeeze(-1)
+        sum_maxsim_scores = torch.scatter_add(input=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), dim=1, index=q_mask.long(), src=max_sim_scores)
+        sum_maxsim_scores = sum_maxsim_scores[:, 0]
+        # sum_maxsim_scores = torch.scatter(src=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), sum_maxsim_scores = sum_maxsim_scores[:, 0]        
+        # torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype).scatter_add_(dim=1, index=q_mask.long(), src=max_sim_scores)
 
     if not return_max_scores:
         max_sim_scores = None
@@ -90,7 +99,7 @@ def maxsim_from_element_wise_relevance_score(
     """
     # Apply mask to the scores
     if k_mask is not None:
-        element_wise_scores.masked_fill_(k_mask, -1e9)
+        element_wise_scores.masked_fill_(k_mask, float('-inf'))
 
     # Find the maximum scores for each document
     return element_wise_scores.max(dim=1).values

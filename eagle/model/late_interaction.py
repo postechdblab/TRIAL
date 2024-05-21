@@ -207,12 +207,6 @@ class NewModel(torch.nn.Module):
     ) -> torch.nn.Module:
         if self.is_use_multi_granularity or force:
             return torch.nn.Linear(input_dim, out_dim)
-        # return get_weight_layer(
-        #     strategy="relu",
-        #     input_dim=input_dim,
-        #     intermediate_dim=intermediate_dim,
-        #     out_dim=out_dim,
-        # )
         return None
 
     def __create_regularization_func(
@@ -356,8 +350,10 @@ class NewModel(torch.nn.Module):
                 d_encoded=d_cls_projected,
                 q_weight=None,
                 q_scale_factor=q_cls_scale_factor,
+                q_mask=None,
                 d_weight_intra=d_weight_intra,
                 d_weight_inter=d_weight_inter,
+                d_mask=None,
                 nway=nway,
                 ib_nhard=ib_nhard,
                 return_max_scores=is_use_fine_grained_loss,
@@ -374,9 +370,11 @@ class NewModel(torch.nn.Module):
                 q_encoded=q_tok_projected,
                 q_weight=q_tok_weight,
                 q_scale_factor=q_tok_scale_factor,
+                q_mask=q_tok_mask,
                 d_encoded=d_tok_projected,
                 d_weight_intra=d_weight_intra,
                 d_weight_inter=d_weight_inter,
+                d_mask=doc_tok_mask,
                 nway=nway,
                 ib_nhard=ib_nhard,
                 return_max_scores=is_use_fine_grained_loss,
@@ -393,9 +391,11 @@ class NewModel(torch.nn.Module):
                 q_encoded=q_phrase_projected,
                 q_weight=q_phrase_weight,
                 q_scale_factor=q_phrase_scale_factor,
+                q_mask=q_phrase_mask,
                 d_encoded=d_phrase_projected,
                 d_weight_intra=d_weight_intra,
                 d_weight_inter=d_weight_inter,
+                d_mask=doc_phrase_mask,
                 nway=nway,
                 ib_nhard=ib_nhard,
                 return_max_scores=is_use_fine_grained_loss,
@@ -483,7 +483,7 @@ class NewModel(torch.nn.Module):
         q_weight_var = 0
         if q_weight_reg_term:
             num_valid = self.get_valid_num(q_tok_mask)
-            q_tok_weight.masked_fill_(q_tok_mask, 0)
+            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask, 0)
             q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
             q_weight_var = q_tok_weight[q_tok_mask==0].var()
         # Analyze document weights
@@ -615,10 +615,10 @@ class NewModel(torch.nn.Module):
         dtype = projected_tok_vectors.dtype
 
         # Mask
-        if not self.is_only_phrase_score:
-            projected_tok_vectors.masked_fill_(tok_mask, 0)
-        if projected_phrase_vectors is not None:
-            projected_tok_vectors.masked_fill_(phrase_mask, 0)
+        # if not self.is_only_phrase_score:
+        #     projected_tok_vectors.masked_fill_(tok_mask, 0)
+        # if projected_phrase_vectors is not None:
+        #     projected_tok_vectors.masked_fill_(phrase_mask, 0)
 
         # Weights
         tok_weights = None
@@ -714,10 +714,10 @@ class NewModel(torch.nn.Module):
         dtype = projected_tok_vectors.dtype
 
         # Mask
-        if not self.is_only_phrase_score:
-            projected_tok_vectors.masked_fill_(tok_mask, 0)
-        if projected_phrase_vectors is not None:
-            projected_phrase_vectors.masked_fill_(phrase_mask, 0)
+        # if not self.is_only_phrase_score:
+        #     projected_tok_vectors.masked_fill_(tok_mask, 0)
+        # if projected_phrase_vectors is not None:
+        #     projected_phrase_vectors.masked_fill_(phrase_mask, 0)
 
         # Create weight using q_vetors
         weights_intra = None
@@ -812,6 +812,8 @@ class NewModel(torch.nn.Module):
         d_encoded: torch.Tensor,
         q_weight: Optional[torch.Tensor],
         q_scale_factor: Optional[torch.Tensor],
+        q_mask: Optional[torch.Tensor],
+        d_mask: Optional[torch.Tensor],
         d_weight_intra: Optional[torch.Tensor],
         d_weight_inter: Optional[torch.Tensor],
         nway: int,
@@ -827,8 +829,10 @@ class NewModel(torch.nn.Module):
         # Perform Maxsim
         intra_scores, intra_q_max_scores, intra_qd_scores = self.compute_intra_scores(
             q_encoded,
-            d_encoded,
-            d_weight_intra,
+            q_mask=q_mask,
+            d_encoded=d_encoded,
+            d_weight=d_weight_intra,
+            d_mask=d_mask,
             nway=nway,
             return_max_scores=return_max_scores,
             return_entire_scores=return_entire_scores,
@@ -837,8 +841,10 @@ class NewModel(torch.nn.Module):
         # For optimizing the memory usage
         inter_scores, inter_q_max_scores, inter_qd_scores = self.compute_inter_scores(
             q_encoded,
-            d_encoded,
-            d_weight_inter,
+            q_mask=q_mask,
+            d_encoded=d_encoded,
+            d_weight=d_weight_inter,
+            d_mask=d_mask,
             nway=nway,
             ib_nhard=ib_nhard,
             return_max_scores=return_max_scores,
@@ -859,8 +865,10 @@ class NewModel(torch.nn.Module):
     def compute_intra_scores(
         self,
         q_encoded: torch.Tensor,
+        q_mask: torch.Tensor,
         d_encoded: torch.Tensor,
         d_weight: torch.Tensor,
+        d_mask: Optional[torch.Tensor],
         nway: int,
         return_max_scores: bool = False,
         return_entire_scores: bool = False,
@@ -869,9 +877,12 @@ class NewModel(torch.nn.Module):
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
         q_encoded = q_encoded.repeat_interleave(nway, dim=0)
+        q_mask = q_mask.repeat_interleave(nway, dim=0)
         return compute_sum_maxsim(
             q_encoded=q_encoded,
             k_encoded=d_encoded,
+            q_mask=q_mask,
+            k_mask=d_mask,
             return_max_scores=return_max_scores,
             return_element_wise_scores=return_entire_scores,
         )
@@ -879,8 +890,10 @@ class NewModel(torch.nn.Module):
     def compute_inter_scores(
         self,
         q_encoded: torch.Tensor,
+        q_mask: torch.Tensor,
         d_encoded: torch.Tensor,
         d_weight: torch.Tensor,
+        d_mask: Optional[torch.Tensor],
         nway: int,
         ib_nhard: int,
         return_max_scores: bool = False,
@@ -888,16 +901,21 @@ class NewModel(torch.nn.Module):
     ) -> torch.Tensor:
         # Compute the scores for the ib_loss
         bsize = q_encoded.shape[0]
-        q_encoded = q_encoded.repeat_interleave(ib_nhard * (bsize - 1) + 1, dim=0)
+        repeat_num = ib_nhard * (bsize - 1) + 1
+        q_encoded = q_encoded.repeat_interleave(repeat_num, dim=0)
+        q_mask = q_mask.repeat_interleave(repeat_num, dim=0)
         d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
             bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
         )
         d_encoded = d_encoded[d_indices_tensor]
+        d_mask = d_mask[d_indices_tensor]
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
         return compute_sum_maxsim(
             q_encoded=q_encoded,
             k_encoded=d_encoded,
+            q_mask=q_mask,
+            k_mask=d_mask,
             return_max_scores=return_max_scores,
             return_element_wise_scores=return_entire_scores,
         )

@@ -104,7 +104,7 @@ def get_weight_layer(
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
-            torch.nn.LeakyReLU(),
+            torch.nn.Mish(),
             torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.Sigmoid(),
         )
@@ -112,7 +112,7 @@ def get_weight_layer(
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
-            torch.nn.LeakyReLU(),
+            torch.nn.Mish(),
             torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.ReLU(),
         )
