@@ -8,7 +8,7 @@ import ujson
 from colbert.infra.provenance import Provenance
 from colbert.infra.run import Run
 from colbert.utils.utils import groupby_first_item, print_message
-from utility.utils.save_metadata import get_metadata_only
+# from utility.utils.save_metadata import get_metadata_only
 
 
 def numericize(v):
@@ -111,6 +111,7 @@ class Ranking:
 
         with Run().open(f"{new_path}.meta", "w") as f:
             d = {}
+            raise NotImplementedError("get_metadata_only() is not implemented.")
             d["metadata"] = get_metadata_only()
             d["provenance"] = self.provenance()
             line = ujson.dumps(d, indent=4)

@@ -313,8 +313,6 @@ class NewModel(torch.nn.Module):
         ) = self.encode_d_text(
             tok_ids=doc_tok_ids,
             att_mask=doc_tok_att_mask,
-            tok_mask=doc_tok_mask,
-            phrase_mask=doc_phrase_mask,
             scatter_indices=doc_scatter_indices,
             q_vectors=q_encoded,
             q_mask=q_tok_mask,
@@ -684,8 +682,6 @@ class NewModel(torch.nn.Module):
         self,
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
-        tok_mask: torch.Tensor,
-        phrase_mask: torch.Tensor,
         scatter_indices: torch.Tensor = None,
         q_vectors: torch.Tensor = None,
         q_mask: torch.Tensor = None,
@@ -714,12 +710,6 @@ class NewModel(torch.nn.Module):
         ) = self.encode_text(tok_ids_combined, att_mask_combined, scatter_indices)
 
         dtype = projected_tok_vectors.dtype
-
-        # Mask
-        # if not self.is_only_phrase_score:
-        #     projected_tok_vectors.masked_fill_(tok_mask, 0)
-        # if projected_phrase_vectors is not None:
-        #     projected_phrase_vectors.masked_fill_(phrase_mask, 0)
 
         # Create weight using q_vetors
         weights_intra = None

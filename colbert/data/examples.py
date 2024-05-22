@@ -4,7 +4,7 @@ import ujson
 
 from colbert.utils.utils import print_message
 from colbert.infra.provenance import Provenance
-from utility.utils.save_metadata import get_metadata_only
+# from utility.utils.save_metadata import get_metadata_only
 
 
 class Examples:
@@ -67,6 +67,7 @@ class Examples:
 
         with Run().open(f"{new_path}.meta", "w") as f:
             d = {}
+            raise NotImplementedError("get_metadata_only() is not implemented.")
             d["metadata"] = get_metadata_only()
             d["provenance"] = self.provenance()
             line = ujson.dumps(d, indent=4)

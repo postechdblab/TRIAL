@@ -9,7 +9,6 @@ from typing import *
 
 import hkkang_utils.file as file_utils
 
-from colbert.evaluation.loaders import load_collection
 from colbert.infra.run import Run
 
 
@@ -39,7 +38,6 @@ class Collection:
         )
 
     def _load_tsv(self, path: str, do_unidecode: bool = False):
-        # return load_collection(path, do_unidecode=do_unidecode)
         raise NotImplementedError("TODO: Implement this.")
 
     def _load_jsonl(self, path) -> List[str]:

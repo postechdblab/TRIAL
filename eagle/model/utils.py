@@ -4,6 +4,33 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
+def _sort_by_length(ids, mask, bsize):
+    if ids.size(0) <= bsize:
+        return ids, mask, torch.arange(ids.size(0))
+
+    indices = mask.sum(-1).sort().indices
+    reverse_indices = indices.sort().indices
+
+    return ids[indices], mask[indices], reverse_indices
+
+def _split_into_batches(ids, att_mask, tok_mask=None, bsize: int = 1):
+    batches = []
+    for offset in range(0, ids.size(0), bsize):
+        if tok_mask is None:
+            batches.append(
+                (ids[offset : offset + bsize], att_mask[offset : offset + bsize])
+            )
+        else:
+            batches.append(
+                (
+                    ids[offset : offset + bsize],
+                    att_mask[offset : offset + bsize],
+                    tok_mask[offset : offset + bsize],
+                )
+            )
+
+    return batches
+
 def unwrap_logging_items(loss_dic: Dict, target_key:str=None) -> Dict:
     """Remove zero loss items and unwrap torch.Tensor to float
 

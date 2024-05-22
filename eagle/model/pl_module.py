@@ -12,7 +12,8 @@ from transformers import EvalPrediction, get_linear_schedule_with_warmup
 from eagle.dataset.utils import get_mask
 from eagle.metrics import compute_metrics
 from eagle.model.late_interaction import NewModel
-from eagle.model.utils import append_dummy_pid, unwrap_logging_items
+from eagle.model.utils import (_sort_by_length, _split_into_batches,
+                               append_dummy_pid, unwrap_logging_items)
 from eagle.search import PLAID
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
@@ -409,16 +410,14 @@ class LightningNewModel(L.LightningModule):
         assert keep_dims == "flatten", "Only 'flatten' is supported for keep_dims."
         assert bsize, "Please provide the batch size for the indexing."
 
-        # Tensorize the documents
-        from colbert.modeling.tokenization.utils import (_sort_by_length,
-                                                         _split_into_batches)
-
         # Tokenize
         result = self.d_tokenizer(docs, padding=True, return_tensors="pt")
         ids, att_mask = result["input_ids"], result["attention_mask"]
         ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
         # Create mask
-        skip_ids = self.d_tokenizer.special_toks_ids + self.d_tokenizer.punctuations
+        # TODO: Need to align this with the trained model
+        # skip_ids = self.d_tokenizer.special_toks_ids + self.d_tokenizer.punctuations
+        skip_ids = self.d_tokenizer.special_toks_ids
         tok_mask = get_mask(input_ids=ids, skip_ids=skip_ids).unsqueeze(-1)
 
         # Create batch
@@ -429,7 +428,6 @@ class LightningNewModel(L.LightningModule):
             self.model.encode_d_text(
                 tok_ids=input_ids.to(self.device),
                 att_mask=attention_mask.to(self.device),
-                tok_mask=token_mask.to(self.device),
             )
             for input_ids, attention_mask, token_mask in tqdm.tqdm(
                 text_batches, disable=not showprogress
@@ -439,7 +437,7 @@ class LightningNewModel(L.LightningModule):
         # Flatten
         D, mask = [], []
         for i in range(len(result_batches)):
-            D_ = result_batches[i][0].half()
+            D_ = result_batches[i][1].half()
             mask_ = text_batches[i][2].bool()
             D.append(D_)
             mask.append(mask_)

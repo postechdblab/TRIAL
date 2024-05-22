@@ -1,6 +1,5 @@
 import os
 import random
-import time
 
 import torch
 import tqdm
@@ -23,9 +22,9 @@ from colbert.indexing.utils import optimize_ivf
 from colbert.infra.config.config import ColBERTConfig
 from colbert.infra.launcher import print_memory_stats
 from colbert.infra.run import Run
-from colbert.modeling.checkpoint import Checkpoint
+from colbert.utils.utils import print_message
+# from colbert.modeling.checkpoint import Checkpoint
 from eagle.model import LightningNewModel
-from colbert.utils.utils import flatten, print_message
 
 
 def encode(
