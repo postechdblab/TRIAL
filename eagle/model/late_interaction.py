@@ -172,7 +172,7 @@ class NewModel(torch.nn.Module):
         return model
 
     def __create_cross_att_layer(self) -> torch.nn.Module:
-        if self.is_use_d_weight and not self.is_d_independent:
+        if self.is_use_d_weight:
             return torch.nn.MultiheadAttention(
                 embed_dim=self.llm.config.hidden_size,
                 num_heads=self.llm.config.num_attention_heads,
@@ -308,8 +308,10 @@ class NewModel(torch.nn.Module):
             d_cls_projected,
             d_tok_projected,
             d_phrase_projected,
-            d_weight_intra,
-            d_weight_inter,
+            d_tok_weight_intra,
+            d_tok_weight_inter,
+            d_phrase_weight_intra,
+            d_phrase_weight_inter,
         ) = self.encode_d_text(
             tok_ids=doc_tok_ids,
             att_mask=doc_tok_att_mask,
@@ -351,8 +353,8 @@ class NewModel(torch.nn.Module):
                 q_weight=None,
                 q_scale_factor=q_cls_scale_factor,
                 q_mask=None,
-                d_weight_intra=d_weight_intra,
-                d_weight_inter=d_weight_inter,
+                d_weight_intra=None,
+                d_weight_inter=None,
                 d_mask=None,
                 nway=nway,
                 ib_nhard=ib_nhard,
@@ -372,8 +374,8 @@ class NewModel(torch.nn.Module):
                 q_scale_factor=q_tok_scale_factor,
                 q_mask=q_tok_mask,
                 d_encoded=d_tok_projected,
-                d_weight_intra=d_weight_intra,
-                d_weight_inter=d_weight_inter,
+                d_weight_intra=d_tok_weight_intra,
+                d_weight_inter=d_tok_weight_inter,
                 d_mask=doc_tok_mask,
                 nway=nway,
                 ib_nhard=ib_nhard,
@@ -393,8 +395,8 @@ class NewModel(torch.nn.Module):
                 q_scale_factor=q_phrase_scale_factor,
                 q_mask=q_phrase_mask,
                 d_encoded=d_phrase_projected,
-                d_weight_intra=d_weight_intra,
-                d_weight_inter=d_weight_inter,
+                d_weight_intra=d_phrase_weight_intra,
+                d_weight_inter=d_phrase_weight_inter,
                 d_mask=doc_phrase_mask,
                 nway=nway,
                 ib_nhard=ib_nhard,
@@ -457,11 +459,11 @@ class NewModel(torch.nn.Module):
 
         # Compute weight regularization for document
         d_weight_reg_term = 0
-        if d_weight_intra is not None:
-            d_weight_reg_term = self.regularization(d_weight_intra)
-            if d_weight_inter is not None:
+        if d_tok_weight_intra is not None:
+            d_weight_reg_term = self.regularization(d_tok_weight_intra)
+            if d_tok_weight_inter is not None:
                 d_weight_reg_term = d_weight_reg_term + self.regularization(
-                    d_weight_inter
+                    d_tok_weight_inter
                 )
             loss = loss + self.d_weight_coeff * d_weight_reg_term
 
@@ -491,13 +493,13 @@ class NewModel(torch.nn.Module):
         d_weight_inter_ratio = 0
         d_weight_intra_var = 0
         d_weight_inter_var = 0
-        if d_weight_intra is not None:
+        if d_tok_weight_intra is not None:
             d_mask_intra = doc_tok_mask
-            d_weight_intra_masked = d_weight_intra * d_mask_intra
+            d_weight_intra_masked = d_tok_weight_intra * d_mask_intra
             d_weight_intra_ratio = d_weight_intra_masked.sum() / d_mask_intra.sum()
             # Compute variance
             d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 0].var()
-            if d_weight_inter is not None:
+            if d_tok_weight_inter is not None:
                 d_indices = doc_indices_for_ib_loss(
                     bsize,
                     nway,
@@ -506,7 +508,7 @@ class NewModel(torch.nn.Module):
                     device=doc_tok_mask.device,
                 )
                 d_mask_inter = doc_tok_mask[d_indices]
-                d_weight_inter_masked = d_weight_inter * d_mask_inter
+                d_weight_inter_masked = d_tok_weight_inter * d_mask_inter
                 d_weight_inter_ratio = d_weight_inter_masked.sum() / d_mask_inter.sum()
                 d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 0].var()
         # Append more log information
@@ -524,15 +526,15 @@ class NewModel(torch.nn.Module):
         if is_inference:
             # Weights
             return_dict["q_weight"] = q_tok_weight
-            return_dict["d_weight_intra"] = d_weight_intra
-            return_dict["d_weight_inter"] = d_weight_inter
+            return_dict["d_weight_intra"] = d_tok_weight_intra
+            return_dict["d_weight_inter"] = d_tok_weight_inter
             # Mask
             return_dict["q_mask"] = q_tok_mask
             return_dict["d_mask"] = doc_tok_mask
         if is_analyze:
             return_dict["tok_intra_qd_scores"] = tok_intra_qd_scores
             return_dict["q_tok_weight"] = q_tok_weight
-            return_dict["d_tok_weight_intra"] = d_weight_intra
+            return_dict["d_tok_weight_intra"] = d_tok_weight_intra
         # Append weights
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
@@ -626,9 +628,10 @@ class NewModel(torch.nn.Module):
         if self.is_use_q_weight:
             tok_weights = self.q_weight_layer(encoded_tok_vectors)
             if projected_phrase_vectors is not None:
-                raise NotImplementedError(
-                    "Weights for phrase vectors are not supported yet"
-                )
+                phrase_weights = get_vectors_from_ranges(
+                tensors=tok_weights,
+                scatter_indices=scatter_indices,
+                reduce=self.reduce_strategy)
 
         # Compute normalization scale for each query
         token_scale_factor = self.get_scale_factor(mask=tok_mask)
@@ -712,71 +715,68 @@ class NewModel(torch.nn.Module):
         dtype = projected_tok_vectors.dtype
 
         # Create weight using q_vetors
-        weights_intra = None
-        weights_inter = None
+        tok_weights_intra = None
+        tok_weights_inter = None
+        phrase_weights_intra = None
+        phrase_weights_inter = None
         if self.is_use_d_weight:
-            if projected_phrase_vectors is not None:
-                raise NotImplementedError(
-                    "Weights for phrase vectors are not supported yet"
+            # Further encode with q_vectors for intra-example weights
+            q_vectors_intra = q_vectors.repeat_interleave(nway, dim=0)
+            q_mask_intra = q_mask.repeat_interleave(nway, dim=0)
+            # Perform cross-attention
+            cross_encoded_tok_vectors_intra, cross_attn_weights_intra = (
+                self.cross_att_layer(
+                    encoded_tok_vectors,
+                    q_vectors_intra,
+                    q_vectors_intra,
+                    key_padding_mask=q_mask_intra.squeeze(-1),
                 )
-            if self.is_d_independent:
-                weights_intra = self.d_weight_layer(encoded_tok_vectors)
-                if not is_eval:
-                    doc_indices: List[int] = doc_indices_for_ib_loss(
-                        bsize,
-                        nway,
-                        nhard,
-                        return_as_tensor=True,
-                        device=encoded_tok_vectors.device,
-                    )
-                    selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
-                    weights_inter = self.d_weight_layer(selected_encoded_tok_vectors)
-            else:
-                # Further encode with q_vectors for intra-example weights
-                q_vectors_intra = q_vectors.repeat_interleave(nway, dim=0)
-                q_mask_intra = q_mask.repeat_interleave(nway, dim=0)
+            )
+            # Add and normalize
+            cross_encoded_tok_vectors_intra = cross_encoded_tok_vectors_intra + encoded_tok_vectors
+            cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(cross_encoded_tok_vectors_intra)
+            # Predict the weights
+            tok_weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
+            if projected_phrase_vectors is not None:
+                phrase_weights_intra = get_vectors_from_ranges(
+                tensors=tok_weights_intra,
+                scatter_indices=scatter_indices,
+                reduce=self.reduce_strategy)
+
+            # Further encode with q_vectors for inter-example weights
+            if not is_eval:
+                repeat_n = nhard * (bsize - 1) + 1
+                q_vectors_inter = q_vectors.repeat_interleave(repeat_n, dim=0)
+                q_mask_inter = q_mask.repeat_interleave(repeat_n, dim=0)
+                # Get indices for the inter-examples
+                doc_indices: List[int] = doc_indices_for_ib_loss(
+                    bsize,
+                    nway,
+                    nhard,
+                    return_as_tensor=True,
+                    device=encoded_tok_vectors.device,
+                )
+                selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
                 # Perform cross-attention
-                cross_encoded_tok_vectors_intra, cross_attn_weights_intra = (
+                cross_encoded_tok_vectors_inter, cross_attn_weights_inter = (
                     self.cross_att_layer(
-                        encoded_tok_vectors,
-                        q_vectors_intra,
-                        q_vectors_intra,
-                        key_padding_mask=q_mask_intra.squeeze(-1),
+                        selected_encoded_tok_vectors,
+                        q_vectors_inter,
+                        q_vectors_inter,
+                        key_padding_mask=q_mask_inter.squeeze(-1),
                     )
                 )
                 # Add and normalize
-                cross_encoded_tok_vectors_intra = cross_encoded_tok_vectors_intra + encoded_tok_vectors
-                cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(cross_encoded_tok_vectors_intra)
-
-                weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
-                if not is_eval:
-                    # Further encode with q_vectors for inter-example weights
-                    repeat_n = nhard * (bsize - 1) + 1
-                    q_vectors_inter = q_vectors.repeat_interleave(repeat_n, dim=0)
-                    q_mask_inter = q_mask.repeat_interleave(repeat_n, dim=0)
-                    # Get indices for the inter-examples
-                    doc_indices: List[int] = doc_indices_for_ib_loss(
-                        bsize,
-                        nway,
-                        nhard,
-                        return_as_tensor=True,
-                        device=encoded_tok_vectors.device,
-                    )
-                    selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
-                    # Perform cross-attention
-                    cross_encoded_tok_vectors_inter, cross_attn_weights_inter = (
-                        self.cross_att_layer(
-                            selected_encoded_tok_vectors,
-                            q_vectors_inter,
-                            q_vectors_inter,
-                            key_padding_mask=q_mask_inter.squeeze(-1),
-                        )
-                    )
-                    # Add and normalize
-                    cross_encoded_tok_vectors_inter = cross_encoded_tok_vectors_inter + selected_encoded_tok_vectors
-                    cross_encoded_tok_vectors_inter = self.d_weight_layer_norm(cross_encoded_tok_vectors_inter)
-                    # Predict the weights
-                    weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
+                cross_encoded_tok_vectors_inter = cross_encoded_tok_vectors_inter + selected_encoded_tok_vectors
+                cross_encoded_tok_vectors_inter = self.d_weight_layer_norm(cross_encoded_tok_vectors_inter)
+                # Predict the weights
+                tok_weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
+                if projected_phrase_vectors is not None:
+                    selected_scatter_indices = scatter_indices[doc_indices]
+                    phrase_weights_inter = get_vectors_from_ranges(
+                    tensors=tok_weights_inter,
+                    scatter_indices=selected_scatter_indices,
+                    reduce=self.reduce_strategy)
 
         # Normalize
         if not self.is_only_phrase_score:
@@ -802,8 +802,10 @@ class NewModel(torch.nn.Module):
             projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
-            weights_intra,
-            weights_inter,
+            tok_weights_intra,
+            tok_weights_inter,
+            phrase_weights_intra,
+            phrase_weights_inter,
         )
 
     def compute_scores(
