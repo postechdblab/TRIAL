@@ -10,6 +10,7 @@ import hydra
 import tqdm
 
 from eagle.dataset.utils import extract_word_range_with_multi_tokens
+from eagle.phrase.clean import unidecode_text
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import NewTokenizer
 
@@ -87,6 +88,8 @@ def extract(
         tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
     ):
         texts = [item["text"] for item in chunk]
+        if prefix == "query":
+            texts = [unidecode_text(t) for t in texts]
         if index_type == "word":
             results = tokenizer(texts)["input_ids"]
             # Convert to token text
@@ -96,7 +99,7 @@ def extract(
             ]
             results = [extract_word_range_with_multi_tokens(toks) for toks in toks_list]
         else:
-            results = extractor(texts, max_len=tokenizer_cfg.max_len)
+            results = extractor(texts, max_tok_len=tokenizer_cfg.max_len)
         all_results[ci] = results
 
     # Convert format

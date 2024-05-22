@@ -2,9 +2,9 @@ from typing import *
 
 import hydra
 
-from colbert.modeling.tokenization.utils import get_phrase_indices
+from eagle.phrase.noun import SpacyModel, Text
+from eagle.phrase.utils import get_phrase_indices
 from eagle.tokenizer import NewTokenizer
-from colbert.noun_extraction.identify_noun import SpacyModel, Text
 
 
 class PhraseExtractor:
@@ -15,16 +15,18 @@ class PhraseExtractor:
     def __call__(
         self,
         texts: List[str],
-        max_len: int,
+        max_tok_len: Optional[int] = None,
         tokenized_result: Dict[str, List[int]] = None,
     ) -> List[List[Tuple[int]]]:
         # Parse the text with spacy
-        parsed_texts: List[Text] = self.spacy_model(texts, max_token_num=max_len)
+        parsed_texts: List[Text] = self.spacy_model(texts)
+        
         # Tokenize
         if tokenized_result is None:
             tokenized_result = self.tokenizer(texts)
         input_ids = tokenized_result["input_ids"]
         attention_mask = tokenized_result["attention_mask"]
+
         # Extract phrase by token indices
         q_phrases = get_phrase_indices(
             input_ids,
@@ -33,9 +35,21 @@ class PhraseExtractor:
             texts,
             parsed_texts,
             bsize=len(texts),
-            all_noun_only=True,
+            named_entity_only=True,
         )[0]
-        return q_phrases
+
+        # Handle phrases that exceed the max_len
+        if max_tok_len is None:
+            filtered_phrases_list = q_phrases
+        else:
+            filtered_phrases_list: List[List[Tuple[int, int]]] = []
+            for phrases in q_phrases:
+                filtered_phrases: List[Tuple[int, int]] = []
+                for p_start, p_end in phrases:
+                    if p_end <= max_tok_len:
+                        filtered_phrases.append([p_start, p_end])
+                filtered_phrases_list.append(filtered_phrases)
+        return filtered_phrases_list
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")

@@ -12,7 +12,7 @@ import wget
 from beir import LoggingHandler, util
 from beir.datasets.data_loader import GenericDataLoader
 
-from colbert.noun_extraction.utils import unidecode_text
+from eagle.phrase.clean import unidecode_text
 from scripts.utils import BEIR_DATASET_NAMES
 
 logger = logging.getLogger("DownloadDataset")
