@@ -99,6 +99,7 @@ class DatasetWrapper:
         qidx = self.query_mapping[qid]
         pids = data["pos_doc_ids"] + data["neg_doc_ids"]
         pindices = [self.corpus_mapping[pid] for pid in pids]
+        pindices = pindices[:self.nway]
 
         # Extract ranges
         q_word_ranges: List[Tuple] = []

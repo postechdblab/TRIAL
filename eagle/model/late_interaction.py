@@ -326,7 +326,7 @@ class NewModel(torch.nn.Module):
         # Compute coefficient for each granularity
         if self.is_use_dynamic_granularity_coeff:
             coeff = self.score_granularity_coeff_layer(q_encoded[:, 0]).unsqueeze(1)
-            coeff = coeff.to(dtype)
+            # coeff = coeff.to(dtype)
             cls_coeff, tok_coeff, phrase_coeff = (
                 coeff[:, :, 0],
                 coeff[:, :, 1],
@@ -887,7 +887,8 @@ class NewModel(torch.nn.Module):
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
         q_encoded = q_encoded.repeat_interleave(nway, dim=0)
-        q_mask = q_mask.repeat_interleave(nway, dim=0)
+        if q_mask is not None:
+            q_mask = q_mask.repeat_interleave(nway, dim=0)
         return compute_sum_maxsim(
             q_encoded=q_encoded,
             k_encoded=d_encoded,
@@ -913,13 +914,15 @@ class NewModel(torch.nn.Module):
         bsize = q_encoded.shape[0]
         repeat_num = ib_nhard * (bsize - 1) + 1
         q_encoded = q_encoded.repeat_interleave(repeat_num, dim=0)
-        q_mask = q_mask.repeat_interleave(repeat_num, dim=0)
+        if q_mask is not None:
+            q_mask = q_mask.repeat_interleave(repeat_num, dim=0)
         # Get the indices
         d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
             bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
         )
         d_encoded = d_encoded[d_indices_tensor]
-        d_mask = d_mask[d_indices_tensor]
+        if d_mask is not None:
+            d_mask = d_mask[d_indices_tensor]
         # Apply weights if exists
         if d_weight is not None:
             d_encoded = d_encoded * d_weight
@@ -932,13 +935,13 @@ class NewModel(torch.nn.Module):
             return_max_scores=return_max_scores,
             return_element_wise_scores=return_entire_scores,
         )
-    
+
     def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
         num_non_valid_tokens = mask.sum(dim=1)
         target_scale = get_target_scale_tensor(target_scale=mask.shape[1], b_size=num_non_valid_tokens.shape[0], device=num_non_valid_tokens.device, dtype=num_non_valid_tokens.dtype)
         num_valid_tokens = target_scale - num_non_valid_tokens
         return num_valid_tokens
-    
+
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
         num_valid_tokens = self.get_valid_num(mask)
         return self.q_maxlen / num_valid_tokens
