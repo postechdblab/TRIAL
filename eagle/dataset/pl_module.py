@@ -12,8 +12,13 @@ from torch.utils.data import DataLoader
 from eagle.dataset import RawDataset
 from eagle.dataset.dataset_wrapper import DatasetWrapper
 from eagle.dataset.utils import (
-    collate_fn, get_indices_to_avoid_repeated_qids_in_minibatch, preprocess,
-    read_compressed, read_corpus, save_compressed)
+    collate_fn,
+    get_indices_to_avoid_repeated_qids_in_minibatch,
+    preprocess,
+    read_compressed,
+    read_corpus,
+    save_compressed,
+)
 from eagle.tokenizer import NewTokenizer
 
 logger = logging.getLogger("DataModule")
@@ -26,8 +31,8 @@ class NewDataModule(L.LightningDataModule):
         self.cfg = cfg.dataset
         self.cfg_training = cfg.training
         self.skip_train = skip_train
-        self.q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer)
-        self.d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer)
+        self.q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
+        self.d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
         self.train_dataset = self.val_dataset = self.test_dataset = None
         self.corpus_mapping: Dict[str, int] = self._get_corpus_mapping(self.corpus_path)
         self.query_mapping: Dict[str, int] = self._get_queries_mapping(
