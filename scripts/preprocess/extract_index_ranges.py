@@ -88,8 +88,8 @@ def extract(
         tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
     ):
         texts = [item["text"] for item in chunk]
-        if prefix == "query":
-            texts = [unidecode_text(t) for t in texts]
+        # if prefix == "query":
+            # texts = [unidecode_text(t) for t in texts]
         if index_type == "word":
             results = tokenizer(texts)["input_ids"]
             # Convert to token text

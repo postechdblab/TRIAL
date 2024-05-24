@@ -214,12 +214,16 @@ def get_phrase_indices_by_toks(
         padding = 0
 
     # Find the character indices for the tokens
-    char_indices: List[List[Tuple[int, int]]] = [
-        get_range_of_tokens_in_char_level(
-            [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
-        )
-        for b_size in range(len(input_texts))
-    ]
+    char_indices: List[List[Tuple[int, int]]] = []
+    for b_size in range(len(input_texts)):
+        try:
+            tmp_indices = get_range_of_tokens_in_char_level(
+                    [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
+                )
+        except:
+            print(f"Passing {b_size}-th item. Mismatch with tokenized results.")
+            tmp_indices = []
+        char_indices.append(tmp_indices)
     # validates = [validate(input_toks[b_size][2:-1], char_indices[b_size], input_texts[b_size]) for b_size in range(len(input_texts))]
     # assert all(validates), f"False idx={[(idx, input_texts[idx]) for idx, item in enumerate(validates) if not item]}"
 
@@ -239,18 +243,29 @@ def get_phrase_indices_by_toks(
         all_phrase_indices.append(indices)
 
     # Get phrase start indices in token ids
+    fail_cnt =0 
     phrase_indices: List[List[Tuple[int, int]]] = []
     for i, (toks, phrases) in enumerate(zip(char_indices, all_phrase_indices)):
-        phrase_indices.append(
-            get_range_of_phrases_in_token_level(
-                toks,
-                phrases,
-                offset=offset,
-                padding=padding,
-                max_token_len=max_token_len,
-                is_partial=all_noun_only or noun_only or prop_noun_only or named_entity_only,
-            )
-        )
+        if len(toks) == 0 :
+            tmp_ranges = []
+            fail_cnt += 1
+        else:
+            try:
+                tmp_ranges = get_range_of_phrases_in_token_level(
+                        toks,
+                        phrases,
+                        offset=offset,
+                        padding=padding,
+                        max_token_len=max_token_len,
+                        is_partial=all_noun_only or noun_only or prop_noun_only or named_entity_only,
+                    )
+            except:
+                print(f"Passing {i}-th item. Range mismatch.")
+                tmp_ranges = []
+                fail_cnt +=1
+        phrase_indices.append(tmp_ranges)
+    if fail_cnt > 0:
+        print(f"Failed to get phrase indices for {fail_cnt} items. out of {len(char_indices)} items.")
     return phrase_indices
 
 
