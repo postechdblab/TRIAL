@@ -11,9 +11,10 @@ logger = logging.getLogger("NewTokenizesr")
 
 
 class NewTokenizer:
-    def __init__(self, cfg: DictConfig) -> None:
+    def __init__(self, cfg: DictConfig, model_name: str) -> None:
         self.cfg = cfg
-        self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.name)
+        self.name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.add_special_tokens(
             {"additional_special_tokens": [self.cfg.special_tok]}
         )

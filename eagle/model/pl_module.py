@@ -30,8 +30,8 @@ class LightningNewModel(L.LightningModule):
         self.cfg = cfg.training
         self.train_batch_num = train_batch_num
         # Tmp
-        self.q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer)
-        self.d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer)
+        self.q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
+        self.d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
         # Load model
         self.model = NewModel(
             cfg=cfg.model, q_tokenizer=self.q_tokenizer, d_tokenizer=self.d_tokenizer

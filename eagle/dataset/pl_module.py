@@ -48,11 +48,11 @@ class NewDataModule(L.LightningDataModule):
 
     @property
     def training_cache_path(self) -> str:
-        tokenizer_name = self.q_tokenizer.cfg.name
+        tokenizer_name_prefix = self.d_tokenizer.name.split("-")[0]
         if self.cfg_training.is_use_distillation:
-            suffix = f"train_dataset.{tokenizer_name}.distillation.cache"
+            suffix = f"train_dataset.{tokenizer_name_prefix}.distillation.cache"
         else:
-            suffix = f"train_dataset.{tokenizer_name}.cache"
+            suffix = f"train_dataset.{tokenizer_name_prefix}.cache"
         data_cache_file_path = os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.data_cache_file
         )
@@ -60,13 +60,12 @@ class NewDataModule(L.LightningDataModule):
 
     @property
     def validation_cache_path(self) -> str:
-        tokenizer_name = self.d_tokenizer.cfg.name
-        dataset_name = self.cfg.name
+        tokenizer_name_prefix = self.d_tokenizer.name.split("-")[0]
         data_cache_file_path = os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.data_cache_file
         )
         return data_cache_file_path.replace(
-            "dataset.cache", f"val_dataset.{dataset_name}.{tokenizer_name}.cache"
+            "dataset.cache", f"val_dataset.{tokenizer_name_prefix}.cache"
         )
 
     def _get_corpus_mapping(self, path: str) -> Dict[str, int]:
