@@ -54,7 +54,7 @@ class DatasetWrapper:
         assert nway is not None, f"nway is None. Please provide nway."
         assert cache_nway is not None, f"cache_nway is None. Please provide cache_nway."
         assert cache_nway >= nway, f"cache_nway={cache_nway}, nway={nway}"
-        assert len(self.dataset[0]["neg_doc_ids"]) >= nway-1, f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
+        assert len(self.dataset[0]["neg_doc_ids"]) == 0 or len(self.dataset[0]["neg_doc_ids"]) >= nway-1, f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
         assert self.granularity_level in ["token", "word", "phrase"]
         if q_word_ranges is not None:
             assert len(self.q_word_ranges) == len(

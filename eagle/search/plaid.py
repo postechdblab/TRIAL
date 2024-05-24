@@ -65,8 +65,8 @@ class PLAID:
         :rtype: Tuple[torch.Tensor, torch.Tensor]
         """
         scores = self.index.codec.centroids @ query.T
-        if weight is not None:
-            scores = scores * weight
+        # if weight is not None:
+        #     scores = scores * weight
         centroids = scores.topk(topk, dim=0, sorted=False).indices.permute(1, 0)
         if mask is not None:
             centroids = centroids[mask == True]
@@ -167,7 +167,7 @@ class PLAID:
             approx_scores_padded, approx_scores_mask = (
                 approx_scores_strided.as_padded_tensor()
             )
-            approx_scores = reduce_element_wise_relevance_scores(
+            approx_scores, _ = reduce_element_wise_relevance_scores(
                 element_wise_scores=approx_scores_padded, k_mask=approx_scores_mask
             )
 
@@ -258,7 +258,7 @@ class PLAID:
         d_packed, d_length = self.embeddings_strided.lookup_pids(pids)
         # Compute scores
         max_scores, _ = compute_maxsim(
-            q_encoded=query, k_packed=d_packed, k_lengths=d_length
+            q_encoded=query, k_encoded=d_packed, k_lengths=d_length
         )
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)

@@ -73,7 +73,7 @@ class LightningNewModel(L.LightningModule):
         self.log_dict(
             metrics, batch_size=bsize, on_step=False, on_epoch=True
         )
-        is_analyze = True
+        is_analyze = False
         if is_analyze:
             assert (
                 len(batch["q_id"]) == 1
@@ -141,15 +141,24 @@ class LightningNewModel(L.LightningModule):
         q_scatter_indices = batch["q_scatter_indices"]
 
         # Encode the query
-        q_encoded, q_projected, q_weight, q_scale_factor = self.model.encode_q_text(
+        (encoded_tok_vectors,
+        projected_cls_vectors,
+        projected_tok_vectors,
+        projected_phrase_vectors,
+        tok_weights,
+        phrase_weights,
+        cls_scale_factor,
+        token_scale_factor,
+        phrase_scale_factor ) = self.model.encode_q_text(
             tok_ids=q_tok_ids,
             att_mask=q_tok_att_mask,
             tok_mask=q_tok_mask,
             scatter_indices=q_scatter_indices,
         )
-        q_projected = q_projected.half()
-        if q_weight is not None:
-            q_weight = q_weight.half()
+        
+        projected_tok_vectors = projected_tok_vectors.half()
+        if tok_weights is not None:
+            tok_weights = tok_weights.half()
 
         # Search the corpus with indexed document corpus
         all_pids: List = []
@@ -157,9 +166,9 @@ class LightningNewModel(L.LightningModule):
         all_labels: List = []
         for bidx in range(bsize):
             # Retrieve pids and scores
-            query = q_projected[bidx]
+            query = projected_tok_vectors[bidx]
             mask = q_tok_mask[bidx].squeeze()
-            weight = None if q_weight is None else q_weight[bidx]
+            weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
@@ -428,6 +437,7 @@ class LightningNewModel(L.LightningModule):
             self.model.encode_d_text(
                 tok_ids=input_ids.to(self.device),
                 att_mask=attention_mask.to(self.device),
+                is_encoding=True,
             )
             for input_ids, attention_mask, token_mask in tqdm.tqdm(
                 text_batches, disable=not showprogress

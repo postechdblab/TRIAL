@@ -595,8 +595,8 @@ class NewModel(torch.nn.Module):
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
         tok_mask: torch.Tensor,
-        phrase_mask: torch.Tensor,
-        scatter_indices: torch.Tensor,
+        phrase_mask: Optional[torch.Tensor]=None,
+        scatter_indices: Optional[torch.Tensor]=None,
     ) -> Tuple[
         torch.Tensor,
         Optional[torch.Tensor],
@@ -689,6 +689,7 @@ class NewModel(torch.nn.Module):
         q_vectors: torch.Tensor = None,
         q_mask: torch.Tensor = None,
         nway: int = None,
+        is_encoding: bool=False,
         is_eval: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Configs
@@ -698,9 +699,6 @@ class NewModel(torch.nn.Module):
             tok_ids_combined = tok_ids.view(-1, max_len)
             att_mask_combined = att_mask.view(-1, max_len)
         elif len(tok_ids.shape) == 2:
-            assert (
-                self.is_use_d_weight is False
-            ), "Document weights are not supported for single document encoding"
             bsize, max_len = tok_ids.shape
             nhard = 1
             tok_ids_combined = tok_ids
@@ -719,7 +717,7 @@ class NewModel(torch.nn.Module):
         tok_weights_inter = None
         phrase_weights_intra = None
         phrase_weights_inter = None
-        if self.is_use_d_weight:
+        if self.is_use_d_weight and not is_encoding:
             # Further encode with q_vectors for intra-example weights
             q_vectors_intra = q_vectors.repeat_interleave(nway, dim=0)
             q_mask_intra = q_mask.repeat_interleave(nway, dim=0)
