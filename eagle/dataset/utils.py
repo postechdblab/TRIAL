@@ -440,34 +440,28 @@ def preprocess_batch(
     q_tokens = q_tokenizer(example_batch["q_texts"])
     doc_tokens = d_tokenizer(doc_texts) if doc_texts else None
 
-    if is_compress:
-        assert 2**15 > len(q_tokenizer) and 2**15 > len(
+    # Check if the tokens are expressible in uint16
+    is_compress = 2**15 > len(q_tokenizer) and 2**15 > len(
             d_tokenizer
-        ), "Tokenizers are too large to compress with 16-bit integers"
+        )
+
+    if is_compress:
         q_token_ids = [np.uint16(item) for item in q_tokens["input_ids"]]
         q_token_att_mask = [
             np.array(item, dtype=bool) for item in q_tokens["attention_mask"]
         ]
 
         if doc_tokens:
-            d_token_ids = split_list(
+            doc_tok_ids = split_list(
                 [np.uint16(item) for item in doc_tokens["input_ids"]], neg_num + pos_num
             )
-            d_token_mask = split_list(
+            doc_tok_att_mask = split_list(
                 [np.array(item, dtype=bool) for item in doc_tokens["attention_mask"]],
                 neg_num + pos_num,
             )
         else:
-            d_token_ids = None
-            d_token_mask = None
-
-        result = {
-            "q_id": q_ids,
-            "q_tok_ids": q_token_ids,
-            "q_tok_att_mask": q_token_att_mask,
-            "doc_tok_ids": d_token_ids,
-            "doc_tok_att_mask": d_token_mask,
-        }
+            doc_tok_ids = None
+            doc_tok_att_mask = None
     else:
         # Split doc tokens
         if doc_tokens:
@@ -476,15 +470,19 @@ def preprocess_batch(
         else:
             doc_tok_ids = None
             doc_tok_att_mask = None
-        result = {
+        q_token_ids = q_tokens["input_ids"]
+        q_token_att_mask = q_tokens["attention_mask"]
+
+    result = {
             "q_id": q_ids,
-            "q_tok_ids": q_tokens["input_ids"],
-            "q_tok_att_mask": q_tokens["attention_mask"],
+            "q_tok_ids": q_token_ids,
+            "q_tok_att_mask": q_token_att_mask,
             "doc_tok_ids": doc_tok_ids,
             "doc_tok_att_mask": doc_tok_att_mask,
+            "pos_doc_ids": example_batch["pos_doc_ids_list"],
+            "neg_doc_ids": example_batch["neg_doc_ids_list"]
         }
-    result["pos_doc_ids"] = example_batch["pos_doc_ids_list"]
-    result["neg_doc_ids"] = example_batch["neg_doc_ids_list"]
+
     if is_eval:
         result["labels"] = get_labels(bsize=bsize, neg_num=neg_num)
     return result
