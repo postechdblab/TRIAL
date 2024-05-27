@@ -18,6 +18,7 @@ peft
 wget
 diskcache
 ninja
+sentencepiece
 # beir installs faiss-cpu. Uninstall faiss-cpu manually if you want to use faiss-gpu: pip uninstall faiss-cpu -y
 beir 
 # Install torch-scatter==2.1.2+pt23cu121

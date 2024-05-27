@@ -53,7 +53,7 @@ class NewDataModule(L.LightningDataModule):
 
     @property
     def training_cache_path(self) -> str:
-        tokenizer_name_prefix = self.d_tokenizer.name.split("-")[0]
+        tokenizer_name_prefix = self.d_tokenizer.name.split("/")[-1].split("-")[0]
         if self.cfg_training.is_use_distillation:
             suffix = f"train_dataset.{tokenizer_name_prefix}.distillation.cache"
         else:
@@ -65,7 +65,7 @@ class NewDataModule(L.LightningDataModule):
 
     @property
     def validation_cache_path(self) -> str:
-        tokenizer_name_prefix = self.d_tokenizer.name.split("-")[0]
+        tokenizer_name_prefix = self.d_tokenizer.name.split("/")[-1].split("-")[0]
         data_cache_file_path = os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.data_cache_file
         )
