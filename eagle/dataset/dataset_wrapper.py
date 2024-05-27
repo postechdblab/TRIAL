@@ -54,7 +54,10 @@ class DatasetWrapper:
         assert nway is not None, f"nway is None. Please provide nway."
         assert cache_nway is not None, f"cache_nway is None. Please provide cache_nway."
         assert cache_nway >= nway, f"cache_nway={cache_nway}, nway={nway}"
-        assert len(self.dataset[0]["neg_doc_ids"]) == 0 or len(self.dataset[0]["neg_doc_ids"]) >= nway-1, f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
+        assert (
+            len(self.dataset[0]["neg_doc_ids"]) == 0
+            or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
+        ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
         assert self.granularity_level in ["token", "word", "phrase"]
         if q_word_ranges is not None:
             assert len(self.q_word_ranges) == len(
@@ -99,7 +102,7 @@ class DatasetWrapper:
         qidx = self.query_mapping[qid]
         pids = data["pos_doc_ids"] + data["neg_doc_ids"]
         pindices = [self.corpus_mapping[pid] for pid in pids]
-        pindices = pindices[:self.nway]
+        pindices = pindices[: self.nway]
 
         # Extract ranges
         q_word_ranges: List[Tuple] = []

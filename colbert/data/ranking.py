@@ -8,6 +8,7 @@ import ujson
 from colbert.infra.provenance import Provenance
 from colbert.infra.run import Run
 from colbert.utils.utils import groupby_first_item, print_message
+
 # from utility.utils.save_metadata import get_metadata_only
 
 

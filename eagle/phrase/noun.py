@@ -280,7 +280,9 @@ class SpacyModel(metaclass=pattern_utils.SingletonMetaWithArgs):
                     ):
                         named_entities.append(my_token)
                 else:
-                    my_token = Token(text=token.text, pos=token.pos_, start_idx=token.idx)
+                    my_token = Token(
+                        text=token.text, pos=token.pos_, start_idx=token.idx
+                    )
                     tokens.append(my_token)
                     # Append to named entity list
                     if tok_idx in indices_for_named_entity:

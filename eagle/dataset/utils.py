@@ -441,9 +441,7 @@ def preprocess_batch(
     doc_tokens = d_tokenizer(doc_texts) if doc_texts else None
 
     # Check if the tokens are expressible in uint16
-    is_compress = 2**15 > len(q_tokenizer) and 2**15 > len(
-            d_tokenizer
-        )
+    is_compress = 2**15 > len(q_tokenizer) and 2**15 > len(d_tokenizer)
 
     if is_compress:
         q_token_ids = [np.uint16(item) for item in q_tokens["input_ids"]]
@@ -474,14 +472,14 @@ def preprocess_batch(
         q_token_att_mask = q_tokens["attention_mask"]
 
     result = {
-            "q_id": q_ids,
-            "q_tok_ids": q_token_ids,
-            "q_tok_att_mask": q_token_att_mask,
-            "doc_tok_ids": doc_tok_ids,
-            "doc_tok_att_mask": doc_tok_att_mask,
-            "pos_doc_ids": example_batch["pos_doc_ids_list"],
-            "neg_doc_ids": example_batch["neg_doc_ids_list"]
-        }
+        "q_id": q_ids,
+        "q_tok_ids": q_token_ids,
+        "q_tok_att_mask": q_token_att_mask,
+        "doc_tok_ids": doc_tok_ids,
+        "doc_tok_att_mask": doc_tok_att_mask,
+        "pos_doc_ids": example_batch["pos_doc_ids_list"],
+        "neg_doc_ids": example_batch["neg_doc_ids_list"],
+    }
 
     if is_eval:
         result["labels"] = get_labels(bsize=bsize, neg_num=neg_num)
@@ -556,12 +554,12 @@ def collate_fn(input_dics: List[Dict]) -> Dict:
             )
         elif key in ["q_tok_mask", "q_phrase_mask"]:
             values = [dic[key].clone().detach().unsqueeze(-1) for dic in input_dics]
-            padded_values = (pad_sequence(values, batch_first=True) == 0)
+            padded_values = pad_sequence(values, batch_first=True) == 0
         elif key in ["doc_tok_mask", "doc_phrase_mask"]:
             values = list_utils.do_flatten_list(
                 [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
             )
-            padded_values = (pad_sequence(values, batch_first=True).unsqueeze(-1) == 0)
+            padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
         elif key == "fine_grained_label":
             values = []
             for dic in input_dics:

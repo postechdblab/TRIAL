@@ -8,11 +8,18 @@ from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoModel, BitsAndBytesConfig
 
 from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
-from eagle.model.objective import (compute_fine_grained_loss, compute_loss,
-                                   doc_indices_for_ib_loss,
-                                   get_target_scale_tensor)
-from eagle.model.utils import (get_vectors_from_ranges, get_weight_layer,
-                               modify_execution_device, modify_grad)
+from eagle.model.objective import (
+    compute_fine_grained_loss,
+    compute_loss,
+    doc_indices_for_ib_loss,
+    get_target_scale_tensor,
+)
+from eagle.model.utils import (
+    get_vectors_from_ranges,
+    get_weight_layer,
+    modify_execution_device,
+    modify_grad,
+)
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
@@ -95,8 +102,12 @@ class NewModel(torch.nn.Module):
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
-        self.d_weight_layer_norm = torch.nn.LayerNorm(self.llm.config.hidden_size) if self.is_use_d_weight else None
-        
+        self.d_weight_layer_norm = (
+            torch.nn.LayerNorm(self.llm.config.hidden_size)
+            if self.is_use_d_weight
+            else None
+        )
+
         # Cross-attention layer for interacting query and documents
         self.cross_att_layer = self.__create_cross_att_layer()
 
@@ -487,7 +498,7 @@ class NewModel(torch.nn.Module):
             num_valid = self.get_valid_num(q_tok_mask)
             q_tok_weight = q_tok_weight.masked_fill(q_tok_mask, 0)
             q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
-            q_weight_var = q_tok_weight[q_tok_mask==0].var()
+            q_weight_var = q_tok_weight[q_tok_mask == 0].var()
         # Analyze document weights
         d_weight_intra_ratio = 0
         d_weight_inter_ratio = 0
@@ -595,8 +606,8 @@ class NewModel(torch.nn.Module):
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
         tok_mask: torch.Tensor,
-        phrase_mask: Optional[torch.Tensor]=None,
-        scatter_indices: Optional[torch.Tensor]=None,
+        phrase_mask: Optional[torch.Tensor] = None,
+        scatter_indices: Optional[torch.Tensor] = None,
     ) -> Tuple[
         torch.Tensor,
         Optional[torch.Tensor],
@@ -629,9 +640,10 @@ class NewModel(torch.nn.Module):
             tok_weights = self.q_weight_layer(encoded_tok_vectors)
             if projected_phrase_vectors is not None:
                 phrase_weights = get_vectors_from_ranges(
-                tensors=tok_weights,
-                scatter_indices=scatter_indices,
-                reduce=self.reduce_strategy)
+                    tensors=tok_weights,
+                    scatter_indices=scatter_indices,
+                    reduce=self.reduce_strategy,
+                )
 
         # Compute normalization scale for each query
         token_scale_factor = self.get_scale_factor(mask=tok_mask)
@@ -689,7 +701,7 @@ class NewModel(torch.nn.Module):
         q_vectors: torch.Tensor = None,
         q_mask: torch.Tensor = None,
         nway: int = None,
-        is_encoding: bool=False,
+        is_encoding: bool = False,
         is_eval: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Configs
@@ -731,15 +743,20 @@ class NewModel(torch.nn.Module):
                 )
             )
             # Add and normalize
-            cross_encoded_tok_vectors_intra = cross_encoded_tok_vectors_intra + encoded_tok_vectors
-            cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(cross_encoded_tok_vectors_intra)
+            cross_encoded_tok_vectors_intra = (
+                cross_encoded_tok_vectors_intra + encoded_tok_vectors
+            )
+            cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(
+                cross_encoded_tok_vectors_intra
+            )
             # Predict the weights
             tok_weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
             if projected_phrase_vectors is not None:
                 phrase_weights_intra = get_vectors_from_ranges(
-                tensors=tok_weights_intra,
-                scatter_indices=scatter_indices,
-                reduce=self.reduce_strategy)
+                    tensors=tok_weights_intra,
+                    scatter_indices=scatter_indices,
+                    reduce=self.reduce_strategy,
+                )
 
             # Further encode with q_vectors for inter-example weights
             if not is_eval:
@@ -765,16 +782,21 @@ class NewModel(torch.nn.Module):
                     )
                 )
                 # Add and normalize
-                cross_encoded_tok_vectors_inter = cross_encoded_tok_vectors_inter + selected_encoded_tok_vectors
-                cross_encoded_tok_vectors_inter = self.d_weight_layer_norm(cross_encoded_tok_vectors_inter)
+                cross_encoded_tok_vectors_inter = (
+                    cross_encoded_tok_vectors_inter + selected_encoded_tok_vectors
+                )
+                cross_encoded_tok_vectors_inter = self.d_weight_layer_norm(
+                    cross_encoded_tok_vectors_inter
+                )
                 # Predict the weights
                 tok_weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
                 if projected_phrase_vectors is not None:
                     selected_scatter_indices = scatter_indices[doc_indices]
                     phrase_weights_inter = get_vectors_from_ranges(
-                    tensors=tok_weights_inter,
-                    scatter_indices=selected_scatter_indices,
-                    reduce=self.reduce_strategy)
+                        tensors=tok_weights_inter,
+                        scatter_indices=selected_scatter_indices,
+                        reduce=self.reduce_strategy,
+                    )
 
         # Normalize
         if not self.is_only_phrase_score:
@@ -928,7 +950,12 @@ class NewModel(torch.nn.Module):
 
     def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
         num_non_valid_tokens = mask.sum(dim=1)
-        target_scale = get_target_scale_tensor(target_scale=mask.shape[1], b_size=num_non_valid_tokens.shape[0], device=num_non_valid_tokens.device, dtype=num_non_valid_tokens.dtype)
+        target_scale = get_target_scale_tensor(
+            target_scale=mask.shape[1],
+            b_size=num_non_valid_tokens.shape[0],
+            device=num_non_valid_tokens.device,
+            dtype=num_non_valid_tokens.dtype,
+        )
         num_valid_tokens = target_scale - num_non_valid_tokens
         return num_valid_tokens
 

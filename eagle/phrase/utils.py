@@ -14,6 +14,7 @@ def _split_into_batches2(items: List[Any], bsize: int) -> List[List[Any]]:
 
     return batches
 
+
 def get_range_of_phrases_in_token_level(
     token_range_in_char: List[Tuple[int, int]],
     noun_phrase_range_in_char: List[Tuple[int, int]],
@@ -192,6 +193,7 @@ def get_range_of_tokens_in_char_level(
         token_idx += 1
     return found_indices
 
+
 def get_phrase_indices_by_toks(
     input_toks: List[List[str]],
     input_texts: List[str],
@@ -218,8 +220,8 @@ def get_phrase_indices_by_toks(
     for b_size in range(len(input_texts)):
         try:
             tmp_indices = get_range_of_tokens_in_char_level(
-                    [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
-                )
+                [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
+            )
         except:
             print(f"Passing {b_size}-th item. Mismatch with tokenized results.")
             tmp_indices = []
@@ -243,29 +245,34 @@ def get_phrase_indices_by_toks(
         all_phrase_indices.append(indices)
 
     # Get phrase start indices in token ids
-    fail_cnt =0 
+    fail_cnt = 0
     phrase_indices: List[List[Tuple[int, int]]] = []
     for i, (toks, phrases) in enumerate(zip(char_indices, all_phrase_indices)):
-        if len(toks) == 0 :
+        if len(toks) == 0:
             tmp_ranges = []
             fail_cnt += 1
         else:
             try:
                 tmp_ranges = get_range_of_phrases_in_token_level(
-                        toks,
-                        phrases,
-                        offset=offset,
-                        padding=padding,
-                        max_token_len=max_token_len,
-                        is_partial=all_noun_only or noun_only or prop_noun_only or named_entity_only,
-                    )
+                    toks,
+                    phrases,
+                    offset=offset,
+                    padding=padding,
+                    max_token_len=max_token_len,
+                    is_partial=all_noun_only
+                    or noun_only
+                    or prop_noun_only
+                    or named_entity_only,
+                )
             except:
                 print(f"Passing {i}-th item. Range mismatch.")
                 tmp_ranges = []
-                fail_cnt +=1
+                fail_cnt += 1
         phrase_indices.append(tmp_ranges)
     if fail_cnt > 0:
-        print(f"Failed to get phrase indices for {fail_cnt} items. out of {len(char_indices)} items.")
+        print(
+            f"Failed to get phrase indices for {fail_cnt} items. out of {len(char_indices)} items."
+        )
     return phrase_indices
 
 
@@ -314,6 +321,7 @@ def get_phrase_indices(
     phrase_indices_batches = _split_into_batches2(phrase_indices, bsize)
     return phrase_indices_batches
 
+
 # def get_phrase_indices(
 #     self,
 #     texts: List[str],
@@ -353,6 +361,7 @@ def get_phrase_indices(
 #         prop_noun_only=prop_noun_only,
 #     )
 #     return phrase_indices
+
 
 def get_phrase_start_indices_batch(
     toks_batch: List[List[int]], noun_indices_batch: List[List[List[int]]]

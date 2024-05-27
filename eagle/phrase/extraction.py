@@ -20,7 +20,7 @@ class PhraseExtractor:
     ) -> List[List[Tuple[int]]]:
         # Parse the text with spacy
         parsed_texts: List[Text] = self.spacy_model(texts)
-        
+
         # Tokenize
         if tokenized_result is None:
             tokenized_result = self.tokenizer(texts)

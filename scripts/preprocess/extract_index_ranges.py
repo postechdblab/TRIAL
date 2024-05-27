@@ -89,7 +89,7 @@ def extract(
     ):
         texts = [item["text"] for item in chunk]
         # if prefix == "query":
-            # texts = [unidecode_text(t) for t in texts]
+        # texts = [unidecode_text(t) for t in texts]
         if index_type == "word":
             results = tokenizer(texts)["input_ids"]
             # Convert to token text

@@ -4,6 +4,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
+
 def _sort_by_length(ids, mask, bsize):
     if ids.size(0) <= bsize:
         return ids, mask, torch.arange(ids.size(0))
@@ -12,6 +13,7 @@ def _sort_by_length(ids, mask, bsize):
     reverse_indices = indices.sort().indices
 
     return ids[indices], mask[indices], reverse_indices
+
 
 def _split_into_batches(ids, att_mask, tok_mask=None, bsize: int = 1):
     batches = []
@@ -31,7 +33,8 @@ def _split_into_batches(ids, att_mask, tok_mask=None, bsize: int = 1):
 
     return batches
 
-def unwrap_logging_items(loss_dic: Dict, target_key:str=None) -> Dict:
+
+def unwrap_logging_items(loss_dic: Dict, target_key: str = None) -> Dict:
     """Remove zero loss items and unwrap torch.Tensor to float
 
     :param loss_dic: Dictionary containing loss values
@@ -41,10 +44,10 @@ def unwrap_logging_items(loss_dic: Dict, target_key:str=None) -> Dict:
     """
     if target_key is not None:
         loss_dic = {
-                key: value.item() if type(value) == torch.Tensor else value
-                for key, value in loss_dic.items()
-                if target_key in key
-            }
+            key: value.item() if type(value) == torch.Tensor else value
+            for key, value in loss_dic.items()
+            if target_key in key
+        }
     return {key: value for key, value in loss_dic.items() if value != 0}
 
 

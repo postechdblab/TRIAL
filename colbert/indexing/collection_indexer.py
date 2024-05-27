@@ -23,6 +23,7 @@ from colbert.infra.config.config import ColBERTConfig
 from colbert.infra.launcher import print_memory_stats
 from colbert.infra.run import Run
 from colbert.utils.utils import print_message
+
 # from colbert.modeling.checkpoint import Checkpoint
 from eagle.model import LightningNewModel
 

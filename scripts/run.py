@@ -11,9 +11,12 @@ from omegaconf import DictConfig
 from colbert.indexer import Indexer
 from colbert.infra import ColBERTConfig, Run, RunConfig
 from eagle.dataset import NewDataModule
-from eagle.dataset.utils import (add_doc_ranges_and_mask,
-                                 add_query_ranges_and_mask, collate_fn,
-                                 preprocess)
+from eagle.dataset.utils import (
+    add_doc_ranges_and_mask,
+    add_query_ranges_and_mask,
+    collate_fn,
+    preprocess,
+)
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import NewTokenizer

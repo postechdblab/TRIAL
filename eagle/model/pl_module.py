@@ -12,8 +12,12 @@ from transformers import EvalPrediction, get_linear_schedule_with_warmup
 from eagle.dataset.utils import get_mask
 from eagle.metrics import compute_metrics
 from eagle.model.late_interaction import NewModel
-from eagle.model.utils import (_sort_by_length, _split_into_batches,
-                               append_dummy_pid, unwrap_logging_items)
+from eagle.model.utils import (
+    _sort_by_length,
+    _split_into_batches,
+    append_dummy_pid,
+    unwrap_logging_items,
+)
 from eagle.search import PLAID
 from eagle.tokenizer import NewTokenizer
 from eagle.utils import handle_old_ckpt
@@ -70,9 +74,7 @@ class LightningNewModel(L.LightningModule):
 
         # Log metrics
         bsize = batch["q_tok_ids"].size(0)
-        self.log_dict(
-            metrics, batch_size=bsize, on_step=False, on_epoch=True
-        )
+        self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
         is_analyze = False
         if is_analyze:
             assert (
@@ -141,21 +143,23 @@ class LightningNewModel(L.LightningModule):
         q_scatter_indices = batch["q_scatter_indices"]
 
         # Encode the query
-        (encoded_tok_vectors,
-        projected_cls_vectors,
-        projected_tok_vectors,
-        projected_phrase_vectors,
-        tok_weights,
-        phrase_weights,
-        cls_scale_factor,
-        token_scale_factor,
-        phrase_scale_factor ) = self.model.encode_q_text(
+        (
+            encoded_tok_vectors,
+            projected_cls_vectors,
+            projected_tok_vectors,
+            projected_phrase_vectors,
+            tok_weights,
+            phrase_weights,
+            cls_scale_factor,
+            token_scale_factor,
+            phrase_scale_factor,
+        ) = self.model.encode_q_text(
             tok_ids=q_tok_ids,
             att_mask=q_tok_att_mask,
             tok_mask=q_tok_mask,
             scatter_indices=q_scatter_indices,
         )
-        
+
         projected_tok_vectors = projected_tok_vectors.half()
         if tok_weights is not None:
             tok_weights = tok_weights.half()
@@ -194,9 +198,7 @@ class LightningNewModel(L.LightningModule):
         metrics = compute_metrics(eval_preds, prefix="test")
 
         # Log metrics
-        self.log_dict(
-            metrics, batch_size=bsize, on_step=False, on_epoch=True
-        )
+        self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
 
         return None
 
@@ -249,7 +251,11 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         all_dic = loss_dic | metrics
         self.log_dict(
-            all_dic, batch_size=bsize, on_step=False, on_epoch=True, sync_dist=True,
+            all_dic,
+            batch_size=bsize,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
         )
 
     def training_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:

@@ -7,8 +7,17 @@ from eagle.model.compiled_tensor_op import compute_loss_c
 
 
 @functools.lru_cache(maxsize=32)
-def get_target_scale_tensor(target_scale:int, b_size:int, device: torch.dtype, dtype:torch.dtype) -> torch.Tensor:
-    return torch.full((b_size, 1), fill_value=target_scale, dtype=dtype, device=device, requires_grad=False)
+def get_target_scale_tensor(
+    target_scale: int, b_size: int, device: torch.dtype, dtype: torch.dtype
+) -> torch.Tensor:
+    return torch.full(
+        (b_size, 1),
+        fill_value=target_scale,
+        dtype=dtype,
+        device=device,
+        requires_grad=False,
+    )
+
 
 @functools.lru_cache(maxsize=32)
 def get_ib_loss_label(q_n: int, nway: int, device: torch.dtype) -> torch.Tensor:
@@ -52,15 +61,19 @@ def compute_loss(
     nway: int,
     ib_nhard: int,
     device: torch.device,
-    intra_loss_coeff: Optional[float]=None,
-    inter_loss_coeff: Optional[float]=None,
+    intra_loss_coeff: Optional[float] = None,
+    inter_loss_coeff: Optional[float] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     labels = get_loss_label(bsize, device=device)
     ib_labels = get_ib_loss_label(bsize, ib_nhard, device=device)
-    return compute_loss_c(scores, ib_scores, labels, ib_labels, nway, intra_loss_coeff, inter_loss_coeff)
+    return compute_loss_c(
+        scores, ib_scores, labels, ib_labels, nway, intra_loss_coeff, inter_loss_coeff
+    )
 
 
-def compute_fine_grained_loss(scores: torch.Tensor, labels: torch.Tensor) -> Tuple[torch.Tensor]:
-        # ce_loss = torch.nn.CrossEntropyLoss(reduction='sum')(scores, labels)
-        ce_loss = torch.nn.CrossEntropyLoss()(scores, labels)
-        return ce_loss
+def compute_fine_grained_loss(
+    scores: torch.Tensor, labels: torch.Tensor
+) -> Tuple[torch.Tensor]:
+    # ce_loss = torch.nn.CrossEntropyLoss(reduction='sum')(scores, labels)
+    ce_loss = torch.nn.CrossEntropyLoss()(scores, labels)
+    return ce_loss

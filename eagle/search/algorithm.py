@@ -42,9 +42,18 @@ def compute_sum_maxsim(
         sum_maxsim_scores = max_sim_scores.sum(1)
     else:
         q_mask = q_mask.squeeze(-1)
-        sum_maxsim_scores = torch.scatter_add(input=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), dim=1, index=q_mask.long(), src=max_sim_scores)
+        sum_maxsim_scores = torch.scatter_add(
+            input=torch.zeros(
+                (max_sim_scores.shape[0], 2),
+                device=max_sim_scores.device,
+                dtype=max_sim_scores.dtype,
+            ),
+            dim=1,
+            index=q_mask.long(),
+            src=max_sim_scores,
+        )
         sum_maxsim_scores = sum_maxsim_scores[:, 0]
-        # sum_maxsim_scores = torch.scatter(src=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), sum_maxsim_scores = sum_maxsim_scores[:, 0]        
+        # sum_maxsim_scores = torch.scatter(src=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), sum_maxsim_scores = sum_maxsim_scores[:, 0]
         # torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype).scatter_add_(dim=1, index=q_mask.long(), src=max_sim_scores)
 
     if not return_max_scores:
@@ -99,7 +108,7 @@ def maxsim_from_element_wise_relevance_score(
     """
     # Apply mask to the scores
     if k_mask is not None:
-        element_wise_scores.masked_fill_(k_mask, float('-inf'))
+        element_wise_scores.masked_fill_(k_mask, float("-inf"))
 
     # Find the maximum scores for each document
     return element_wise_scores.max(dim=1).values

@@ -9,8 +9,11 @@ import hydra
 import lightning as L
 import torch
 from lightning import seed_everything
-from lightning.pytorch.callbacks import (LearningRateMonitor, ModelCheckpoint,
-                                         ModelSummary)
+from lightning.pytorch.callbacks import (
+    LearningRateMonitor,
+    ModelCheckpoint,
+    ModelSummary,
+)
 from lightning.pytorch.profilers import PyTorchProfiler
 from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
@@ -93,6 +96,7 @@ def main(cfg: DictConfig) -> None:
         logger.info(f"Resuming from checkpoint: {cfg.training.resume_ckpt_path}")
 
     trainer.fit(model, datamodule=data_module, ckpt_path=cfg.training.resume_ckpt_path)
+
 
 if __name__ == "__main__":
     logging.basicConfig(
