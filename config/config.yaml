@@ -11,7 +11,7 @@ indexing:
 training:
     resume_ckpt_path: Null
     # Batch size
-    gradient_accumulation_steps: 4
+    gradient_accumulation_steps: 2
     per_device_train_batch_size: 4
     per_device_eval_batch_size: 4
     # Use distllation
@@ -44,27 +44,29 @@ dataset:
     query_file: queries.jsonl
     d_word_range_file: word_indices.doc.pkl
     d_phrase_range_file: phrase_indices.doc.pkl
+    q_word_range_file: word_indices.query.pkl
+    q_phrase_range_file: phrase_indices.query.pkl
     cache_nway: 64
-    train:
+    train_contrastive:
         # For debugging
         sample_size: -1
         debug_sample_size: 1000
         negative_start_offset: 50
         data_file: train.jsonl
         qrel_file: qrels/train.tsv
-        distillation_data_file: train_distillation.jsonl
-        # Cache for Indices
-        q_word_range_file: word_indices.query.pkl
-        q_phrase_range_file: phrase_indices.query.pkl
+    train_distillation:
+        # For debugging
+        sample_size: -1
+        debug_sample_size: 1000
+        negative_start_offset: 0
+        data_file: train_distillation.jsonl
+        qrel_file: qrels/train.tsv
     val:
         sample_size: -1
         debug_sample_size: 200
         negative_start_offset: 0
         override_nway: 100
         data_file: dev.jsonl
-        # Cache for Indices
-        q_word_range_file: word_indices.query.pkl
-        q_phrase_range_file: phrase_indices.query.pkl
 model:
     name: bert-base-uncased
     out_dim: 128
@@ -99,10 +101,8 @@ model:
     # reduce_strategy: max
     # reduce_strategy: min
 q_tokenizer:
-    name: bert-base-uncased
     special_tok: "[QXQ]"
     max_len: 32
 d_tokenizer:
-    name: bert-base-uncased
     special_tok: "[DXD]"
     max_len: 220

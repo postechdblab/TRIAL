@@ -18,7 +18,7 @@ from lightning.pytorch.profilers import PyTorchProfiler
 from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
 
-from eagle.dataset import NewDataModule
+from eagle.dataset import ContrastiveDataModule, DistillationDataModule
 from eagle.model import LightningNewModel
 from eagle.utils import add_config, add_global_configs
 
@@ -58,12 +58,14 @@ def main(cfg: DictConfig) -> None:
     train_batch_num = 532752 / cfg.training.per_device_train_batch_size / device_cnt
 
     # Load data module and model
-    data_module = NewDataModule(cfg)
+    if cfg.training.is_use_distillation:
+        data_module = DistillationDataModule(cfg)
+    else:
+        data_module = ContrastiveDataModule(cfg)
     model = LightningNewModel(cfg=cfg, train_batch_num=train_batch_num)
 
     # Create profiler
     profiler = "simple"
-    # profiler = PyTorchProfiler(dirpath="./perf_logs", filename="perf-logs")
 
     # Trainer initialization with your training args
     trainer = L.Trainer(

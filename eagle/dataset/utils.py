@@ -363,6 +363,16 @@ def read_corpus(path: str) -> Dict[str, str]:
     corpus: Dict[str, str] = {str(doc["_id"]): doc["text"] for doc in corpus}
     return corpus
 
+def read_queries(path: str) -> Dict[str, str]:
+    queries: List[Dict] = file_utils.read_json_file(
+            path, auto_detect_extension=True
+        )
+    queries: Dict[str, str] = {query["_id"]: query["text"] for query in queries}
+    return queries
+
+def read_qrels_qids(path: str) -> List[str]:
+    qrels = file_utils.read_csv_file(path, delimiter="\t", first_row_as_header=True)
+    return [item["query-id"] for item in qrels]
 
 def preprocess(example: Dict, unbatch: bool = False, *args, **kwargs) -> Dict:
     if type(example["q_texts"]) == list:
@@ -591,7 +601,6 @@ def get_labels(bsize: int, neg_num: int) -> np.ndarray:
     )
 
 
-# TODO: Create disk-based cache here
 @disk_cache()
 def get_indices_to_avoid_repeated_qids_in_minibatch(
     qids: List[int], batch_size: int
