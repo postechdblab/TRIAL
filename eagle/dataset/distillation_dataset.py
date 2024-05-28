@@ -16,6 +16,7 @@ class DistillationDataset(BaseDataset):
                  queries: List[Dict],
                  override_nway: Optional[int] = None):
         super().__init__(cfg=cfg, cfg_dataset=cfg_dataset)
+        self.nway = cfg.nway if override_nway is None else override_nway
         self.queries = queries
 
     def __getitem__(

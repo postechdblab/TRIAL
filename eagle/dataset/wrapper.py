@@ -24,7 +24,6 @@ class DatasetWrapper:
         d_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
         corpus_mapping: Dict[int, int] = None,
         query_mapping: Dict[int, int] = None,
-        data_path: str = None,
         nway: int = None,
         cache_nway: int = None,
         q_skip_ids: List[int] = None,
@@ -42,7 +41,6 @@ class DatasetWrapper:
         self.d_phrase_ranges = d_phrase_ranges
         self.corpus_mapping = corpus_mapping
         self.query_mapping = query_mapping
-        self.data_path = data_path
         self.q_skip_ids = q_skip_ids
         self.d_skip_ids = d_skip_ids
         self.granularity_level = granularity_level

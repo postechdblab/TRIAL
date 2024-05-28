@@ -12,7 +12,7 @@ import tqdm
 from eagle.dataset.utils import extract_word_range_with_multi_tokens
 from eagle.phrase.clean import unidecode_text
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.tokenizer import NewTokenizer
+from eagle.tokenizer import BaseTokenizer, QTokenizer
 
 logger = logging.getLogger("PhraseExtraction")
 
@@ -60,7 +60,7 @@ def extract(
 ) -> None:
     # Configs
     logger.info(f"I: {split_i}, Total: {total}")
-    tokenizer = NewTokenizer(tokenizer_cfg)
+    tokenizer = QTokenizer(tokenizer_cfg)
     extractor = PhraseExtractor(tokenizer=tokenizer)
 
     # Get the file path

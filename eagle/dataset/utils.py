@@ -13,7 +13,7 @@ import torch
 import tqdm
 from torch.nn.utils.rnn import pad_sequence
 
-from eagle.tokenizer import NewTokenizer
+from eagle.tokenizer import DTokenizer, QTokenizer
 from eagle.utils import disk_cache
 
 
@@ -391,8 +391,8 @@ def preprocess(example: Dict, unbatch: bool = False, *args, **kwargs) -> Dict:
 
 def preprocess_nobatch(
     example: Dict,
-    q_tokenizer: NewTokenizer,
-    d_tokenizer: NewTokenizer,
+    q_tokenizer: QTokenizer,
+    d_tokenizer: DTokenizer,
     is_eval: bool = False,
     is_compress: bool = True,
 ) -> Dict:
@@ -410,8 +410,8 @@ def preprocess_nobatch(
 
 def preprocess_batch(
     example_batch: Dict,
-    q_tokenizer: NewTokenizer,
-    d_tokenizer: NewTokenizer,
+    q_tokenizer: QTokenizer,
+    d_tokenizer: DTokenizer,
     is_eval: bool = False,
     is_compress: bool = True,
 ) -> Dict:

@@ -1,30 +1,32 @@
 import logging
-import os
 from typing import *
 
-import lightning as L
-from omegaconf import DictConfig
+from datasets import Dataset
 
+from eagle.dataset import DistillationDataset
 from eagle.dataset.pl_module.base_module import BaseDataModule
-from eagle.tokenizer import NewTokenizer
 
 logger = logging.getLogger("DistillationDataModule")
 
 
 class DistillationDataModule(BaseDataModule):
-    def __init__(self, cfg: DictConfig):
-        super().__init__()
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
 
-    def prepare_data(self) -> None:
-        """
-        Preprocess data for single process before spawning.
-        Create cache if not in debug mode.
-        """
-        pass
+    def _load_train_data(self, queries: Dict) -> Dataset:
+        train_raw_dataset = DistillationDataset(
+            cfg=self.cfg.train_distillation,
+            cfg_dataset=self.cfg,
+            queries=queries,
+            override_nway=self.cfg.cache_nway,
+        )
+        return train_raw_dataset
 
-    def setup(self, stage: Optional[str] = None) -> None:
-        """
-        Preprocess data for each process after spawning.
-        Load cache if not debug. Otherwise, load sample data.
-        """
-        pass
+    def _load_val_data(self, queries: Dict) -> Dataset:
+        val_raw_dataset = DistillationDataset(
+            cfg=self.cfg.val,
+            cfg_dataset=self.cfg,
+            queries=queries,
+            override_nway=self.cfg.val.override_nway,
+        )
+        return val_raw_dataset

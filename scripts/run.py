@@ -11,15 +11,12 @@ from omegaconf import DictConfig
 from colbert.indexer import Indexer
 from colbert.infra import ColBERTConfig, Run, RunConfig
 from eagle.dataset import NewDataModule
-from eagle.dataset.utils import (
-    add_doc_ranges_and_mask,
-    add_query_ranges_and_mask,
-    collate_fn,
-    preprocess,
-)
+from eagle.dataset.utils import (add_doc_ranges_and_mask,
+                                 add_query_ranges_and_mask, collate_fn,
+                                 preprocess)
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.tokenizer import NewTokenizer
+from eagle.tokenizer import DTokenizer, QTokenizer
 from eagle.utils import add_global_configs
 from scripts.utils import check_argument, join_word
 
@@ -33,8 +30,8 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
     assert ckpt_path, "Please provide the path to the checkpoint"
     model = LightningNewModel.load_from_checkpoint(checkpoint_path=ckpt_path)
     model.eval()
-    q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer)
-    d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer)
+    q_tokenizer = QTokenizer(cfg=cfg.q_tokenizer)
+    d_tokenizer = DTokenizer(cfg=cfg.d_tokenizer)
 
     # Get phrase extractor
     phrase_extractor = PhraseExtractor(tokenizer=q_tokenizer)

@@ -21,7 +21,7 @@ from eagle.model.utils import (
     modify_grad,
 )
 from eagle.search.algorithm import compute_sum_maxsim
-from eagle.tokenizer import NewTokenizer
+from eagle.tokenizer import DTokenizer, QTokenizer
 from eagle.utils import handle_old_ckpt
 
 logger = logging.getLogger("NewModel")
@@ -29,7 +29,7 @@ logger = logging.getLogger("NewModel")
 
 class NewModel(torch.nn.Module):
     def __init__(
-        self, cfg: DictConfig, q_tokenizer: NewTokenizer, d_tokenizer: NewTokenizer
+        self, cfg: DictConfig, q_tokenizer: QTokenizer, d_tokenizer: DTokenizer
     ) -> None:
         super().__init__()
         self.cfg = cfg
@@ -962,54 +962,3 @@ class NewModel(torch.nn.Module):
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
         num_valid_tokens = self.get_valid_num(mask)
         return self.q_maxlen / num_valid_tokens
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        format="[%(asctime)s %(levelname)s %(name)s] %(message)s",
-        datefmt="%m/%d %H:%M:%S",
-        level=logging.INFO,
-    )
-
-    import hydra
-
-    from eagle.tokenizer import NewTokenizer
-
-    @hydra.main(
-        version_base=None, config_path="/root/EAGLE/config", config_name="config"
-    )
-    def main(cfg: DictConfig) -> None:
-        # Initialize tokenizer
-        q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer)
-        d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer)
-        token_skiplist = list(set(q_tokenizer.skiplist + d_tokenizer.skiplist))
-        assert len(q_tokenizer) == len(
-            d_tokenizer
-        ), f"Tokenizers have different sizes: {len(q_tokenizer)} vs {len(d_tokenizer)}"
-
-        # Load model
-        logger.info("Initialize model!")
-        model = NewModel(
-            cfg=cfg.model,
-            token_num=len(q_tokenizer),
-            skiplist=token_skiplist,
-            punct_list=q_tokenizer.punctuations,
-        )
-
-        # Create dummy data
-        dummy_bs = 4
-        q_text = ["This is a test query"] * dummy_bs
-        d_text = ["This is a test document"] * dummy_bs * cfg.model.nway
-        # Tokenize
-        q_tokens = q_tokenizer(q_text)
-        d_tokens = d_tokenizer(d_text)
-
-        loss_dic = model(
-            q_tok_ids=q_tokens["input_ids"],
-            q_tok_att_mask=q_tokens["attention_mask"],
-            doc_tok_ids=d_tokens["input_ids"],
-            doc_tok_att_mask=d_tokens["attention_mask"],
-        )
-        return loss_dic
-
-    main()

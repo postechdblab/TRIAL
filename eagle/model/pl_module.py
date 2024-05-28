@@ -19,7 +19,7 @@ from eagle.model.utils import (
     unwrap_logging_items,
 )
 from eagle.search import PLAID
-from eagle.tokenizer import NewTokenizer
+from eagle.tokenizer import DTokenizer, QTokenizer
 from eagle.utils import handle_old_ckpt
 
 
@@ -34,8 +34,8 @@ class LightningNewModel(L.LightningModule):
         self.cfg = cfg.training
         self.train_batch_num = train_batch_num
         # Tmp
-        self.q_tokenizer = NewTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
-        self.d_tokenizer = NewTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
+        self.q_tokenizer = QTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
+        self.d_tokenizer = DTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
         # Load model
         self.model = NewModel(
             cfg=cfg.model, q_tokenizer=self.q_tokenizer, d_tokenizer=self.d_tokenizer

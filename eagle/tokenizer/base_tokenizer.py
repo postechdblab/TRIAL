@@ -10,7 +10,7 @@ from transformers import AutoTokenizer
 logger = logging.getLogger("NewTokenizesr")
 
 
-class NewTokenizer:
+class BaseTokenizer:
     def __init__(self, cfg: DictConfig, model_name: str) -> None:
         self.cfg = cfg
         self.name = model_name
@@ -68,11 +68,3 @@ class NewTokenizer:
             max_length=self.cfg.max_len,
             return_tensors=return_tensors,
         )
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        format="[%(asctime)s %(levelname)s %(name)s] %(message)s",
-        datefmt="%m/%d %H:%M:%S",
-        level=logging.INFO,
-    )
