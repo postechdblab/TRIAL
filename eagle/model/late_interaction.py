@@ -483,7 +483,7 @@ class NewModel(torch.nn.Module):
             "loss": loss,
             "intra_loss": intra_loss,
             "inter_loss": inter_loss,
-            "kl_loss": kl_loss,
+            "kl_loss": 0 if kl_loss is None else kl_loss,
             "fine_grained_loss": fine_grained_loss,
         }
 

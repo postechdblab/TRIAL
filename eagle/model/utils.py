@@ -48,7 +48,7 @@ def unwrap_logging_items(loss_dic: Dict, target_key: str = None) -> Dict:
             for key, value in loss_dic.items()
             if target_key in key
         }
-    return {key: value for key, value in loss_dic.items() if value != 0}
+    return {key: value for key, value in loss_dic.items() if value is not None and value != 0}
 
 
 def append_dummy_pid(

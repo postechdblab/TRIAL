@@ -171,7 +171,7 @@ class LightningNewModel(L.LightningModule):
         for bidx in range(bsize):
             # Retrieve pids and scores
             query = projected_tok_vectors[bidx]
-            mask = q_tok_mask[bidx].squeeze()
+            mask = q_tok_mask[bidx]
             weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
             # Find the positive doc id

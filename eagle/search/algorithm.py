@@ -73,7 +73,7 @@ def compute_maxsim(
     return_element_wise_scores: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     # Compute the element-wise relevance scores
-    element_wise_scores = k_encoded @ q_encoded.transpose(1, 2)
+    element_wise_scores = k_encoded @ q_encoded.transpose(-2, -1)
 
     # Pad the relevance scores if the key vectors are packed
     if k_lengths is not None:
@@ -82,6 +82,7 @@ def compute_maxsim(
         element_wise_scores, score_mask = StridedTensor(
             element_wise_scores, k_lengths, use_gpu=True
         ).as_padded_tensor()
+        k_mask = score_mask
 
     max_sim_scores = maxsim_from_element_wise_relevance_score(
         element_wise_scores=element_wise_scores, k_mask=k_mask

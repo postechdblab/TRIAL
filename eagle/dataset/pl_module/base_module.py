@@ -39,14 +39,10 @@ class BaseDataModule(L.LightningDataModule):
     @property
     def corpus_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.corpus_file)
-
+    
     @property
     def queries_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.query_file)
-
-    @property
-    def train_qrels_path(self) -> str:
-        return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.train_contrastive.qrel_file)
 
     @property
     def training_cache_path(self) -> str:
@@ -343,8 +339,13 @@ class BaseDataModule(L.LightningDataModule):
             collate_fn=collate_fn,
         )
 
+    @property
     @abc.abstractmethod
-    def _load_train_data(self, queries: Dict) -> Dataset:
+    def train_qrels_path(self) -> str:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def _load_train_data(self, queries: Dict) -> Union[Dataset, None]:
         raise NotImplementedError
         
     @abc.abstractmethod

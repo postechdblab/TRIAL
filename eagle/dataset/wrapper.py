@@ -53,7 +53,8 @@ class DatasetWrapper:
         assert cache_nway is not None, f"cache_nway is None. Please provide cache_nway."
         assert cache_nway >= nway, f"cache_nway={cache_nway}, nway={nway}"
         assert (
-            len(self.dataset[0]["neg_doc_ids"]) == 0
+            "neg_doc_ids" not in self.dataset[0] 
+            or len(self.dataset[0]["neg_doc_ids"]) == 0
             or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
         ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
         assert self.granularity_level in ["token", "word", "phrase"]
@@ -99,7 +100,9 @@ class DatasetWrapper:
         # Extract meta data
         qid = data["q_id"]
         qidx = self.query_mapping[qid]
-        pids = data["pos_doc_ids"] + data["neg_doc_ids"]
+        pids = data["pos_doc_ids"]
+        if "neg_doc_ids" in data:
+            pids.extend(data["neg_doc_ids"])
         pindices = [self.corpus_mapping[pid] for pid in pids]
         pindices = pindices[: self.nway]
 

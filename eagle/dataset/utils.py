@@ -426,24 +426,30 @@ def preprocess_batch(
     neg_num = None
     pos_num = None
     doc_texts = []
-    assert len(example_batch["q_texts"]) == len(
-        example_batch["pos_doc_texts_list"]
-    ), f"Query and doc size is not consistent: {len(example_batch['q_texts'])} vs {len(example_batch['pos_doc_text_list'])}"
-    for pos_doc_text, neg_doc_text_list in zip(
-        example_batch["pos_doc_texts_list"], example_batch["neg_doc_texts_list"]
-    ):
-        if neg_num is None:
-            neg_num = len(neg_doc_text_list)
-        assert neg_num == len(
-            neg_doc_text_list
-        ), f"Neg num is not consistent: {neg_num} vs {len(neg_doc_text_list)}"
-        if pos_num is None:
-            pos_num = len(pos_doc_text)
-        if pos_doc_text:
+    if "neg_doc_texts_list" in example_batch:
+        assert len(example_batch["q_texts"]) == len(
+            example_batch["pos_doc_texts_list"]
+        ), f"Query and doc size is not consistent: {len(example_batch['q_texts'])} vs {len(example_batch['pos_doc_text_list'])}"
+        for pos_doc_text, neg_doc_text_list in zip(
+            example_batch["pos_doc_texts_list"], example_batch["neg_doc_texts_list"]
+        ):
+            if neg_num is None:
+                neg_num = len(neg_doc_text_list)
+            assert neg_num == len(
+                neg_doc_text_list
+            ), f"Neg num is not consistent: {neg_num} vs {len(neg_doc_text_list)}"
+            if pos_num is None:
+                pos_num = len(pos_doc_text)
+            if pos_doc_text:
+                doc_texts.extend(pos_doc_text)
+            for neg_doc in neg_doc_text_list:
+                if neg_doc:
+                    doc_texts.append(neg_doc)
+    else:
+        for pos_doc_text in example_batch["pos_doc_texts_list"]:
             doc_texts.extend(pos_doc_text)
-        for neg_doc in neg_doc_text_list:
-            if neg_doc:
-                doc_texts.append(neg_doc)
+        neg_num = 0
+        pos_num = len(example_batch["pos_doc_texts_list"][0])
 
     # Tokenize text
     q_ids = example_batch["q_ids"]
@@ -488,8 +494,10 @@ def preprocess_batch(
         "doc_tok_ids": doc_tok_ids,
         "doc_tok_att_mask": doc_tok_att_mask,
         "pos_doc_ids": example_batch["pos_doc_ids_list"],
-        "neg_doc_ids": example_batch["neg_doc_ids_list"],
     }
+
+    if "neg_doc_ids_list" in example_batch:
+        result["neg_doc_ids"] = example_batch["neg_doc_ids_list"]
 
     if "pos_doc_scores" in example_batch:
         distillation_scores: List[List[float]] = []
