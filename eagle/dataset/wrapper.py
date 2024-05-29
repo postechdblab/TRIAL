@@ -94,6 +94,7 @@ class DatasetWrapper:
             # Replace the nway
             data["doc_tok_ids"] = data["doc_tok_ids"][: self.nway]
             data["doc_tok_att_mask"] = data["doc_tok_att_mask"][: self.nway]
+            data["distillation_scores"] = data["distillation_scores"][: self.nway]
 
         # Extract meta data
         qid = data["q_id"]

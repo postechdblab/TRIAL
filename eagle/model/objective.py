@@ -57,17 +57,27 @@ def doc_indices_for_ib_loss(
 def compute_loss(
     scores: torch.Tensor,
     ib_scores: torch.Tensor,
+    distillation_scores: torch.Tensor,
     bsize: int,
     nway: int,
     ib_nhard: int,
     device: torch.device,
     intra_loss_coeff: Optional[float] = None,
     inter_loss_coeff: Optional[float] = None,
+    distillation_loss_coeff: Optional[float] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     labels = get_loss_label(bsize, device=device)
     ib_labels = get_ib_loss_label(bsize, ib_nhard, device=device)
     return compute_loss_c(
-        scores, ib_scores, labels, ib_labels, nway, intra_loss_coeff, inter_loss_coeff
+        scores=scores, 
+        ib_scores=ib_scores, 
+        labels=labels, 
+        ib_labels=ib_labels, 
+        nway=nway, 
+        ce_loss_coeff=intra_loss_coeff, 
+        ib_loss_coeff=inter_loss_coeff,
+        kl_loss_coeff=distillation_loss_coeff,
+        distillation_scores=distillation_scores
     )
 
 

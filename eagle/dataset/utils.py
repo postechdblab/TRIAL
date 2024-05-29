@@ -491,6 +491,12 @@ def preprocess_batch(
         "neg_doc_ids": example_batch["neg_doc_ids_list"],
     }
 
+    if "pos_doc_scores" in example_batch:
+        distillation_scores: List[List[float]] = []
+        for pos_doc_score, neg_doc_scores in zip(example_batch["pos_doc_scores"], example_batch["neg_doc_scores_list"]):
+            distillation_scores.append([pos_doc_score] + neg_doc_scores)
+        result["distillation_scores"] = distillation_scores
+
     if is_eval:
         result["labels"] = get_labels(bsize=bsize, neg_num=neg_num)
     return result
@@ -518,6 +524,8 @@ def collate_fn(input_dics: List[Dict]) -> Dict:
             return torch.bool
         elif "id" in key:
             return torch.int32
+        elif "scores" in key:
+            return torch.float32
         return torch.long
 
     new_dict = {}
@@ -587,6 +595,8 @@ def collate_fn(input_dics: List[Dict]) -> Dict:
             padded_values = [dic[key] for dic in input_dics]
         elif key in ["pos_doc_ids", "neg_doc_ids"]:
             continue
+        elif key =="distillation_scores":
+            padded_values = torch.nn.functional.log_softmax(torch.tensor([dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"), dim=-1)
         else:
             raise ValueError(f"Unsupported key: {key}")
         new_dict[key] = padded_values

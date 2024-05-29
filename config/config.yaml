@@ -60,7 +60,7 @@ dataset:
         sample_size: -1
         debug_sample_size: 1000
         negative_start_offset: 0
-        data_file: train_distillation.jsonl
+        data_file: train_distillation_filtered.jsonl
         qrel_file: qrels/train.tsv
     val:
         sample_size: -1

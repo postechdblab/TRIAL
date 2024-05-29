@@ -273,7 +273,7 @@ class NewModel(torch.nn.Module):
         fine_grained_label: Optional[torch.Tensor] = None,
         fine_grained_label_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
-        distil_scores: Optional[torch.Tensor] = None,
+        distillation_scores: Optional[torch.Tensor] = None,
         is_inference: Optional[bool] = False,
         is_analyze: Optional[bool] = False,
         **kwargs,
@@ -430,9 +430,10 @@ class NewModel(torch.nn.Module):
 
         # Compute loss
         device = intra_scores.device
-        loss, intra_loss, inter_loss = compute_loss(
+        loss, intra_loss, inter_loss, kl_loss = compute_loss(
             scores=intra_scores,
             ib_scores=inter_scores,
+            distillation_scores=distillation_scores,
             bsize=bsize,
             nway=nway,
             ib_nhard=ib_nhard,
@@ -482,6 +483,7 @@ class NewModel(torch.nn.Module):
             "loss": loss,
             "intra_loss": intra_loss,
             "inter_loss": inter_loss,
+            "kl_loss": kl_loss,
             "fine_grained_loss": fine_grained_loss,
         }
 

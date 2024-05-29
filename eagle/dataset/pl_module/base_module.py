@@ -102,24 +102,24 @@ class BaseDataModule(L.LightningDataModule):
 
     def _preprocess_data(self, dataset: BaseDataset, corpus: Dict, is_eval:bool=False) -> Dataset:
         logger.info(f"Converting val dataset to HuggingFace format...")
-        val_dataset = Dataset.from_dict(dataset.to_dict(corpus=corpus))
-        logger.info(f"Dataset converted! Val dataset size: {len(val_dataset)}")
+        tf_dataset = Dataset.from_dict(dataset.to_dict(corpus=corpus))
+        logger.info(f"Dataset converted! Dataset size: {len(tf_dataset)}")
 
         # Preprocess dataset
         logger.info("Preprocessing dataset...")
-        val_preprocess_batch = functools.partial(
+        preprocess_batch = functools.partial(
             preprocess,
             q_tokenizer=self.q_tokenizer,
             d_tokenizer=self.d_tokenizer,
             is_eval=is_eval,
         )
-        val_dataset = val_dataset.map(
-            val_preprocess_batch,
+        tf_dataset = tf_dataset.map(
+            preprocess_batch,
             batched=True,
             remove_columns=dataset.dict_keys,
             desc="Preprocessing eval dataset",
         )
-        return val_dataset
+        return tf_dataset
 
     def prepare_data(self) -> None:
         """
