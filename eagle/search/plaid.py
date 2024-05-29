@@ -8,7 +8,7 @@ from colbert.indexing.codecs.residual_embeddings_strided import (
 )
 from colbert.search.index_loader import IndexLoader
 from colbert.search.strided_tensor import StridedTensor
-from eagle.search.algorithm import compute_maxsim, reduce_element_wise_relevance_scores
+from eagle.search.algorithm import compute_sum_maxsim, reduce_element_wise_relevance_scores
 
 
 class PLAID:
@@ -69,7 +69,8 @@ class PLAID:
         #     scores = scores * weight
         centroids = scores.topk(topk, dim=0, sorted=False).indices.permute(1, 0)
         if mask is not None:
-            centroids = centroids[mask == True]
+            mask = mask.squeeze()
+            centroids = centroids[mask == False]
         centroids = centroids.flatten().contiguous()
         centroids = centroids.unique(sorted=False)
         return centroids, scores
@@ -250,14 +251,14 @@ class PLAID:
         """
         # Apply weights
         if q_weight is not None:
-            query = query * q_weight.unsqueeze(1)
+            query = query * q_weight
         # Apply mask
         if q_mask is not None:
-            query = query * q_mask.unsqueeze(1)
+            query.masked_fill_(q_mask, 0)
         # Extract document embeddings
         d_packed, d_length = self.embeddings_strided.lookup_pids(pids)
         # Compute scores
-        max_scores, _ = compute_maxsim(
+        max_scores, _, _ = compute_sum_maxsim(
             q_encoded=query, k_encoded=d_packed, k_lengths=d_length
         )
         # Sort pids based on the scores

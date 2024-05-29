@@ -10,7 +10,7 @@ from omegaconf import DictConfig
 
 from colbert.indexer import Indexer
 from colbert.infra import ColBERTConfig, Run, RunConfig
-from eagle.dataset import NewDataModule
+from eagle.dataset import ContrastiveDataModule, InferenceDataModule
 from eagle.dataset.utils import (add_doc_ranges_and_mask,
                                  add_query_ranges_and_mask, collate_fn,
                                  preprocess)
@@ -157,7 +157,7 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
 
 def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     # Load data module and model
-    data_module = NewDataModule(cfg, skip_train=True)
+    data_module = InferenceDataModule(cfg)
 
     # Load index
     index_name = f"{cfg.dataset.name}.{cfg._global.tag}.nbits={cfg.indexing.nbits}"
@@ -182,7 +182,7 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
 
 def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     # Load data module and model
-    data_module = NewDataModule(cfg, skip_train=True)
+    data_module = ContrastiveDataModule(cfg, skip_train=True)
 
     # Load trained model
     assert ckpt_path, "Please provide the path to the checkpoint"
