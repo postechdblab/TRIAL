@@ -115,6 +115,26 @@ class NewModel(torch.nn.Module):
         self.regularization = self.__create_regularization_func(
             strategy=cfg.w_regularize_strategy
         )
+        self.__load_checkpoint()
+
+    def __load_checkpoint(self) -> None:
+        if self.cfg.ckpt_path:
+            logger.info(f"Loading model checkpoint from {self.cfg.ckpt_path}")
+            loaded_params = torch.load(self.cfg.ckpt_path, map_location="cpu")["state_dict"]
+            # Remove "model." from the keys
+            renamed_params = {}
+            prefix_to_remove = "model."
+            for k, v in loaded_params.items():
+                assert k.startswith(prefix_to_remove), f"Cannot find {prefix_to_remove} in {k}"
+                renamed_params[k[len(prefix_to_remove):]] = v
+            cnt = 0
+            for name, param in self.named_parameters():
+                assert name in renamed_params, f"Cannot find {name} in the loaded params"
+                param.data = renamed_params[name]
+                cnt += 1
+            assert cnt == len(renamed_params), f"Loaded {cnt} params out of {len(renamed_params)}"
+            logger.info(f"Updated {cnt} parameters instances from the checkpoint")
+        return None
 
     @property
     def q_skiplist(self) -> List[int]:

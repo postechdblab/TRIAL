@@ -70,6 +70,7 @@ dataset:
         data_file: dev.jsonl
 model:
     name: bert-base-uncased
+    ckpt_path: None
     out_dim: 128
     # Quantization
     is_use_quantization: False
