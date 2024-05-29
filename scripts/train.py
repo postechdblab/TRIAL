@@ -90,7 +90,7 @@ def main(cfg: DictConfig) -> None:
                 monitor="val_NDCG@10",
                 mode="max",
                 save_top_k=1,
-                save_last=True,
+                save_on_train_epoch_end=True,
             ),
         ],
     )
