@@ -127,13 +127,14 @@ class NewModel(torch.nn.Module):
             for k, v in loaded_params.items():
                 assert k.startswith(prefix_to_remove), f"Cannot find {prefix_to_remove} in {k}"
                 renamed_params[k[len(prefix_to_remove):]] = v
-            cnt = 0
+            found_params = []
             for name, param in self.named_parameters():
                 assert name in renamed_params, f"Cannot find {name} in the loaded params"
                 param.data = renamed_params[name]
-                cnt += 1
-            assert cnt == len(renamed_params), f"Loaded {cnt} params out of {len(renamed_params)}"
-            logger.info(f"Updated {cnt} parameters instances from the checkpoint")
+                found_params.append(name)
+            not_found_params = set(renamed_params.keys()) - set(found_params)
+            assert len(not_found_params) == 0, f"Cannot find {not_found_params} in the model"
+            logger.info(f"Updated {len(found_params)} parameters instances from the checkpoint")
         return None
 
     @property
