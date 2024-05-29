@@ -151,7 +151,6 @@ class NewModel(torch.nn.Module):
                 )
 
         # Load model and resize the token embeddings
-        # model = AutoModel.from_pretrained(name, quantization_config=quantization_config, device_map=device_map)
         model = AutoModel.from_pretrained(
             name,
             quantization_config=quantization_config,

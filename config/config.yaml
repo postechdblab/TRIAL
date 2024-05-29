@@ -10,6 +10,7 @@ indexing:
     bsize: 256
 training:
     resume_ckpt_path: Null
+    max_epochs: 1
     # Batch size
     gradient_accumulation_steps: 2
     per_device_train_batch_size: 4

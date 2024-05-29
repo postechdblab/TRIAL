@@ -55,7 +55,7 @@ def main(cfg: DictConfig) -> None:
         if cfg._global.is_debug
         else os.path.join(cfg._global.root_dir, cfg._global.tag)
     )
-    train_batch_num = 532752 / cfg.training.per_device_train_batch_size / device_cnt
+    train_batch_num = 532752 * cfg.training.max_epochs / cfg.training.per_device_train_batch_size / device_cnt
 
     # Load data module and model
     if cfg.training.is_use_distillation:
@@ -70,7 +70,7 @@ def main(cfg: DictConfig) -> None:
     # Trainer initialization with your training args
     trainer = L.Trainer(
         deterministic=True,
-        max_epochs=1,
+        max_epochs=cfg.training.max_epochs,
         num_sanity_val_steps=2,
         profiler=profiler,
         accelerator="gpu",
