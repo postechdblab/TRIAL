@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
 
-logger = logging.getLogger("ContrastiveDataset")
+logger = logging.getLogger("DistillationDataset")
 
 
 class DistillationDataset(BaseDataset):
@@ -46,10 +46,9 @@ class DistillationDataset(BaseDataset):
             "neg_doc_scores_list",
         ]
 
-
     def to_dict(self, corpus: Dict[str, str]) -> Dict:
         # Get negative doc indices
-        neg_start_idx = self.neg_offset
+        neg_start_idx = self.cfg.negative_start_offset
         neg_end_idx = neg_start_idx + self.nway - 1
 
         # Prepare data

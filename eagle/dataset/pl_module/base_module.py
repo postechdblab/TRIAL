@@ -99,12 +99,12 @@ class BaseDataModule(L.LightningDataModule):
         # Save mapping to the instance
         self._query_mapping = mapping
         return self._query_mapping
-      
+
     def _preprocess_data(self, dataset: BaseDataset, corpus: Dict, is_eval:bool=False) -> Dataset:
         logger.info(f"Converting val dataset to HuggingFace format...")
         val_dataset = Dataset.from_dict(dataset.to_dict(corpus=corpus))
         logger.info(f"Dataset converted! Val dataset size: {len(val_dataset)}")
-        
+
         # Preprocess dataset
         logger.info("Preprocessing dataset...")
         val_preprocess_batch = functools.partial(

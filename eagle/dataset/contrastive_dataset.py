@@ -48,7 +48,7 @@ class ContrastiveDataset(BaseDataset):
 
     def to_dict(self, corpus: Dict[str, str]) -> Dict:
         # Get negative doc indices
-        neg_start_idx = self.neg_offset
+        neg_start_idx = self.cfg.negative_start_offset
         neg_end_idx = neg_start_idx + self.nway - 1
 
         # Prepare data
