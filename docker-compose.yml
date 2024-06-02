@@ -11,10 +11,14 @@ services:
         volumes:
             - /etc/timezone:/etc/timezone:ro 
             - ./:/root/EAGLE/
-            - /mnt/sdd/hkkang:/mnt/md0/hkkang
+            - /mnt/sdc/hkkang:/mnt/md0/hkkang
         working_dir: /root
         user: $UID:$GID
-        command: sh -c "echo root | su root -c 'useradd -s /bin/bash -m user -u ${UID} && echo \"export PATH=$HOME/.local/bin:$PATH\" >> /home/user/.bashrc' && echo \"export PYTHONPATH=/root/EAGLE/\" >> /home/user/.bashrc' && tail -f /dev/null"
+        command: >
+            sh -c "echo root | su root -c 'useradd -s /bin/bash -m user -u ${UID} && 
+            echo \"export PATH=$HOME/.local/bin:$PATH\" >> /home/user/.bashrc' &&
+            echo \"export PYTHONPATH=/root/EAGLE/\" >> /home/user/.bashrc && 
+            tail -f /dev/null"
         deploy:
             resources:
                 reservations:
