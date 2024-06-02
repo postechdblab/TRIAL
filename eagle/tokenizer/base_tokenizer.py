@@ -9,6 +9,8 @@ from transformers import AutoTokenizer
 
 logger = logging.getLogger("NewTokenizesr")
 
+DUMMY_TOK = "[dummy]"
+
 
 class BaseTokenizer:
     def __init__(self, cfg: DictConfig, model_name: str) -> None:
@@ -16,7 +18,12 @@ class BaseTokenizer:
         self.name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.tokenizer.add_special_tokens(
-            {"additional_special_tokens": [self.cfg.special_tok]}
+            {
+                "additional_special_tokens": self._get_dummy_tokens(
+                    self.cfg.new_tok_offset
+                )
+                + [self.cfg.special_tok]
+            }
         )
         self.new_special_tok_id = self.tokenizer.convert_tokens_to_ids(
             self.cfg.special_tok
@@ -31,6 +38,12 @@ class BaseTokenizer:
 
     def __len__(self) -> int:
         return len(self.tokenizer)
+
+    def _get_dummy_tokens(self, n: int) -> List[str]:
+        toks = []
+        for i in range(n):
+            toks.append(DUMMY_TOK.replace("]", f"{i}]"))
+        return toks
 
     @functools.cached_property
     def special_toks_ids(self) -> List[int]:

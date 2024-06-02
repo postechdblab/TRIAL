@@ -103,8 +103,10 @@ model:
     # reduce_strategy: max
     # reduce_strategy: min
 q_tokenizer:
+    new_tok_offset: 0
     special_tok: "[QXQ]"
     max_len: 32
 d_tokenizer:
+    new_tok_offset: 1
     special_tok: "[DXD]"
     max_len: 220

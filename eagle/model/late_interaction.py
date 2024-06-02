@@ -21,22 +21,20 @@ from eagle.model.utils import (
     modify_grad,
 )
 from eagle.search.algorithm import compute_sum_maxsim
-from eagle.tokenizer import DTokenizer, QTokenizer
+from eagle.tokenizer import Tokenizers
 from eagle.utils import handle_old_ckpt
 
 logger = logging.getLogger("NewModel")
 
 
 class NewModel(torch.nn.Module):
-    def __init__(
-        self, cfg: DictConfig, q_tokenizer: QTokenizer, d_tokenizer: DTokenizer
-    ) -> None:
+    def __init__(self, cfg: DictConfig, tokenizers: Tokenizers) -> None:
         super().__init__()
         self.cfg = cfg
-        self.q_special_tok_ids = q_tokenizer.special_toks_ids
-        self.d_special_tok_ids = d_tokenizer.special_toks_ids
-        self.punct_tok_ids = q_tokenizer.punctuations
-        self.q_maxlen = q_tokenizer.cfg.max_len
+        self.q_special_tok_ids = tokenizers.q_tokenizer.special_toks_ids
+        self.d_special_tok_ids = tokenizers.d_tokenizer.special_toks_ids
+        self.punct_tok_ids = tokenizers.q_tokenizer.punctuations
+        self.q_maxlen = tokenizers.q_tokenizer.cfg.max_len
         # Configs
         self.nway = cfg.nway
         # Ideas
@@ -62,12 +60,12 @@ class NewModel(torch.nn.Module):
         self.granularity_level = handle_old_ckpt(cfg, "granularity_level")
         # Backbone model (The attribute name should be llm to be compatible with the optimizer in LightningModule)
         self.llm = self.__create_backbone_model(
-            name=cfg.name, vocab_num=len(q_tokenizer)
+            name=cfg.name, vocab_num=tokenizers.vocab_num
         )
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
-            self.llm.config.hidden_size, cfg.out_dim
+            self.llm.config.hidden_size, cfg.out_dim, bias=False
         )
         self.cls_projection_layer = self.__create_linear_layers_for_multi_granularity(
             input_dim=self.llm.config.hidden_size,
@@ -120,21 +118,31 @@ class NewModel(torch.nn.Module):
     def __load_checkpoint(self) -> None:
         if self.cfg.ckpt_path:
             logger.info(f"Loading model checkpoint from {self.cfg.ckpt_path}")
-            loaded_params = torch.load(self.cfg.ckpt_path, map_location="cpu")["state_dict"]
+            loaded_params = torch.load(self.cfg.ckpt_path, map_location="cpu")[
+                "state_dict"
+            ]
             # Remove "model." from the keys
             renamed_params = {}
             prefix_to_remove = "model."
             for k, v in loaded_params.items():
-                assert k.startswith(prefix_to_remove), f"Cannot find {prefix_to_remove} in {k}"
-                renamed_params[k[len(prefix_to_remove):]] = v
+                assert k.startswith(
+                    prefix_to_remove
+                ), f"Cannot find {prefix_to_remove} in {k}"
+                renamed_params[k[len(prefix_to_remove) :]] = v
             found_params = []
             for name, param in self.named_parameters():
-                assert name in renamed_params, f"Cannot find {name} in the loaded params"
+                assert (
+                    name in renamed_params
+                ), f"Cannot find {name} in the loaded params"
                 param.data = renamed_params[name]
                 found_params.append(name)
             not_found_params = set(renamed_params.keys()) - set(found_params)
-            assert len(not_found_params) == 0, f"Cannot find {not_found_params} in the model"
-            logger.info(f"Updated {len(found_params)} parameters instances from the checkpoint")
+            assert (
+                len(not_found_params) == 0
+            ), f"Cannot find {not_found_params} in the model"
+            logger.info(
+                f"Updated {len(found_params)} parameters instances from the checkpoint"
+            )
         return None
 
     @property

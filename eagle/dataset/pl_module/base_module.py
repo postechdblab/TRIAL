@@ -1,4 +1,3 @@
-
 import abc
 import functools
 import logging
@@ -13,40 +12,43 @@ from torch.utils.data import DataLoader
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.utils import (
-    collate_fn, get_indices_to_avoid_repeated_qids_in_minibatch, preprocess,
-    read_compressed, read_corpus, read_qrels_qids, read_queries,
-    save_compressed)
+    collate_fn,
+    get_indices_to_avoid_repeated_qids_in_minibatch,
+    preprocess,
+    read_compressed,
+    read_corpus,
+    read_qrels_qids,
+    read_queries,
+    save_compressed,
+)
 from eagle.dataset.wrapper import DatasetWrapper
-from eagle.tokenizer import DTokenizer, QTokenizer
+from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("DataModule")
 
 
 class BaseDataModule(L.LightningDataModule):
-    def __init__(self, cfg: DictConfig, skip_train: bool=False):
+    def __init__(self, cfg: DictConfig, skip_train: bool = False):
         super().__init__()
         self.cfg_global: DictConfig = cfg
         self.cfg: DictConfig = cfg.dataset
-        self.q_tokenizer = QTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
-        self.d_tokenizer = DTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
+        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
         self.train_dataset = self.val_dataset = self.test_dataset = None
         self.skip_train = skip_train
-        # Check if initializers are valid
-        assert len(self.q_tokenizer) == len(
-            self.d_tokenizer
-        ), f"Tokenizers have different sizes: {len(self.q_tokenizer)} vs {len(self.d_tokenizer)}"
 
     @property
     def corpus_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.corpus_file)
-    
+
     @property
     def queries_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.query_file)
 
     @property
     def training_cache_path(self) -> str:
-        tokenizer_name_prefix = self.d_tokenizer.name.split("/")[-1].split("-")[0]
+        tokenizer_name_prefix = self.tokenizers.d_tokenizer.name.split("/")[-1].split(
+            "-"
+        )[0]
         suffix = f"train_dataset.{tokenizer_name_prefix}.{type(self).__name__}.cache"
         data_cache_file_path = os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.data_cache_file
@@ -55,7 +57,9 @@ class BaseDataModule(L.LightningDataModule):
 
     @property
     def validation_cache_path(self) -> str:
-        tokenizer_name_prefix = self.d_tokenizer.name.split("/")[-1].split("-")[0]
+        tokenizer_name_prefix = self.tokenizers.d_tokenizer.name.split("/")[-1].split(
+            "-"
+        )[0]
         data_cache_file_path = os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.data_cache_file
         )
@@ -96,7 +100,9 @@ class BaseDataModule(L.LightningDataModule):
         self._query_mapping = mapping
         return self._query_mapping
 
-    def _preprocess_data(self, dataset: BaseDataset, corpus: Dict, is_eval:bool=False) -> Dataset:
+    def _preprocess_data(
+        self, dataset: BaseDataset, corpus: Dict, is_eval: bool = False
+    ) -> Dataset:
         logger.info(f"Converting val dataset to HuggingFace format...")
         tf_dataset = Dataset.from_dict(dataset.to_dict(corpus=corpus))
         logger.info(f"Dataset converted! Dataset size: {len(tf_dataset)}")
@@ -105,8 +111,8 @@ class BaseDataModule(L.LightningDataModule):
         logger.info("Preprocessing dataset...")
         preprocess_batch = functools.partial(
             preprocess,
-            q_tokenizer=self.q_tokenizer,
-            d_tokenizer=self.d_tokenizer,
+            q_tokenizer=self.tokenizers.q_tokenizer,
+            d_tokenizer=self.tokenizers.d_tokenizer,
             is_eval=is_eval,
         )
         tf_dataset = tf_dataset.map(
@@ -144,14 +150,22 @@ class BaseDataModule(L.LightningDataModule):
 
         logger.info(f"Loading and preprocessing data to create cache...")
         if not skip_train:
-            train_dataset = self._preprocess_data(dataset=self._load_train_data(queries=queries), corpus=corpus, is_eval=False)
+            train_dataset = self._preprocess_data(
+                dataset=self._load_train_data(queries=queries),
+                corpus=corpus,
+                is_eval=False,
+            )
             logger.info(
                 f"Saving training dataset (len: {len(train_dataset)}) to {self.training_cache_path}..."
             )
             save_compressed(self.training_cache_path, train_dataset)
 
         if not skip_val:
-            val_dataset = self._preprocess_data(dataset=self._load_val_data(queries=queries), corpus=corpus, is_eval=True)
+            val_dataset = self._preprocess_data(
+                dataset=self._load_val_data(queries=queries),
+                corpus=corpus,
+                is_eval=True,
+            )
             logger.info(
                 f"Saving validation dataset (len: {len(val_dataset)}) to {self.validation_cache_path}..."
             )
@@ -159,7 +173,6 @@ class BaseDataModule(L.LightningDataModule):
 
         logger.info(f"Dataset preprocessed and saved!")
 
-    
     def setup(self, stage: Optional[str] = None) -> None:
         """
         Preprocess data for each process after spawning.
@@ -173,8 +186,16 @@ class BaseDataModule(L.LightningDataModule):
             logger.info(f"Debug mode is enabled. Loading sample data...")
             train_dataset = None
             if not self.skip_train:
-                train_dataset = self._preprocess_data(dataset=self._load_train_data(queries=queries), corpus=corpus, is_eval=False)
-            val_dataset = self._preprocess_data(dataset=self._load_val_data(queries=queries), corpus=corpus, is_eval=True)
+                train_dataset = self._preprocess_data(
+                    dataset=self._load_train_data(queries=queries),
+                    corpus=corpus,
+                    is_eval=False,
+                )
+            val_dataset = self._preprocess_data(
+                dataset=self._load_val_data(queries=queries),
+                corpus=corpus,
+                is_eval=True,
+            )
         else:
             # Load cached training dataset
             train_dataset = None
@@ -243,8 +264,8 @@ class BaseDataModule(L.LightningDataModule):
                 query_mapping=self.query_mapping,
                 nway=self.cfg_global.training.nway,
                 cache_nway=self.cfg.cache_nway,
-                q_skip_ids=self.q_tokenizer.skip_tok_ids,
-                d_skip_ids=self.d_tokenizer.skip_tok_ids,
+                q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
+                d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
                 granularity_level=self.cfg_global.model.granularity_level,
                 is_use_fine_grained_loss=self.cfg_global.model.is_use_fine_grained_loss,
             )
@@ -259,8 +280,8 @@ class BaseDataModule(L.LightningDataModule):
             query_mapping=self.query_mapping,
             nway=self.cfg.val.override_nway,
             cache_nway=self.cfg.val.override_nway,
-            q_skip_ids=self.q_tokenizer.skip_tok_ids,
-            d_skip_ids=self.d_tokenizer.skip_tok_ids,
+            q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
+            d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
             granularity_level=self.cfg_global.model.granularity_level,
             is_use_fine_grained_loss=self.cfg_global.model.is_use_fine_grained_loss,
         )
@@ -270,7 +291,9 @@ class BaseDataModule(L.LightningDataModule):
         self.val_dataset = val_dataset
         self.test_dataset = val_dataset
 
-    def get_shuffled_indices_to_avoid_qid_repetition(self, train_dataset: List[Dict]) -> List[int]:
+    def get_shuffled_indices_to_avoid_qid_repetition(
+        self, train_dataset: List[Dict]
+    ) -> List[int]:
         """Make sure that there are no repeated qids in the batch.
         So that in-batch negatives are valid."""
         # Load training qrels to avoid loading the entire training dataset (instead, we stream it during training)
@@ -288,7 +311,9 @@ class BaseDataModule(L.LightningDataModule):
 
         # Get new indices to avoid repeated qids in the mini-batch
         bsize = self.cfg_global.training.per_device_train_batch_size
-        indices: List[int] = get_indices_to_avoid_repeated_qids_in_minibatch(train_qids, bsize)
+        indices: List[int] = get_indices_to_avoid_repeated_qids_in_minibatch(
+            train_qids, bsize
+        )
         assert len(indices) == len(
             train_qids
         ), f"len(indices)={len(indices)}, len(train_qids)={len(train_qids)}, bsize={bsize}"
@@ -347,7 +372,7 @@ class BaseDataModule(L.LightningDataModule):
     @abc.abstractmethod
     def _load_train_data(self, queries: Dict) -> Union[Dataset, None]:
         raise NotImplementedError
-        
+
     @abc.abstractmethod
     def _load_val_data(self, queries: Dict) -> Dataset:
         raise NotImplementedError

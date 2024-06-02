@@ -19,7 +19,7 @@ from eagle.model.utils import (
     unwrap_logging_items,
 )
 from eagle.search import PLAID
-from eagle.tokenizer import DTokenizer, QTokenizer
+from eagle.tokenizer import Tokenizers
 from eagle.utils import handle_old_ckpt
 
 
@@ -34,11 +34,10 @@ class LightningNewModel(L.LightningModule):
         self.cfg = cfg.training
         self.train_batch_num = train_batch_num
         # Tmp
-        self.q_tokenizer = QTokenizer(cfg=cfg.q_tokenizer, model_name=cfg.model.name)
-        self.d_tokenizer = DTokenizer(cfg=cfg.d_tokenizer, model_name=cfg.model.name)
+        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
         # Load model
         self.model = NewModel(
-            cfg=cfg.model, q_tokenizer=self.q_tokenizer, d_tokenizer=self.d_tokenizer
+            cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
         self.swa_model = (
             AveragedModel(self.model)
@@ -81,8 +80,8 @@ class LightningNewModel(L.LightningModule):
                 len(batch["q_id"]) == 1
             ), f"Only one query is supported for analysis, but found {len(batch['q_id'])}"
             is_correct = metrics["test_custom@10"] == 1.0
-            query = self.q_tokenizer.tokenizer.decode(batch["q_tok_ids"][0])
-            q_toks = self.q_tokenizer.tokenizer.convert_ids_to_tokens(
+            query = self.tokenizers.q_tokenizer.tokenizer.decode(batch["q_tok_ids"][0])
+            q_toks = self.tokenizers.q_tokenizer.tokenizer.convert_ids_to_tokens(
                 batch["q_tok_ids"][0]
             )
             # Find the rank of the positive document (i.e., the first document in the list)
@@ -102,10 +101,10 @@ class LightningNewModel(L.LightningModule):
             print(f"Query {batch_idx}: {query}")
 
             def show(d_idx, rank=0):
-                doc = self.d_tokenizer.tokenizer.decode(
+                doc = self.tokenizers.d_tokenizer.tokenizer.decode(
                     doc_ids_list[d_idx], skip_special_tokens=True
                 )
-                doc_toks = self.d_tokenizer.tokenizer.convert_ids_to_tokens(
+                doc_toks = self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
                     doc_ids_list[d_idx]
                 )
                 max_q_d_idx_list = max_q_d_indices[d_idx].tolist()
@@ -426,13 +425,13 @@ class LightningNewModel(L.LightningModule):
         assert bsize, "Please provide the batch size for the indexing."
 
         # Tokenize
-        result = self.d_tokenizer(docs, padding=True, return_tensors="pt")
+        result = self.tokenizers.d_tokenizer(docs, padding=True, return_tensors="pt")
         ids, att_mask = result["input_ids"], result["attention_mask"]
         ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
         # Create mask
         # TODO: Need to align this with the trained model
-        # skip_ids = self.d_tokenizer.special_toks_ids + self.d_tokenizer.punctuations
-        skip_ids = self.d_tokenizer.special_toks_ids
+        # skip_ids = self.tokenizers.d_tokenizer.special_toks_ids + self.tokenizers.d_tokenizer.punctuations
+        skip_ids = self.tokenizers.d_tokenizer.special_toks_ids
         tok_mask = get_mask(input_ids=ids, skip_ids=skip_ids).unsqueeze(-1)
 
         # Create batch
