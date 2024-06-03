@@ -1,7 +1,6 @@
 import logging
 from typing import *
 
-from datasets import Dataset
 from omegaconf import DictConfig
 
 from eagle.dataset import InferenceDataset
@@ -21,11 +20,11 @@ class InferenceDataModule(BaseDataModule):
     def _load_train_data(self, queries: Dict) -> None:
         return None
 
-    def _load_val_data(self, queries: Dict) -> Dataset:
+    def _load_val_data(self, queries: Dict) -> InferenceDataset:
         val_raw_dataset = InferenceDataset(
             cfg=self.cfg.val,
             cfg_dataset=self.cfg,
             queries=queries,
         )
-        
+
         return val_raw_dataset

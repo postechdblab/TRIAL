@@ -1,15 +1,23 @@
+import copy
 import functools
 import logging
 import string
 from typing import *
 
+import hkkang_utils.concurrent as concurrent_utils
+import hkkang_utils.list as list_utils
 import torch
+import tqdm
 from omegaconf import DictConfig
 from transformers import AutoTokenizer
 
 logger = logging.getLogger("NewTokenizesr")
 
 DUMMY_TOK = "[dummy]"
+
+
+def pickleable_func(tokenizer, *args, **kwargs):
+    return tokenizer(*args, **kwargs)
 
 
 class BaseTokenizer:
@@ -74,10 +82,59 @@ class BaseTokenizer:
         self, texts: List[str], padding=False, return_tensors: str = None
     ) -> torch.Tensor:
         texts: List[str] = list(map(self._preprocess_text, texts))
-        return self.tokenizer(
-            texts,
-            padding=padding,
-            truncation=True,
-            max_length=self.cfg.max_len,
-            return_tensors=return_tensors,
-        )
+        batch_size = 10000
+
+        if len(texts) > batch_size:
+            if True:
+                chunks = list_utils.divide_into_chunks(texts, 32)
+                multiprocessor = concurrent_utils.MultiProcessor(num_workers=32)
+                logger.info("Tokenizing texts in parallel")
+                for i in range(32):
+                    multiprocessor.run(
+                        pickleable_func,
+                        copy.deepcopy(self.tokenizer),
+                        chunks[i],
+                        padding=padding,
+                        truncation=True,
+                        max_length=self.cfg.max_len,
+                        return_tensors=return_tensors,
+                    )
+                multiprocessor.join()
+                results = multiprocessor.results
+                input_ids = []
+                attention_mask = []
+                for result in results:
+                    input_ids.extend(result["input_ids"])
+                    attention_mask.extend(result["attention_mask"])
+                tokenized_texts = {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                }
+                logger.info("Done!")
+            elif False:
+                logger.info(f"Tokenizing {len(texts)} texts in batches of {batch_size}")
+                input_ids = []
+                attention_mask = []
+                for i in tqdm.tqdm(range(0, len(texts), batch_size)):
+                    tmp = self.tokenizer(
+                        texts[i : i + batch_size],
+                        padding=padding,
+                        truncation=True,
+                        max_length=self.cfg.max_len,
+                        return_tensors=return_tensors,
+                    )
+                    input_ids.extend(tmp["input_ids"])
+                    attention_mask.extend(tmp["attention_mask"])
+                tokenized_texts = {
+                    "input_ids": input_ids,
+                    "attention_mask": attention_mask,
+                }
+        else:
+            tokenized_texts = self.tokenizer(
+                texts,
+                padding=padding,
+                truncation=True,
+                max_length=self.cfg.max_len,
+                return_tensors=return_tensors,
+            )
+        return tokenized_texts

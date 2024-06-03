@@ -363,16 +363,17 @@ def read_corpus(path: str) -> Dict[str, str]:
     corpus: Dict[str, str] = {str(doc["_id"]): doc["text"] for doc in corpus}
     return corpus
 
+
 def read_queries(path: str) -> Dict[str, str]:
-    queries: List[Dict] = file_utils.read_json_file(
-            path, auto_detect_extension=True
-        )
+    queries: List[Dict] = file_utils.read_json_file(path, auto_detect_extension=True)
     queries: Dict[str, str] = {query["_id"]: query["text"] for query in queries}
     return queries
+
 
 def read_qrels_qids(path: str) -> List[str]:
     qrels = file_utils.read_csv_file(path, delimiter="\t", first_row_as_header=True)
     return [item["query-id"] for item in qrels]
+
 
 def preprocess(example: Dict, unbatch: bool = False, *args, **kwargs) -> Dict:
     if type(example["q_texts"]) == list:
@@ -501,7 +502,9 @@ def preprocess_batch(
 
     if "pos_doc_scores" in example_batch:
         distillation_scores: List[List[float]] = []
-        for pos_doc_score, neg_doc_scores in zip(example_batch["pos_doc_scores"], example_batch["neg_doc_scores_list"]):
+        for pos_doc_score, neg_doc_scores in zip(
+            example_batch["pos_doc_scores"], example_batch["neg_doc_scores_list"]
+        ):
             distillation_scores.append([pos_doc_score] + neg_doc_scores)
         result["distillation_scores"] = distillation_scores
 
@@ -603,8 +606,13 @@ def collate_fn(input_dics: List[Dict]) -> Dict:
             padded_values = [dic[key] for dic in input_dics]
         elif key in ["pos_doc_ids", "neg_doc_ids"]:
             continue
-        elif key =="distillation_scores":
-            padded_values = torch.nn.functional.log_softmax(torch.tensor([dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"), dim=-1)
+        elif key == "distillation_scores":
+            padded_values = torch.nn.functional.log_softmax(
+                torch.tensor(
+                    [dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"
+                ),
+                dim=-1,
+            )
         else:
             raise ValueError(f"Unsupported key: {key}")
         new_dict[key] = padded_values

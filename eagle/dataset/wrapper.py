@@ -1,14 +1,9 @@
 import logging
 from typing import *
 
-import hkkang_utils.file as file_utils
-from datasets import Dataset
-
-from eagle.dataset.utils import (
-    add_doc_ranges_and_mask,
-    add_query_ranges_and_mask,
-    is_token_included,
-)
+from eagle.dataset.base_dataset import BaseDataset
+from eagle.dataset.utils import (add_doc_ranges_and_mask,
+                                 add_query_ranges_and_mask, is_token_included)
 
 logger = logging.getLogger("DatasetWrapper")
 
@@ -16,7 +11,7 @@ logger = logging.getLogger("DatasetWrapper")
 class DatasetWrapper:
     def __init__(
         self,
-        dataset: Dataset,
+        dataset: BaseDataset,
         indices: Optional[List[int]] = None,
         q_word_ranges: Optional[List[Tuple[int, int]]] = None,
         q_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
@@ -91,8 +86,8 @@ class DatasetWrapper:
             )
         shuff_idx = self.indices[idx]
         data = self.dataset[shuff_idx]
+        # Replace the nway
         if self.nway < self.cache_nway:
-            # Replace the nway
             data["doc_tok_ids"] = data["doc_tok_ids"][: self.nway]
             data["doc_tok_att_mask"] = data["doc_tok_att_mask"][: self.nway]
             if "distillation_scores" in data:
