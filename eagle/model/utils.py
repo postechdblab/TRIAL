@@ -48,7 +48,11 @@ def unwrap_logging_items(loss_dic: Dict, target_key: str = None) -> Dict:
             for key, value in loss_dic.items()
             if target_key in key
         }
-    return {key: value for key, value in loss_dic.items() if value is not None and value != 0}
+    return {
+        key: value
+        for key, value in loss_dic.items()
+        if value is not None and value != 0
+    }
 
 
 def append_dummy_pid(
@@ -130,12 +134,13 @@ def get_weight_layer(
     strategy: str, input_dim: int, intermediate_dim: int, out_dim: int
 ) -> torch.nn.Module:
     layer = None
+    use_bias = out_dim != 1
     if strategy == "sigmoid":
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
             torch.nn.Mish(),
-            torch.nn.Linear(intermediate_dim, out_dim),
+            torch.nn.Linear(intermediate_dim, out_dim, bias=use_bias),
             torch.nn.Sigmoid(),
         )
     elif strategy == "relu":
@@ -143,7 +148,7 @@ def get_weight_layer(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
             torch.nn.Mish(),
-            torch.nn.Linear(intermediate_dim, out_dim),
+            torch.nn.Linear(intermediate_dim, out_dim, bias=use_bias),
             torch.nn.ReLU(),
         )
     elif strategy == "attention":
