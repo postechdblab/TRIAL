@@ -66,15 +66,15 @@ class NewModel(torch.nn.Module):
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
-            self.llm.config.hidden_size, cfg.out_dim, bias=False
+            self.llm.config.hidden_size, cfg.out_dim, bias=True
         )
-        initialize_weights(self.tok_projection_layer)
+        # initialize_weights(self.tok_projection_layer)
         self.cls_projection_layer = self.__create_linear_layers_for_multi_granularity(
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=self.llm.config.hidden_size // 2,
             out_dim=cfg.out_dim,
         )
-        initialize_weights(self.cls_projection_layer)
+        # initialize_weights(self.cls_projection_layer)
         self.phrase_projection_layer = (
             self.__create_linear_layers_for_multi_granularity(
                 input_dim=self.llm.config.hidden_size,
@@ -83,7 +83,7 @@ class NewModel(torch.nn.Module):
                 force=self.is_only_phrase_score,
             )
         )
-        initialize_weights(self.phrase_projection_layer)
+        # initialize_weights(self.phrase_projection_layer)
         self.score_granularity_coeff_layer = (
             torch.nn.Sequential(
                 torch.nn.Linear(self.llm.config.hidden_size, 3), torch.nn.Softmax(dim=1)
@@ -91,7 +91,7 @@ class NewModel(torch.nn.Module):
             if self.is_use_dynamic_granularity_coeff
             else None
         )
-        initialize_weights(self.score_granularity_coeff_layer)
+        # initialize_weights(self.score_granularity_coeff_layer)
 
         # Pooling for phrase level embeddings
         self.reduce_strategy = cfg.reduce_strategy
@@ -101,12 +101,12 @@ class NewModel(torch.nn.Module):
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
-        initialize_weights(self.q_weight_layer)
+        # initialize_weights(self.q_weight_layer)
         self.d_weight_layer = self.__create_d_weight_layer(
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
-        initialize_weights(self.d_weight_layer)
+        # initialize_weights(self.d_weight_layer)
         self.d_weight_layer_norm = (
             torch.nn.LayerNorm(self.llm.config.hidden_size)
             if self.is_use_d_weight
@@ -141,6 +141,9 @@ class NewModel(torch.nn.Module):
                 assert (
                     name in renamed_params
                 ), f"Cannot find {name} in the loaded params"
+                if name not in renamed_params:
+                    logger.info(f"Cannot find {name} in the loaded params")
+                    continue
                 param.data = renamed_params[name]
                 found_params.append(name)
             not_found_params = set(renamed_params.keys()) - set(found_params)
