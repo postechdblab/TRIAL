@@ -144,13 +144,12 @@ def get_weight_layer(
     strategy: str, input_dim: int, intermediate_dim: int, out_dim: int
 ) -> torch.nn.Module:
     layer = None
-    use_bias = out_dim != 1
     if strategy == "sigmoid":
         layer = torch.nn.Sequential(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
             torch.nn.Mish(),
-            torch.nn.Linear(intermediate_dim, out_dim, bias=use_bias),
+            torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.Sigmoid(),
         )
     elif strategy == "relu":
@@ -158,7 +157,7 @@ def get_weight_layer(
             torch.nn.Linear(input_dim, intermediate_dim),
             torch.nn.LayerNorm(intermediate_dim),
             torch.nn.Mish(),
-            torch.nn.Linear(intermediate_dim, out_dim, bias=use_bias),
+            torch.nn.Linear(intermediate_dim, out_dim),
             torch.nn.ReLU(),
         )
     elif strategy == "attention":
