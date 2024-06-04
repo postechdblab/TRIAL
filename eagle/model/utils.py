@@ -5,6 +5,16 @@ from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
 
+def initialize_weights(m):
+    if isinstance(m, torch.nn.Sequential):
+        for layer in m:
+            initialize_weights(layer)
+    if isinstance(m, torch.nn.Linear):
+        torch.nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
+
+
 def _sort_by_length(ids, mask, bsize):
     if ids.size(0) <= bsize:
         return ids, mask, torch.arange(ids.size(0))
@@ -48,7 +58,11 @@ def unwrap_logging_items(loss_dic: Dict, target_key: str = None) -> Dict:
             for key, value in loss_dic.items()
             if target_key in key
         }
-    return {key: value for key, value in loss_dic.items() if value is not None and value != 0}
+    return {
+        key: value
+        for key, value in loss_dic.items()
+        if value is not None and value != 0
+    }
 
 
 def append_dummy_pid(

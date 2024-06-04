@@ -53,6 +53,10 @@ class BaseTokenizer:
             toks.append(DUMMY_TOK.replace("]", f"{i}]"))
         return toks
 
+    @property
+    def model_name(self) -> str:
+        return self.name.split("/")[-1].split("-")[0]
+
     @functools.cached_property
     def special_toks_ids(self) -> List[int]:
         tokens = [

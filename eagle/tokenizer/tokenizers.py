@@ -20,3 +20,10 @@ class Tokenizers:
     def vocab_num(self) -> int:
         """Return the number of unique tokens in the entire tokenizers set."""
         return max(len(self.q_tokenizer), len(self.d_tokenizer))
+
+    @property
+    def model_name(self) -> str:
+        assert (
+            self.q_tokenizer.model_name == self.d_tokenizer.model_name
+        ), f"Model names are different: {self.q_tokenizer.model_name} vs {self.d_tokenizer.model_name}"
+        return self.q_tokenizer.model_name

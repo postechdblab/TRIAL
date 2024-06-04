@@ -19,6 +19,7 @@ from eagle.model.utils import (
     get_weight_layer,
     modify_execution_device,
     modify_grad,
+    initialize_weights,
 )
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import Tokenizers
@@ -67,11 +68,13 @@ class NewModel(torch.nn.Module):
         self.tok_projection_layer = torch.nn.Linear(
             self.llm.config.hidden_size, cfg.out_dim, bias=False
         )
+        initialize_weights(self.tok_projection_layer)
         self.cls_projection_layer = self.__create_linear_layers_for_multi_granularity(
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=self.llm.config.hidden_size // 2,
             out_dim=cfg.out_dim,
         )
+        initialize_weights(self.cls_projection_layer)
         self.phrase_projection_layer = (
             self.__create_linear_layers_for_multi_granularity(
                 input_dim=self.llm.config.hidden_size,
@@ -80,6 +83,7 @@ class NewModel(torch.nn.Module):
                 force=self.is_only_phrase_score,
             )
         )
+        initialize_weights(self.phrase_projection_layer)
         self.score_granularity_coeff_layer = (
             torch.nn.Sequential(
                 torch.nn.Linear(self.llm.config.hidden_size, 3), torch.nn.Softmax(dim=1)
@@ -87,6 +91,7 @@ class NewModel(torch.nn.Module):
             if self.is_use_dynamic_granularity_coeff
             else None
         )
+        initialize_weights(self.score_granularity_coeff_layer)
 
         # Pooling for phrase level embeddings
         self.reduce_strategy = cfg.reduce_strategy
@@ -96,10 +101,12 @@ class NewModel(torch.nn.Module):
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
+        initialize_weights(self.q_weight_layer)
         self.d_weight_layer = self.__create_d_weight_layer(
             input_dim=self.llm.config.hidden_size,
             intermediate_dim=cfg.out_dim,
         )
+        initialize_weights(self.d_weight_layer)
         self.d_weight_layer_norm = (
             torch.nn.LayerNorm(self.llm.config.hidden_size)
             if self.is_use_d_weight

@@ -1,5 +1,4 @@
 bitarray
-datasets
 gitpython
 spacy[cuda12x]
 spacy-transformers

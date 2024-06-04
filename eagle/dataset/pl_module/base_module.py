@@ -6,7 +6,6 @@ from typing import *
 
 import hkkang_utils.file as file_utils
 import lightning as L
-from datasets import Dataset
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
@@ -15,7 +14,6 @@ from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
 from eagle.dataset.utils import (
     collate_fn,
     get_indices_to_avoid_repeated_qids_in_minibatch,
-    preprocess,
     read_compressed,
     read_corpus,
     read_qrels_qids,
@@ -47,11 +45,11 @@ class BaseDataModule(L.LightningDataModule):
 
     @property
     def corpus_cache_path(self) -> str:
-        return self.corpus_path + ".tok.cache"
+        return self.corpus_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
     def queries_cache_path(self) -> str:
-        return self.queries_path + ".tok.cache"
+        return self.queries_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
     def q_word_range_path(self) -> str:
@@ -79,6 +77,7 @@ class BaseDataModule(L.LightningDataModule):
 
     @functools.cached_property
     def corpus_mapping(self) -> Dict[str, int]:
+        """Map document keys to indices."""
         path = self.corpus_path
         assert path.endswith(".jsonl"), f"path={path}"
         cache_path = path + ".mapping.cache"
@@ -92,6 +91,7 @@ class BaseDataModule(L.LightningDataModule):
 
     @functools.cached_property
     def query_mapping(self) -> Dict[str, int]:
+        """Map query keys to indices."""
         path = self.queries_path
         assert path.endswith(".jsonl"), f"path={path}"
         cache_path = path + ".mapping.cache"
@@ -159,23 +159,20 @@ class BaseDataModule(L.LightningDataModule):
         )
 
         # Load word and phrase ranges for query and document
-        logger.info(f"Loading word and phrase ranges...")
         q_word_ranges = q_phrase_ranges = d_word_ranges = d_phrase_ranges = None
-        # Load word ranges
-        need_to_load_ranges = self.cfg_global.model.granularity_level != "token"
-        if need_to_load_ranges and os.path.exists(self.q_word_range_path):
+        if self.cfg_global.model.granularity_level != "token":
+            logger.info(f"Loading word and phrase ranges...")
+            # Load word ranges
             q_word_ranges = file_utils.read_pickle_file(self.q_word_range_path)
-        if need_to_load_ranges and os.path.exists(self.d_word_range_path):
             d_word_ranges = file_utils.read_pickle_file(self.d_word_range_path)
-        # Load phrase ranges
-        if need_to_load_ranges and os.path.exists(self.q_phrase_range_path):
+            # Load phrase ranges
             q_phrase_ranges = file_utils.read_pickle_file(self.q_phrase_range_path)
-        if need_to_load_ranges and os.path.exists(self.d_phrase_range_path):
             d_phrase_ranges = file_utils.read_pickle_file(self.d_phrase_range_path)
 
         # Shuffle data to avoid qid repetition in the mini-batch
         indices = None
         if not self.cfg.is_debug and not self.skip_train:
+            logger.info(f"Shuffling data to avoid qid repetition in the mini-batch...")
             indices = self.get_shuffled_indices_to_avoid_qid_repetition(train_dataset)
 
         # Create DatasetWrapper
@@ -265,7 +262,7 @@ class BaseDataModule(L.LightningDataModule):
         return DataLoader(
             self.train_dataset,
             batch_size=self.cfg_global.training.per_device_train_batch_size,
-            num_workers=4,
+            num_workers=8,
             collate_fn=collate_fn,
         )
 
@@ -273,7 +270,7 @@ class BaseDataModule(L.LightningDataModule):
         return DataLoader(
             self.val_dataset,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
-            num_workers=2,
+            num_workers=4,
             collate_fn=collate_fn,
         )
 
@@ -281,7 +278,7 @@ class BaseDataModule(L.LightningDataModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
-            num_workers=2,
+            num_workers=4,
             collate_fn=collate_fn,
         )
 
