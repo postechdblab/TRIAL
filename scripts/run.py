@@ -11,9 +11,11 @@ from omegaconf import DictConfig
 from colbert.indexer import Indexer
 from colbert.infra import ColBERTConfig, Run, RunConfig
 from eagle.dataset import ContrastiveDataModule, InferenceDataModule
-from eagle.dataset.utils import (add_doc_ranges_and_mask,
-                                 add_query_ranges_and_mask, collate_fn,
-                                 preprocess)
+from eagle.dataset.utils import (
+    add_doc_ranges_and_mask,
+    add_query_ranges_and_mask,
+    collate_fn,
+)
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import DTokenizer, QTokenizer
@@ -53,6 +55,7 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
             "pos_doc_text_list": document_text,
             "neg_doc_texts_list": [],
         }
+        raise NotImplementedError("Fix below code")
         preprocessed_batch = preprocess(
             input_dict,
             q_tokenizer=q_tokenizer,

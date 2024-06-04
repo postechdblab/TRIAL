@@ -11,6 +11,8 @@ import tqdm
 from omegaconf import DictConfig
 from transformers import AutoTokenizer
 
+from eagle.utils import handle_old_ckpt
+
 logger = logging.getLogger("NewTokenizesr")
 
 DUMMY_TOK = "[dummy]"
@@ -25,10 +27,11 @@ class BaseTokenizer:
         self.cfg = cfg
         self.name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        new_tok_offset = handle_old_ckpt(self.cfg, "new_tok_offset")
         self.tokenizer.add_special_tokens(
             {
                 "additional_special_tokens": self._get_dummy_tokens(
-                    self.cfg.new_tok_offset
+                    0 if new_tok_offset is None else new_tok_offset
                 )
                 + [self.cfg.special_tok]
             }
