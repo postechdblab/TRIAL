@@ -7,12 +7,13 @@ import hkkang_utils.file as file_utils
 import hkkang_utils.list as list_utils
 import hkkang_utils.slack as slack_utils
 import hydra
+import torch
 import tqdm
+from omegaconf import DictConfig
 
-from eagle.dataset.utils import extract_word_range_with_multi_tokens
-from eagle.phrase.clean import unidecode_text
+from eagle.dataset.utils import extract_word_range_with_multi_tokens, read_compressed
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.tokenizer import BaseTokenizer, QTokenizer
+from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
 
@@ -50,18 +51,35 @@ def analyze(text: str, tokenizer, phrase_indices_by_token: List[Tuple[int]]) -> 
 
 
 def extract(
-    dir_path: str,
-    dataset_path: str,
-    tokenizer_cfg: Dict,
+    cfg: DictConfig,
+    dataset_name: str,
     split_i: int,
     total: int,
     index_type: str,
     prefix: str,
 ) -> None:
-    # Configs
     logger.info(f"I: {split_i}, Total: {total}")
-    tokenizer = QTokenizer(tokenizer_cfg)
+    dir_path = os.path.join("/root/EAGLE/data/", dataset_name)
+    if prefix == "query":
+        filename = "queries.jsonl"
+    elif prefix == "doc":
+        filename = "corpus.jsonl"
+    else:
+        raise ValueError(f"Invalid prefix: {prefix}")
+    dataset_path = os.path.join(dir_path, filename)
+
+    tokenizers = Tokenizers(
+        q_cfg=cfg.q_tokenizer, d_cfg=cfg.d_tokenizer, model_name=cfg.model.name
+    )
+    tokenizer = tokenizers.q_tokenizer if prefix == "query" else tokenizers.d_tokenizer
     extractor = PhraseExtractor(tokenizer=tokenizer)
+
+    # Load tokenized text
+    tokenized_path = os.path.join(
+        dir_path, f"{filename}.{tokenizers.model_name}-tok.cache"
+    )
+    logger.info(f"Loading the tokenizered data from {tokenized_path}")
+    tokenized_data = read_compressed(tokenized_path)
 
     # Get the file path
     file_name = get_file_name(prefix=prefix, index_type=index_type)
@@ -87,19 +105,31 @@ def extract(
     for ci, chunk in enumerate(
         tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
     ):
+        ids = [str(item["_id"]) for item in chunk]
         texts = [item["text"] for item in chunk]
+        tok_ids = [tokenized_data[_id] for _id in ids]
         # if prefix == "query":
         # texts = [unidecode_text(t) for t in texts]
         if index_type == "word":
-            results = tokenizer(texts)["input_ids"]
             # Convert to token text
             toks_list = [
                 tokenizer.tokenizer.convert_ids_to_tokens(tok_ids)
-                for tok_ids in results
+                for tok_ids in tok_ids
             ]
             results = [extract_word_range_with_multi_tokens(toks) for toks in toks_list]
         else:
-            results = extractor(texts, max_tok_len=tokenizer_cfg.max_len)
+            attention_mask = [
+                torch.ones(len(tok_ids[i]), dtype=torch.bool)
+                for i in range(len(tok_ids))
+            ]
+            results = extractor(
+                texts,
+                max_tok_len=tokenizer.cfg.max_len,
+                tokenized_result={
+                    "input_ids": tok_ids,
+                    "attention_mask": attention_mask,
+                },
+            )
         all_results[ci] = results
 
     # Convert format
@@ -200,11 +230,9 @@ def main(cfg) -> None:
     if cfg.target_data == "query":
         prefix = "query"
         dataset_path = cfg.dataset.query_file
-        tokenizer_cfg = cfg.q_tokenizer
     elif cfg.target_data == "document":
         prefix = "doc"
         dataset_path = cfg.dataset.corpus_file
-        tokenizer_cfg = cfg.d_tokenizer
     else:
         raise ValueError(f"Invalid type: {cfg.type}")
 
@@ -220,11 +248,8 @@ def main(cfg) -> None:
         filter(output_dir_path=cfg.dir_path, index_type=cfg.index_type, prefix=prefix)
     elif cfg.op == "extract":
         extract(
-            dir_path=os.path.join(cfg.dataset.dir_path, cfg.dataset.name),
-            dataset_path=os.path.join(
-                cfg.dataset.dir_path, cfg.dataset.name, dataset_path
-            ),
-            tokenizer_cfg=tokenizer_cfg,
+            cfg=cfg,
+            dataset_name=cfg.dataset.name,
             split_i=cfg.i,
             total=cfg.total,
             index_type=cfg.index_type,

@@ -19,7 +19,7 @@ class PhraseExtractor:
         tokenized_result: Dict[str, List[int]] = None,
     ) -> List[List[Tuple[int]]]:
         # Parse the text with spacy
-        parsed_texts: List[Text] = self.spacy_model(texts)
+        parsed_texts: List[Text] = self.spacy_model.simple_forward(texts)
 
         # Tokenize
         if tokenized_result is None:

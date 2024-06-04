@@ -206,6 +206,23 @@ class SpacyModel(metaclass=pattern_utils.SingletonMetaWithArgs):
             self.model = spacy.load(model_name)
         self.ids = list(spacy.parts_of_speech.IDS.keys())
 
+    def simple_forward(
+        self, texts: List[str], batch_size: int = 300, show_progress: bool = False
+    ) -> List[Text]:
+        all_texts: List[Text] = []
+        for item in tqdm.tqdm(
+            self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
+        ):
+            e_text: List[Token] = []
+            for entity in item.ents:
+                e_text.append(
+                    Token(
+                        text=entity.text, pos=entity.label_, start_idx=entity.start_char
+                    )
+                )
+            all_texts.append(Text(text=item.text, tokens=e_text, named_entities=e_text))
+        return all_texts
+
     def __call__(
         self,
         texts: List[str],

@@ -4,8 +4,6 @@ import sys
 import unicodedata
 from typing import *
 
-import hkkang_utils.file as file_utils
-import torch
 from unidecode import unidecode
 
 all_chars = (chr(i) for i in range(sys.maxunicode))
