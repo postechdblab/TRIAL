@@ -55,7 +55,13 @@ class BaseTokenizer:
 
     @property
     def model_name(self) -> str:
-        return self.name.split("/")[-1].split("-")[0]
+        name = self.name.split("/")[-1]
+        sub_names = name.split("-")
+        if len(sub_names) > 2:
+            final_name = "-".join(sub_names[:2])
+        else:
+            final_name = sub_names[0]
+        return final_name
 
     @functools.cached_property
     def special_toks_ids(self) -> List[int]:
