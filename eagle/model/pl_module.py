@@ -18,6 +18,7 @@ from eagle.model.utils import (
     append_dummy_pid,
     unwrap_logging_items,
 )
+from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
 from eagle.tokenizer import Tokenizers
 from eagle.utils import handle_old_ckpt
@@ -79,8 +80,11 @@ class LightningNewModel(L.LightningModule):
             assert (
                 len(batch["q_id"]) == 1
             ), f"Only one query is supported for analysis, but found {len(batch['q_id'])}"
+            spacy_model = SpacyModel()
             is_correct = metrics["test_custom@10"] == 1.0
-            query = self.tokenizers.q_tokenizer.tokenizer.decode(batch["q_tok_ids"][0])
+            query = self.tokenizers.q_tokenizer.tokenizer.decode(
+                batch["q_tok_ids"][0], skip_special_tokens=True
+            )
             q_toks = self.tokenizers.q_tokenizer.tokenizer.convert_ids_to_tokens(
                 batch["q_tok_ids"][0]
             )
@@ -163,6 +167,11 @@ class LightningNewModel(L.LightningModule):
         if tok_weights is not None:
             tok_weights = tok_weights.half()
 
+        # Get max positive document number
+        max_pos_doc_num = max(
+            [len(pos_doc_idxs) for pos_doc_idxs in batch["pos_doc_idxs"]]
+        )
+
         # Search the corpus with indexed document corpus
         all_pids: List = []
         all_scores: List = []
@@ -175,10 +184,24 @@ class LightningNewModel(L.LightningModule):
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
+            # number of positive doc ids to append
+            num_pids_to_append = (
+                max_pos_doc_num + max(self.searcher.ndocs, len(pids)) - len(pids)
+            )
             # Append the positive doc id if not found
-            pids, pos_indices = append_dummy_pid(pids=pids, target_pids=pos_doc_idxs)
+            pids, pos_indices = append_dummy_pid(
+                pids=pids,
+                target_pids=pos_doc_idxs,
+                max_num=num_pids_to_append,
+            )
             scores = torch.cat(
-                [scores, torch.tensor([0.0] * len(pos_doc_idxs), device=scores.device)]
+                [
+                    scores,
+                    torch.tensor(
+                        [0.0] * num_pids_to_append,
+                        device=scores.device,
+                    ),
+                ]
             )
             # Create labels
             labels = torch.zeros_like(scores)

@@ -66,7 +66,7 @@ def unwrap_logging_items(loss_dic: Dict, target_key: str = None) -> Dict:
 
 
 def append_dummy_pid(
-    pids: Union[List[int], torch.Tensor], target_pids: List[int]
+    pids: Union[List[int], torch.Tensor], target_pids: List[int], max_num: int
 ) -> Tuple[Union[List[int], torch.Tensor], List[int]]:
     """Prepare pid lists to evaluate the model with BEIR evaluation methods"""
     is_tensor = isinstance(pids, torch.Tensor)
@@ -86,6 +86,13 @@ def append_dummy_pid(
                     break
         else:
             pids_to_append.append(target_pid)
+    # Generate dummy pids
+    for i in range(max_num - len(target_pids)):
+        # Find the dummy index that is not in the pids list
+        for i in range(100000):
+            if i not in pids:
+                pids_to_append.append(i)
+                break
 
     # Append the dummy pid to the list
     pids.extend(pids_to_append)

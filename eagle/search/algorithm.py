@@ -82,7 +82,7 @@ def compute_maxsim(
         element_wise_scores, score_mask = StridedTensor(
             element_wise_scores, k_lengths, use_gpu=True
         ).as_padded_tensor()
-        k_mask = score_mask
+        k_mask = ~score_mask
 
     max_sim_scores = maxsim_from_element_wise_relevance_score(
         element_wise_scores=element_wise_scores, k_mask=k_mask

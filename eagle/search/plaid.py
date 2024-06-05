@@ -185,7 +185,9 @@ class PLAID:
         ), f"Length mismatch: {len(pids)} != {len(all_approx_scores)}"
 
         # Sort pids based on the approximated scores and get the topk pids
-        pids = pids[torch.topk(all_approx_scores, k=topk).indices]
+        pids = pids[
+            torch.topk(all_approx_scores, k=min(topk, len(all_approx_scores))).indices
+        ]
 
         return pids
 
