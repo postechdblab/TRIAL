@@ -22,7 +22,7 @@ from eagle.model.utils import (
 )
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import Tokenizers
-from eagle.utils import handle_old_ckpt
+from eagle.utils import add_config, handle_old_ckpt
 
 logger = logging.getLogger("NewModel")
 
@@ -154,6 +154,7 @@ class NewModel(torch.nn.Module):
             logger.info(
                 f"Updated {len(found_params)} parameters instances from the checkpoint"
             )
+            add_config(self.cfg, key="ckpt_path", value=None)
         return None
 
     @property
