@@ -9,6 +9,7 @@ import hkkang_utils.list as list_utils
 import torch
 import tqdm
 from omegaconf import DictConfig
+from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
 from eagle.utils import handle_old_ckpt
@@ -95,7 +96,7 @@ class BaseTokenizer:
         self, texts: List[str], padding=False, return_tensors: str = None
     ) -> torch.Tensor:
         texts: List[str] = list(map(self._preprocess_text, texts))
-        batch_size = 10000
+        batch_size = 100000
 
         if len(texts) > batch_size:
             if True:
@@ -119,11 +120,16 @@ class BaseTokenizer:
                 for result in results:
                     input_ids.extend(result["input_ids"])
                     attention_mask.extend(result["attention_mask"])
+
+                # Padd sequences
+                if padding:
+                    input_ids = pad_sequence(input_ids, batch_first=True)
+                    attention_mask = pad_sequence(attention_mask, batch_first=True)
+
                 tokenized_texts = {
                     "input_ids": input_ids,
                     "attention_mask": attention_mask,
                 }
-                logger.info("Done!")
             elif False:
                 logger.info(f"Tokenizing {len(texts)} texts in batches of {batch_size}")
                 input_ids = []
