@@ -24,7 +24,9 @@ def get_file_name(prefix: str, index_type: str) -> str:
     return f"{index_type}_indices.{prefix}.pkl"
 
 
-def fileter_file_names(file_names: List[str], total: int) -> List[str]:
+def filter_file_names(
+    file_names: List[str], total: int, prefix: str = None
+) -> List[str]:
     file_names = [f for f in file_names if ".pkl." in f]
     filtered_files = []
     for file in file_names:
@@ -34,7 +36,8 @@ def fileter_file_names(file_names: List[str], total: int) -> List[str]:
                 continue
         except:
             continue
-        filtered_files.append(file)
+        if prefix is not None and prefix in file:
+            filtered_files.append(file)
     assert (
         len(filtered_files) == total
     ), f"Total number of files is {len(filtered_files)} but expected {total}"
@@ -149,8 +152,8 @@ def merge(
         output_dir_path, get_file_name(prefix=prefix, index_type=index_type)
     )
     # List all the files in the directory
-    file_names = os.listdir(output_dir_path)
-    file_names = fileter_file_names(file_names, total)
+    file_names = sorted(os.listdir(output_dir_path))
+    file_names = filter_file_names(file_names, total, prefix=prefix)
     all_dict: Dict = {}
     logger.info(f"Reading total number of cache shards: {len(file_names)}")
     for file_name in tqdm.tqdm(file_names):
@@ -170,26 +173,24 @@ def merge(
         all_dict[shard_num] = all_values
 
     # Load corpus
-    logger.info(f"Loding the dataset from {dataset_path}")
-    dataset: List = file_utils.read_csv_file(
-        dataset_path, delimiter="\t", first_row_as_header=True
-    )
+    logger.info(f"Loading the dataset from {dataset_path}")
+    dataset: List = file_utils.read_jsonl_file(dataset_path)
 
     # Flatten list
     all_values: List[List[Tuple[int, int]]] = []
-    for key, values in all_dict.items():
-        all_values.extend(values)
+    for i in range(total):
+        all_values.extend(all_dict[i])
 
     # Perform further processing for empty values
     assert len(all_values) == len(
         dataset
     ), f"Length of all_values: {len(all_values)} != Length of dataset: {len(dataset)}"
-    empty_indices = [i for i, values in enumerate(all_values) if len(values) == 0]
+    # empty_indices = [i for i, values in enumerate(all_values) if len(values) == 0]
 
-    if empty_indices:
-        raise ValueError(
-            f"Found {len(empty_indices)} empty indices. Please run extract operation first."
-        )
+    # if empty_indices:
+    #     raise ValueError(
+    #         f"Found {len(empty_indices)} empty indices. Please run extract operation first."
+    #     )
 
     # Save the dictionary
     logger.info(
@@ -236,16 +237,22 @@ def main(cfg) -> None:
     else:
         raise ValueError(f"Invalid type: {cfg.type}")
 
+    # Get output directory
+    output_dir_path = os.path.join("/root/EAGLE/data/", cfg.dataset.name)
+    dataset_path = os.path.join(output_dir_path, dataset_path)
+
     if cfg.op == "merge":
         merge(
             dataset_path=dataset_path,
-            output_dir_path=cfg.dir_path,
+            output_dir_path=output_dir_path,
             total=cfg.total,
             index_type=cfg.index_type,
             prefix=prefix,
         )
     elif cfg.op == "filter":
-        filter(output_dir_path=cfg.dir_path, index_type=cfg.index_type, prefix=prefix)
+        filter(
+            output_dir_path=output_dir_path, index_type=cfg.index_type, prefix=prefix
+        )
     elif cfg.op == "extract":
         extract(
             cfg=cfg,

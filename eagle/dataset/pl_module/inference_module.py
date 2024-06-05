@@ -17,14 +17,17 @@ class InferenceDataModule(BaseDataModule):
     def train_qrels_path(self) -> str:
         return ""
 
-    def _load_train_data(self, queries: Dict) -> None:
+    def _load_train_data(self, tokenized_queries: Dict, tokenized_corpus: Dict) -> None:
         return None
 
-    def _load_val_data(self, queries: Dict) -> InferenceDataset:
+    def _load_val_data(
+        self, tokenized_queries: Dict, tokenized_corpus: Dict
+    ) -> InferenceDataset:
         val_raw_dataset = InferenceDataset(
             cfg=self.cfg.val,
             cfg_dataset=self.cfg,
-            queries=queries,
+            tokenized_queries=tokenized_queries,
+            tokenized_corpus=tokenized_corpus,
         )
 
         return val_raw_dataset

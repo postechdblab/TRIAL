@@ -21,14 +21,23 @@ class InferenceDataset(BaseDataset):
         self.tokenized_corpus = tokenized_corpus
 
     def __getitem__(self, idx: int) -> Tuple[int, List[str]]:
-        qid = self.data[idx]["id"]
-        pos_doc_ids = [item for item in self.data[idx]["answers"]]
-        # Convert data type
-        qid = str(qid)
-        pos_doc_ids = [str(item) for item in pos_doc_ids]
-        # Get token and attention mask
-        q_tok_ids = self.tokenized_queries[qid]
-        q_tok_att_mask = [True] * len(q_tok_ids)
+        if type(self.data[idx]) == list:
+            qid = str(self.data[idx][0])
+            pos_doc_ids = [str(self.data[idx][1])]
+            # Get token and attention mask
+            q_tok_ids = self.tokenized_queries[qid]
+            q_tok_att_mask = [True] * len(q_tok_ids)
+        elif type(self.data[idx]) == dict:
+            qid = self.data[idx]["id"]
+            pos_doc_ids = [item for item in self.data[idx]["answers"]]
+            # Convert data type
+            qid = str(qid)
+            pos_doc_ids = [str(item) for item in pos_doc_ids]
+            # Get token and attention mask
+            q_tok_ids = self.tokenized_queries[qid]
+            q_tok_att_mask = [True] * len(q_tok_ids)
+        else:
+            raise ValueError(f"Invalid data type: {type(self.data[idx])}")
 
         return {
             "q_id": qid,
