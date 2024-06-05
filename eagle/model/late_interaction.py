@@ -128,14 +128,23 @@ class NewModel(torch.nn.Module):
                     prefix_to_remove
                 ), f"Cannot find {prefix_to_remove} in {k}"
                 renamed_params[k[len(prefix_to_remove) :]] = v
+            # Replace the parameters
             found_params = []
             for name, param in self.named_parameters():
+                # Check the name exists in the loaded params
                 assert (
                     name in renamed_params
                 ), f"Cannot find {name} in the loaded params"
-                if name not in renamed_params:
-                    logger.info(f"Cannot find {name} in the loaded params")
-                    continue
+                # Check the dtype, shape, and device
+                assert (
+                    param.dtype == renamed_params[name].dtype
+                ), f"Type mismatch: {name} {param.dtype} vs {renamed_params[name].dtype}"
+                assert (
+                    param.shape == renamed_params[name].shape
+                ), f"Shape mismatch: {name} {param.shape} vs {renamed_params[name].shape}"
+                assert (
+                    param.device == renamed_params[name].device
+                ), f"Device mismatch: {name} {param.device} vs {renamed_params[name].device}"
                 param.data = renamed_params[name]
                 found_params.append(name)
             not_found_params = set(renamed_params.keys()) - set(found_params)
