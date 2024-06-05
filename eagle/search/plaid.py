@@ -8,7 +8,10 @@ from colbert.indexing.codecs.residual_embeddings_strided import (
 )
 from colbert.search.index_loader import IndexLoader
 from colbert.search.strided_tensor import StridedTensor
-from eagle.search.algorithm import compute_sum_maxsim, reduce_element_wise_relevance_scores
+from eagle.search.algorithm import (
+    compute_sum_maxsim,
+    reduce_element_wise_relevance_scores,
+)
 
 
 class PLAID:
@@ -169,7 +172,7 @@ class PLAID:
                 approx_scores_strided.as_padded_tensor()
             )
             approx_scores, _ = reduce_element_wise_relevance_scores(
-                element_wise_scores=approx_scores_padded, k_mask=approx_scores_mask
+                element_wise_scores=approx_scores_padded, k_mask=~approx_scores_mask
             )
 
             # Append the approximated scores to the list

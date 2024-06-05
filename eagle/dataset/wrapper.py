@@ -109,9 +109,10 @@ class DatasetWrapper:
         d_phrase_ranges: List[List[Tuple]] = [[] for _ in range(len(pindices))]
         if self.granularity_level == "token":
             q_word_ranges = [(i, i + 1) for i in range(len(data["q_tok_ids"]))]
-            d_word_ranges = [
-                [(i, i + 1) for i in range(len(item))] for item in data["doc_tok_ids"]
-            ]
+            if "doc_tok_ids" in data:
+                d_word_ranges = [
+                    [(i, i + 1) for i in range(len(item))] for item in data["doc_tok_ids"]
+                ]
         elif self.granularity_level in ["word"]:
             q_word_ranges = self.q_word_ranges[qidx]
             d_word_ranges = [self.d_word_ranges[i] for i in pindices]
@@ -127,13 +128,14 @@ class DatasetWrapper:
             skip_ids=self.q_skip_ids,
             use_coarse_emb=self.is_use_multi_granularity,
         )
-        data = add_doc_ranges_and_mask(
-            input_dict=data,
-            word_ranges=d_word_ranges,
-            phrase_ranges=d_phrase_ranges,
-            skip_ids=self.d_skip_ids,
-            use_coarse_emb=self.is_use_multi_granularity,
-        )
+        if "doc_tok_ids" in data:
+            data = add_doc_ranges_and_mask(
+                input_dict=data,
+                word_ranges=d_word_ranges,
+                phrase_ranges=d_phrase_ranges,
+                skip_ids=self.d_skip_ids,
+                use_coarse_emb=self.is_use_multi_granularity,
+            )
         # Add index for positive document
         data["pos_doc_idxs"] = [self.corpus_mapping[i] for i in data["pos_doc_ids"]]
 
