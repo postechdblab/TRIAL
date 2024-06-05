@@ -206,6 +206,25 @@ class SpacyModel(metaclass=pattern_utils.SingletonMetaWithArgs):
             self.model = spacy.load(model_name)
         self.ids = list(spacy.parts_of_speech.IDS.keys())
 
+    def get_pos_tag(
+        self, texts: List[str], batch_size: int = 300, show_progress: bool = False
+    ) -> List[Text]:
+        pos_tags = []
+        for item in tqdm.tqdm(
+            self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
+        ):
+            pos_tags.append(
+                Text(
+                    text=item.text,
+                    tokens=[
+                        Token(text=token.text, pos=token.pos_, start_idx=token.idx)
+                        for token in item
+                    ],
+                    named_entities=[],
+                )
+            )
+        return pos_tags
+
     def simple_forward(
         self, texts: List[str], batch_size: int = 300, show_progress: bool = False
     ) -> List[Text]:
