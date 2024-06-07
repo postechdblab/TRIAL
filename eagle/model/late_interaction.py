@@ -68,21 +68,21 @@ class NewModel(torch.nn.Module):
             self.llm.config.hidden_size, cfg.out_dim, bias=False
         )
         self.cls_projection_layer = self.__create_linear_layers_for_multi_granularity(
-            input_dim=self.llm.config.hidden_size,
-            intermediate_dim=self.llm.config.hidden_size // 2,
+            input_dim=cfg.out_dim,
+            intermediate_dim=cfg.out_dim,
             out_dim=cfg.out_dim,
         )
         self.phrase_projection_layer = (
             self.__create_linear_layers_for_multi_granularity(
-                input_dim=self.llm.config.hidden_size,
-                intermediate_dim=self.llm.config.hidden_size // 2,
+                input_dim=cfg.out_dim,
+                intermediate_dim=cfg.out_dim,
                 out_dim=cfg.out_dim,
                 force=self.is_only_phrase_score,
             )
         )
         self.score_granularity_coeff_layer = (
             torch.nn.Sequential(
-                torch.nn.Linear(self.llm.config.hidden_size, 3), torch.nn.Softmax(dim=1)
+                torch.nn.Linear(cfg.out_dim, 3), torch.nn.Softmax(dim=1)
             )
             if self.is_use_dynamic_granularity_coeff
             else None
@@ -92,17 +92,15 @@ class NewModel(torch.nn.Module):
 
         # Layers to predict the weights (i.e., importance)
         self.q_weight_layer = self.__create_q_weight_layer(
-            input_dim=self.llm.config.hidden_size,
+            input_dim=cfg.out_dim,
             intermediate_dim=cfg.out_dim,
         )
         self.d_weight_layer = self.__create_d_weight_layer(
-            input_dim=self.llm.config.hidden_size,
+            input_dim=cfg.out_dim,
             intermediate_dim=cfg.out_dim,
         )
         self.d_weight_layer_norm = (
-            torch.nn.LayerNorm(self.llm.config.hidden_size)
-            if self.is_use_d_weight
-            else None
+            torch.nn.LayerNorm(cfg.out_dim) if self.is_use_d_weight else None
         )
 
         # Cross-attention layer for interacting query and documents
@@ -112,7 +110,7 @@ class NewModel(torch.nn.Module):
         self.regularization = self.__create_regularization_func(
             strategy=cfg.w_regularize_strategy
         )
-        self.__load_checkpoint()
+        # self.__load_checkpoint()
 
     def __load_checkpoint(self) -> None:
         if self.cfg.ckpt_path:
@@ -225,8 +223,8 @@ class NewModel(torch.nn.Module):
     def __create_cross_att_layer(self) -> torch.nn.Module:
         if self.is_use_d_weight:
             return torch.nn.MultiheadAttention(
-                embed_dim=self.llm.config.hidden_size,
-                num_heads=self.llm.config.num_attention_heads,
+                embed_dim=self.cfg.out_dim,
+                num_heads=8,
                 batch_first=True,
             )
         return None
@@ -367,7 +365,7 @@ class NewModel(torch.nn.Module):
             tok_ids=doc_tok_ids,
             att_mask=doc_tok_att_mask,
             scatter_indices=doc_scatter_indices,
-            q_vectors=q_encoded,
+            q_vectors=q_tok_projected,
             q_mask=q_tok_mask,
             nway=nway,
             is_eval=is_eval,
@@ -603,17 +601,21 @@ class NewModel(torch.nn.Module):
         encoded_tok_vectors = self.llm(
             tok_ids, attention_mask=att_mask
         ).last_hidden_state
+
+        # Perform projection for token
+        projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
+
         if self.is_use_multi_granularity:
             # Embedding to coarse level
             encoded_phrase_vectors = get_vectors_from_ranges(
-                tensors=encoded_tok_vectors,
+                tensors=projected_tok_vectors,
                 scatter_indices=scatter_indices,
                 reduce=self.reduce_strategy,
             )
 
             # Perform projection for cls and phrase
             projected_cls_vectors = self.cls_projection_layer(
-                encoded_tok_vectors[:, 0:1]
+                projected_tok_vectors[:, 0:1]
             )
             projected_phrase_vectors = self.phrase_projection_layer(
                 encoded_phrase_vectors
@@ -621,7 +623,7 @@ class NewModel(torch.nn.Module):
         elif self.is_only_phrase_score:
             # Embedding to coarse level
             encoded_phrase_vectors = get_vectors_from_ranges(
-                tensors=encoded_tok_vectors,
+                tensors=projected_tok_vectors,
                 scatter_indices=scatter_indices,
                 reduce=self.reduce_strategy,
             )
@@ -632,9 +634,6 @@ class NewModel(torch.nn.Module):
         else:
             # Dummy values
             projected_cls_vectors = projected_phrase_vectors = None
-
-        # Perform projection for token
-        projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
         return (
             encoded_tok_vectors,
@@ -679,7 +678,7 @@ class NewModel(torch.nn.Module):
         tok_weights = None
         phrase_weights = None
         if self.is_use_q_weight:
-            tok_weights = self.q_weight_layer(encoded_tok_vectors)
+            tok_weights = self.q_weight_layer(projected_tok_vectors)
             if projected_phrase_vectors is not None:
                 phrase_weights = get_vectors_from_ranges(
                     tensors=tok_weights,
@@ -778,7 +777,7 @@ class NewModel(torch.nn.Module):
             # Perform cross-attention
             cross_encoded_tok_vectors_intra, cross_attn_weights_intra = (
                 self.cross_att_layer(
-                    encoded_tok_vectors,
+                    projected_tok_vectors,
                     q_vectors_intra,
                     q_vectors_intra,
                     key_padding_mask=q_mask_intra.squeeze(-1),
@@ -786,7 +785,7 @@ class NewModel(torch.nn.Module):
             )
             # Add and normalize
             cross_encoded_tok_vectors_intra = (
-                cross_encoded_tok_vectors_intra + encoded_tok_vectors
+                cross_encoded_tok_vectors_intra + projected_tok_vectors
             )
             cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(
                 cross_encoded_tok_vectors_intra
@@ -813,7 +812,7 @@ class NewModel(torch.nn.Module):
                     return_as_tensor=True,
                     device=encoded_tok_vectors.device,
                 )
-                selected_encoded_tok_vectors = encoded_tok_vectors[doc_indices]
+                selected_encoded_tok_vectors = projected_tok_vectors[doc_indices]
                 # Perform cross-attention
                 cross_encoded_tok_vectors_inter, cross_attn_weights_inter = (
                     self.cross_att_layer(
