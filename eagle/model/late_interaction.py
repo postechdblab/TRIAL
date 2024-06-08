@@ -53,10 +53,6 @@ class NewModel(torch.nn.Module):
             cfg, "is_use_dynamic_granularity_coeff"
         )
         self.is_only_phrase_score = handle_old_ckpt(cfg, "is_only_phrase_score")
-        # About quantization
-        self.is_use_lora = handle_old_ckpt(cfg, "is_use_lora")
-        self.is_use_quantization = handle_old_ckpt(cfg, "is_use_quantization")
-        self.quantization_bit = handle_old_ckpt(cfg, "quantization_bit")
         self.granularity_level = handle_old_ckpt(cfg, "granularity_level")
         # Backbone model (The attribute name should be llm to be compatible with the optimizer in LightningModule)
         self.llm = self.__create_backbone_model(
@@ -172,52 +168,22 @@ class NewModel(torch.nn.Module):
         )
 
     def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:
-        # Load the BERT-base-uncased model configuration
-        quantization_config = None
-        if self.is_use_quantization:
-            if self.quantization_bit == 4:
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=False,
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                )
-            elif self.quantization_bit == 8:
-                quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-            else:
-                raise ValueError(
-                    f"Unsupported quantization bit: {self.quantization_bit}"
-                )
-
-        # Load model and resize the token embeddings
+        # Load pretrained backbone model
         model = AutoModel.from_pretrained(
             name,
-            quantization_config=quantization_config,
             device_map=torch.device("cpu"),
         )
+
+        # Resize the token embeddings
         model.resize_token_embeddings(vocab_num)
+
+        # Remove redundant layers
         if "bert-" in name:
             model.pooler = None
         if "t5" in name:
             model.decoder = None
             model = model.encoder
 
-        # Prepare model for kbit training with lora
-        if self.is_use_quantization and self.is_use_lora:
-            for name, param in model.named_parameters():
-                # freeze base model's layers
-                param.requires_grad = False
-
-        # Add lora layer
-        if self.is_use_lora:
-            lora_config = LoraConfig(
-                task_type=TaskType.FEATURE_EXTRACTION,
-                target_modules=["query", "value", "dense"],
-                r=8,
-                lora_alpha=32,
-                lora_dropout=0.05,
-            )
-            model = get_peft_model(model, lora_config)
         return model
 
     def __create_cross_att_layer(self) -> torch.nn.Module:
@@ -317,16 +283,6 @@ class NewModel(torch.nn.Module):
         is_analyze: Optional[bool] = False,
         **kwargs,
     ) -> Dict[str, Any]:
-        # To set right gpu device for DDP training using quantization
-        if self.is_use_quantization:
-            process_idx = Accelerator().process_index
-            if self.llm._hf_hook.execution_device != process_idx:
-                print(
-                    f"Device changed from {self.llm._hf_hook.execution_device} to {process_idx}"
-                )
-                modify_execution_device(self, process_idx)
-                self.cuda(torch.device(f"cuda:{process_idx}"))
-
         # Configs
         bsize, nway, dim = doc_tok_ids.shape
         ib_nhard = nway // bsize
