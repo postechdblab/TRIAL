@@ -33,6 +33,16 @@ def get_range_of_phrases_in_token_level(
         all_indices.append((real_start, real_end))
         return True
 
+    def modify_last_phrase_index(all_indices, start, end) -> None:
+        real_start = start + offset
+        real_end = end + offset
+        if max_token_len:
+            max_tmp = max_token_len - padding
+            if real_end > max_tmp:
+                return None
+        all_indices[-1] = (real_start, real_end)
+        return None
+
     token_idx = 0
     all_phrase_indices = [] if is_partial else [(i, i + 1) for i in range(offset)]
     for phrase_idx, (p_start, p_end) in enumerate(noun_phrase_range_in_char):
@@ -41,6 +51,8 @@ def get_range_of_phrases_in_token_level(
             max_token_len and offset + token_idx >= max_token_len - padding
         ) or token_idx >= len(token_range_in_char):
             break
+
+        # If the phrase does not cover all the tokens in the given text
         if is_partial:
             # Skip to the token_idx that is greater than the start of the phrase
             while (
@@ -52,9 +64,11 @@ def get_range_of_phrases_in_token_level(
             if token_idx == len(token_range_in_char):
                 # TODO: Need to shorten the phrase indices
                 break
+
         # Get the current token
         t_start, t_end = token_range_in_char[token_idx]
-        # Check if it is the same
+
+        # Check if it is exact match
         if t_start == p_start and t_end == p_end:
             # Append the phrase:
             success = append_phrase_indices(
@@ -62,7 +76,8 @@ def get_range_of_phrases_in_token_level(
             )
             if not success:
                 break
-        # Phrase is part of the token, but the token is not the last token
+
+        # Phrase is part of the token, but the current token is not the last token of the phrase
         elif t_start == p_start and t_end < p_end:
             start = token_idx
             while t_end < p_end and token_idx + 1 < len(token_range_in_char):
@@ -84,15 +99,18 @@ def get_range_of_phrases_in_token_level(
                 )
             if not success:
                 break
+
         # Phrase is part of the token
         elif t_start == p_start and t_end > p_end:
             success = append_phrase_indices(
                 all_phrase_indices, token_idx, token_idx + 1
             )
+
         elif t_start < p_start and t_end == p_end:
             success = append_phrase_indices(
                 all_phrase_indices, token_idx, token_idx + 1
             )
+
         elif t_start < p_start and t_end < p_end:
             # Check next token
             start = token_idx
@@ -117,9 +135,19 @@ def get_range_of_phrases_in_token_level(
                 success
             ), f"Failed to append phrase_indices. start:{start} end:{token_idx+1}"
         elif t_start > p_start:
-            raise ValueError(
-                f"t_start={t_start} > p_start={p_start}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
-            )
+            # Check if the current phrase end is the same as the last token end (happens due to bad split in spacy)
+            if token_range_in_char[token_idx - 1][-1] == p_end:
+                # Skip the current token
+                pass
+            else:
+                while token_range_in_char[token_idx][1] < p_end and token_idx + 1 < len(
+                    token_range_in_char
+                ):
+                    token_idx += 1
+                # Modify the last saved phrase indices
+                modify_last_phrase_index(
+                    all_phrase_indices, all_phrase_indices[-1][0], token_idx + 1
+                )
         else:
             raise ValueError(
                 f"t_start={t_start} < p_start={p_start}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
@@ -218,13 +246,13 @@ def get_phrase_indices_by_toks(
     # Find the character indices for the tokens
     char_indices: List[List[Tuple[int, int]]] = []
     for b_size in range(len(input_texts)):
-        try:
-            tmp_indices = get_range_of_tokens_in_char_level(
-                [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
-            )
-        except:
-            print(f"Passing {b_size}-th item. Mismatch with tokenized results.")
-            tmp_indices = []
+        # try:
+        tmp_indices = get_range_of_tokens_in_char_level(
+            [tok.lower() for tok in input_toks[b_size]], input_texts[b_size].lower()
+        )
+        # except:
+        #     print(f"Passing {b_size}-th item. Mismatch with tokenized results.")
+        #     tmp_indices = []
         char_indices.append(tmp_indices)
     # validates = [validate(input_toks[b_size][2:-1], char_indices[b_size], input_texts[b_size]) for b_size in range(len(input_texts))]
     # assert all(validates), f"False idx={[(idx, input_texts[idx]) for idx, item in enumerate(validates) if not item]}"
@@ -252,22 +280,22 @@ def get_phrase_indices_by_toks(
             tmp_ranges = []
             fail_cnt += 1
         else:
-            try:
-                tmp_ranges = get_range_of_phrases_in_token_level(
-                    toks,
-                    phrases,
-                    offset=offset,
-                    padding=padding,
-                    max_token_len=max_token_len,
-                    is_partial=all_noun_only
-                    or noun_only
-                    or prop_noun_only
-                    or named_entity_only,
-                )
-            except:
-                print(f"Passing {i}-th item. Range mismatch.")
-                tmp_ranges = []
-                fail_cnt += 1
+            # try:
+            tmp_ranges = get_range_of_phrases_in_token_level(
+                toks,
+                phrases,
+                offset=offset,
+                padding=padding,
+                max_token_len=max_token_len,
+                is_partial=all_noun_only
+                or noun_only
+                or prop_noun_only
+                or named_entity_only,
+            )
+        # except:
+        #     print(f"Passing {i}-th item. Range mismatch.")
+        #     tmp_ranges = []
+        #     fail_cnt += 1
         phrase_indices.append(tmp_ranges)
     if fail_cnt > 0:
         print(
