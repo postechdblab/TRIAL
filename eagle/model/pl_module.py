@@ -55,9 +55,6 @@ class LightningNewModel(L.LightningModule):
         # For end-to-end retrieval during test (after training & indexing the corpus)
         self.index_dir_path = index_dir_path
         self.searcher = None
-        self.prank: Dict[str, int] = {}
-        self.timer = time_utils.Timer()
-        self.timer_is_started = False
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -129,7 +126,6 @@ class LightningNewModel(L.LightningModule):
 
             # for rank, d_idx in enumerate(sorted_indices[:10]):
             #     show(d_idx, rank=rank)
-        self.prank[batch["q_id"][0]] = pos_rank
         return None
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
@@ -236,18 +232,10 @@ class LightningNewModel(L.LightningModule):
             for key, value in metrics.items()
             if "test" in key
         }
-        # synchronize self.prank
-        self.all_gather(self.prank)
 
         # Print the result
         if self.trainer.is_global_zero:
             pass
-        # Write the results to a file
-        import hkkang_utils.file as file_utils
-
-        print("Writing the results to a file")
-
-        file_utils.write_json_file(self.prank, f"prank_{self.local_rank}.json")
 
         return metrics
 
