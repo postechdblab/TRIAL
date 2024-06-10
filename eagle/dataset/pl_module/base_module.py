@@ -278,7 +278,7 @@ class BaseDataModule(L.LightningDataModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
-            num_workers=2,
+            num_workers=1,
             collate_fn=collate_fn,
         )
 
