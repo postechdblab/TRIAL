@@ -128,7 +128,7 @@ class BaseDataModule(L.LightningDataModule):
             q_corpus = read_queries(self.queries_path)
             logger.info("Tokenizing and caching query set...")
             q_items = tokenize_and_cache_corpus(
-                tokenizer=self.tokenizers.d_tokenizer, corpus=q_corpus
+                tokenizer=self.tokenizers.q_tokenizer, corpus=q_corpus
             )
             # Write the cache
             logger.info(
