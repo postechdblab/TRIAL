@@ -266,6 +266,7 @@ class LightningNewModel(L.LightningModule):
             on_epoch=True,
             sync_dist=True,
         )
+        return all_dic
 
     def training_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:
         bsize = batch["q_tok_ids"].size(0)
