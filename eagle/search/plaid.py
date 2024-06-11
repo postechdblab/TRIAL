@@ -22,12 +22,18 @@ class PLAID:
         ndocs: int = 256,
         centroid_threshold: float = 0.45,
         skip_stage2: bool = False,
+        d_cross_attention_layer: torch.nn.Module = None,
+        d_weight_project_layer: torch.nn.Module = None,
+        d_weight_layer_norm: torch.nn.Module = None,
     ) -> None:
         self.index = IndexLoader(index_path=index_path)
         self.ndocs = ndocs
         self.ncells = ncells
         self.skip_stage2 = skip_stage2
         self.centroid_threshold = centroid_threshold
+        self.d_cross_attention_layer = d_cross_attention_layer
+        self.d_weight_project_layer = d_weight_project_layer
+        self.d_weight_layer_norm = d_weight_layer_norm
         self._set_embeddings_strided()
 
     def __call__(
@@ -67,6 +73,8 @@ class PLAID:
         :return: _description_
         :rtype: Tuple[torch.Tensor, torch.Tensor]
         """
+        if self.index.codec.centroids.dtype != query.dtype:
+            query = query.to(self.index.codec.centroids.dtype)
         scores = self.index.codec.centroids @ query.T
         # if weight is not None:
         #     scores = scores * weight
@@ -262,6 +270,27 @@ class PLAID:
             query.masked_fill_(q_mask, 0)
         # Extract document embeddings
         d_packed, d_length = self.embeddings_strided.lookup_pids(pids)
+
+        # If use document weight, compute document weights and scale the embeddings
+        if self.d_cross_attention_layer is not None:
+            # Compute document weights
+            cross_encoded_vectors, cross_attn_weights = self.d_cross_attention_layer(
+                query=d_packed.unsqueeze(0).float(),
+                key=query.unsqueeze(0).float(),
+                value=query.unsqueeze(0).float(),
+                key_padding_mask=q_mask.unsqueeze(0).squeeze(-1),
+            )
+            # Add and normalize
+            cross_encoded_vectors = cross_encoded_vectors.squeeze(0) + d_packed
+            # Compute weights
+            cross_encoded_vectors = self.d_weight_layer_norm(cross_encoded_vectors)
+            d_weights = self.d_weight_project_layer(cross_encoded_vectors)
+            # Scale embeddings
+            d_packed = d_packed * d_weights
+
+        if query.dtype != d_packed.dtype:
+            query = query.to(d_packed.dtype)
+
         # Compute scores
         max_scores, _, _ = compute_sum_maxsim(
             q_encoded=query, k_encoded=d_packed, k_lengths=d_length
@@ -269,6 +298,7 @@ class PLAID:
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)
         pids = pids[indices]
+
         return pids, max_scores
 
 

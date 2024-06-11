@@ -58,7 +58,12 @@ class LightningNewModel(L.LightningModule):
     def _load_searcher(self) -> PLAID:
         # Load the searcher
         assert self.index_dir_path, "Index directory path is not provided!"
-        self.searcher = PLAID(index_path=self.index_dir_path)
+        self.searcher = PLAID(
+            index_path=self.index_dir_path,
+            d_cross_attention_layer=self.model.cross_att_layer,
+            d_weight_project_layer=self.model.d_weight_layer,
+            d_weight_layer_norm=self.model.d_weight_layer_norm,
+        )
         return self.searcher
 
     def _test_reranking(self, batch: Dict, batch_idx: int) -> None:
@@ -158,7 +163,7 @@ class LightningNewModel(L.LightningModule):
             scatter_indices=q_scatter_indices,
         )
 
-        projected_tok_vectors = projected_tok_vectors.half()
+        projected_tok_vectors = projected_tok_vectors
         if tok_weights is not None:
             tok_weights = tok_weights.half()
 
@@ -220,9 +225,10 @@ class LightningNewModel(L.LightningModule):
         return None
 
     def test_step(self, batch: Dict, batch_idx: int) -> None:
-        if self.index_dir_path is None:
-            return self._test_reranking(batch, batch_idx)
-        return self._test_full_retrieval(batch, batch_idx)
+        with torch.no_grad():
+            if self.index_dir_path is None:
+                return self._test_reranking(batch, batch_idx)
+            return self._test_full_retrieval(batch, batch_idx)
 
     def on_test_epoch_end(self) -> Dict:
         metrics: Dict[str, torch.Tensor] = self.trainer.logged_metrics
@@ -439,11 +445,12 @@ class LightningNewModel(L.LightningModule):
         result = self.tokenizers.d_tokenizer(docs, padding=True, return_tensors="pt")
         ids, att_mask = result["input_ids"], result["attention_mask"]
         ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
+
         # Create mask
         # TODO: Need to align this with the trained model
-        # skip_ids = self.tokenizers.d_tokenizer.special_toks_ids + self.tokenizers.d_tokenizer.punctuations
-        skip_ids = self.tokenizers.d_tokenizer.special_toks_ids
-        tok_mask = get_mask(input_ids=ids, skip_ids=skip_ids).unsqueeze(-1)
+        tok_mask = get_mask(
+            input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
+        ).unsqueeze(-1)
 
         # Create batch
         text_batches = _split_into_batches(ids, att_mask, tok_mask, bsize=bsize)

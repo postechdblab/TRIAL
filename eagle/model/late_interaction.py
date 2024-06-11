@@ -2,10 +2,8 @@ import logging
 from typing import *
 
 import torch
-from accelerate import Accelerator
 from omegaconf import DictConfig
-from peft import LoraConfig, TaskType, get_peft_model
-from transformers import AutoModel, BitsAndBytesConfig
+from transformers import AutoModel
 
 from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
 from eagle.model.objective import (
@@ -17,7 +15,6 @@ from eagle.model.objective import (
 from eagle.model.utils import (
     get_vectors_from_ranges,
     get_weight_layer,
-    modify_execution_device,
     modify_grad,
 )
 from eagle.search.algorithm import compute_sum_maxsim
@@ -754,7 +751,6 @@ class NewModel(torch.nn.Module):
                     scatter_indices=scatter_indices,
                     reduce=self.reduce_strategy,
                 )
-
             # Further encode with q_vectors for inter-example weights
             if not is_eval:
                 repeat_n = nhard * (bsize - 1) + 1
@@ -772,9 +768,9 @@ class NewModel(torch.nn.Module):
                 # Perform cross-attention
                 cross_encoded_tok_vectors_inter, cross_attn_weights_inter = (
                     self.cross_att_layer(
-                        selected_encoded_tok_vectors,
-                        q_vectors_inter,
-                        q_vectors_inter,
+                        query=selected_encoded_tok_vectors,
+                        key=q_vectors_inter,
+                        value=q_vectors_inter,
                         key_padding_mask=q_mask_inter.squeeze(-1),
                     )
                 )
