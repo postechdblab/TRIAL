@@ -43,11 +43,11 @@ class PLAID:
         mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
-        pids, centroid_scores = self.get_initial_pids(query, weight, mask)
+        pids, centroid_scores = self.get_initial_pids(query, mask)
         # Stage 2: Filter pids using pruned centroid scores
-        pids = self.filter_with_pruning_centroids(pids, centroid_scores)
+        pids = self.filter_with_pruning_centroids(pids, centroid_scores, weight)
         # Stage 3: Filter pids using full centroid scores
-        pids = self.filter_without_pruning_centroids(pids, centroid_scores)
+        pids = self.filter_without_pruning_centroids(pids, centroid_scores, weight)
         # Stage 4: Final ranking with decomposed embeddings
         return self.rank_pids(query, weight, mask, pids)
 
@@ -58,14 +58,12 @@ class PLAID:
         self.offsets = self.embeddings_strided.codes_strided.offsets
 
     def get_top_centroids(
-        self, query: torch.Tensor, weight: torch.Tensor, mask: torch.Tensor, topk: int
+        self, query: torch.Tensor, mask: torch.Tensor, topk: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """This is the helper method for stage 1 of the PLAID scoring pipeline.
 
         :param query: shape (ntoks, dim)
         :type query: torch.Tensor
-        :param weight: shape (ntoks)
-        :type weight: torch.Tensor
         :param mask: shape (ntoks)
         :type mask: torch.Tensor
         :param topk: number of centroids per token, defaults to 10
@@ -76,8 +74,6 @@ class PLAID:
         if self.index.codec.centroids.dtype != query.dtype:
             query = query.to(self.index.codec.centroids.dtype)
         scores = self.index.codec.centroids @ query.T
-        # if weight is not None:
-        #     scores = scores * weight
         centroids = scores.topk(topk, dim=0, sorted=False).indices.permute(1, 0)
         if mask is not None:
             mask = mask.squeeze()
@@ -87,21 +83,19 @@ class PLAID:
         return centroids, scores
 
     def get_initial_pids(
-        self, query: torch.Tensor, weight: torch.Tensor, mask: torch.Tensor
+        self, query: torch.Tensor, mask: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """This is the stage 1 of the PLAID scoring pipeline.
 
         :param query: shape (ntoks, dim)
         :type query: torch.Tensor
-        :param weight: shape (ntoks)
-        :type weight: torch.Tensor
         :param mask: shape (ntoks)
         :type mask: torch.Tensor
         :return: shape (ndocs), shape (ntoks)
         :rtype: Tuple[torch.Tensor, torch.Tensor]
         """
         centroids, scores = self.get_top_centroids(
-            query=query, weight=weight, mask=mask, topk=self.ncells
+            query=query, mask=mask, topk=self.ncells
         )
         pids, cell_lengths = self.index.ivf.lookup(centroids)
         pids = pids.unique(sorted=False)
@@ -112,6 +106,7 @@ class PLAID:
         pids: torch.Tensor,
         centroid_scores: torch.Tensor,
         centroid_threshold: float,
+        weight: torch.Tensor,
         topk: int,
     ) -> torch.Tensor:
         """
@@ -127,12 +122,20 @@ class PLAID:
         :rtype: torch.Tensor
         """
         # Get docs whose centroid scores are above the threshold
+        # centroid_threshold = centroid_scores.mean()
         is_with_pruning_centroids = centroid_threshold > 0
         valid_centroid_indices = (
             centroid_scores.max(-1).values >= centroid_threshold
             if is_with_pruning_centroids
             else None
         )
+
+        # Apply weights
+        apply_weights = True
+        if apply_weights and weight is not None:
+            centroid_scores = centroid_scores * weight.transpose(0, 1).expand(
+                centroid_scores.shape[0], -1
+            )
 
         # Batch size may need to be changed in the future.
         batch_size = 100000
@@ -200,7 +203,7 @@ class PLAID:
         return pids
 
     def filter_with_pruning_centroids(
-        self, pids: torch.Tensor, centroid_scores: torch.Tensor
+        self, pids: torch.Tensor, centroid_scores: torch.Tensor, weight: torch.Tensor
     ) -> torch.Tensor:
         """This is the stage 2 of the PLAID scoring pipeline.
 
@@ -217,11 +220,12 @@ class PLAID:
             pids=pids,
             centroid_scores=centroid_scores,
             centroid_threshold=centroid_threshold,
+            weight=weight,
             topk=topk,
         )
 
     def filter_without_pruning_centroids(
-        self, pids: torch.Tensor, centroid_scores: torch.Tensor
+        self, pids: torch.Tensor, centroid_scores: torch.Tensor, weight: torch.Tensor
     ) -> torch.Tensor:
         """This is the stage 3 of the PLAID scoring pipeline.
 
@@ -238,6 +242,7 @@ class PLAID:
             pids=pids,
             centroid_scores=centroid_scores,
             centroid_threshold=centroid_threshold,
+            weight=weight,
             topk=topk,
         )
 
