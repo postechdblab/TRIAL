@@ -1,3 +1,4 @@
+import json
 from typing import *
 
 import bitsandbytes as bnb
@@ -9,7 +10,7 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
-from eagle.metrics import compute_metrics
+from eagle.metrics import aggregate_metrics, compute_metrics
 from eagle.model.late_interaction import NewModel
 from eagle.model.utils import (
     _sort_by_length,
@@ -54,6 +55,7 @@ class LightningNewModel(L.LightningModule):
         # For end-to-end retrieval during test (after training & indexing the corpus)
         self.index_dir_path = index_dir_path
         self.searcher = None
+        self.results: List[Tuple[Dict, int]] = []
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -75,7 +77,8 @@ class LightningNewModel(L.LightningModule):
 
         # Log metrics
         bsize = batch["q_tok_ids"].size(0)
-        self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
+        # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
+        self.results.append((metrics, bsize))
         is_analyze = False
         if is_analyze:
             assert (
@@ -182,6 +185,7 @@ class LightningNewModel(L.LightningModule):
             mask = q_tok_mask[bidx]
             weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
+            # pids = torch.cat([pids[1:], pids[0:1]], dim=0)
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # number of positive doc ids to append
@@ -220,7 +224,8 @@ class LightningNewModel(L.LightningModule):
         metrics = compute_metrics(eval_preds, prefix="test")
 
         # Log metrics
-        self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
+        # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
+        self.results.append((metrics, bsize))
 
         return None
 
@@ -231,18 +236,21 @@ class LightningNewModel(L.LightningModule):
             return self._test_full_retrieval(batch, batch_idx)
 
     def on_test_epoch_end(self) -> Dict:
-        metrics: Dict[str, torch.Tensor] = self.trainer.logged_metrics
-        metrics = {
-            key: value.cpu().item() if type(value) == torch.Tensor else value
-            for key, value in metrics.items()
-            if "test" in key
-        }
+        # metrics: Dict[str, torch.Tensor] = self.trainer.logged_metrics
+        # metrics = {
+        #     key: value.cpu().item() if type(value) == torch.Tensor else value
+        #     for key, value in metrics.items()
+        #     if "test" in key
+        # }
 
         # Print the result
+        gathered_results = self.all_gather(self.results)
+        gathered_metrics = aggregate_metrics(gathered_results)
         if self.trainer.is_global_zero:
-            pass
-
-        return metrics
+            print(json.dumps(gathered_metrics, indent=4))
+        # self.trainer._logger_connector._logged_metrics = gathered_metrics
+        self.trainer.strategy.barrier()
+        return gathered_metrics
 
     def validation_step(self, batch: Dict, batch_idx: int) -> None:
         bsize = batch["q_tok_ids"].size(0)
