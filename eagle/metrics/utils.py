@@ -6,6 +6,22 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from transformers import EvalPrediction
 
 
+def aggregate_metrics(metrics: List[Tuple[Dict, torch.Tensor]]) -> Dict[str, float]:
+    aggregated_metrics = {}
+    all_batch_num = 0
+    for metric, bsize in metrics:
+        for key, value in metric.items():
+            if key not in aggregated_metrics:
+                aggregated_metrics[key] = 0.0
+            aggregated_metrics[key] += sum(value * bsize).item()
+        all_batch_num += sum(bsize).item()
+    # Average the metrics
+    aggregated_metrics = {
+        key: value / all_batch_num for key, value in aggregated_metrics.items()
+    }
+    return aggregated_metrics
+
+
 def result_to_beir_format(
     logits_batch: torch.Tensor, pids_batch: Optional[torch.Tensor] = None
 ) -> Dict[str, Dict[str, float]]:
