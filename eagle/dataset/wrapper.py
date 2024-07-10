@@ -70,10 +70,6 @@ class DatasetWrapper:
                 self.corpus_mapping
             ), f"len(self.corpus_mapping)={len(self.corpus_mapping)}, len(self.d_phrase_ranges)={len(self.d_phrase_ranges)}"
 
-    @property
-    def is_use_multi_granularity(self) -> bool:
-        return self.granularity_level in ["word", "phrase"]
-
     def __getitem__(self, idx: int) -> Dict:
         # Replace the nway
         if idx >= len(self):
@@ -107,16 +103,16 @@ class DatasetWrapper:
         q_phrase_ranges: List[Tuple] = []
         d_word_ranges: List[List[Tuple]] = [[] for _ in range(len(pindices))]
         d_phrase_ranges: List[List[Tuple]] = [[] for _ in range(len(pindices))]
-        if self.granularity_level == "token":
+        if self.granularity_level == "token" or self.granularity_level == "sentence":
             q_word_ranges = [(i, i + 1) for i in range(len(data["q_tok_ids"]))]
             if "doc_tok_ids" in data:
                 d_word_ranges = [
                     [(i, i + 1) for i in range(len(item))] for item in data["doc_tok_ids"]
                 ]
-        elif self.granularity_level in ["word"]:
+        elif self.granularity_level == "word":
             q_word_ranges = self.q_word_ranges[qidx]
             d_word_ranges = [self.d_word_ranges[i] for i in pindices]
-        elif self.granularity_level in ["phrase"]:
+        elif self.granularity_level == "phrase" or self.granularity_level == "multi":
             q_phrase_ranges = self.q_phrase_ranges[qidx]
             d_phrase_ranges = [self.d_phrase_ranges[i] for i in pindices]
 
@@ -126,7 +122,7 @@ class DatasetWrapper:
             word_ranges=q_word_ranges,
             phrase_ranges=q_phrase_ranges,
             skip_ids=self.q_skip_ids,
-            use_coarse_emb=self.is_use_multi_granularity,
+            use_coarse_emb=self.granularity_level not in ["token", "sentence"],
         )
         if "doc_tok_ids" in data:
             data = add_doc_ranges_and_mask(
@@ -134,7 +130,7 @@ class DatasetWrapper:
                 word_ranges=d_word_ranges,
                 phrase_ranges=d_phrase_ranges,
                 skip_ids=self.d_skip_ids,
-                use_coarse_emb=self.is_use_multi_granularity,
+                use_coarse_emb=self.granularity_level  not in ["token", "sentence"],
             )
         # Add index for positive document
         data["pos_doc_idxs"] = [self.corpus_mapping[i] for i in data["pos_doc_ids"]]

@@ -49,7 +49,6 @@ class NewModel(torch.nn.Module):
         self.is_use_dynamic_granularity_coeff = handle_old_ckpt(
             cfg, "is_use_dynamic_granularity_coeff"
         )
-        self.is_only_phrase_score = handle_old_ckpt(cfg, "is_only_phrase_score")
         self.granularity_level = handle_old_ckpt(cfg, "granularity_level")
         # Backbone model (The attribute name should be llm to be compatible with the optimizer in LightningModule)
         self.llm = self.__create_backbone_model(
@@ -60,19 +59,18 @@ class NewModel(torch.nn.Module):
         self.tok_projection_layer = torch.nn.Linear(
             self.llm.config.hidden_size, cfg.out_dim, bias=False
         )
-        self.cls_projection_layer = self.__create_linear_layers_for_multi_granularity(
-            input_dim=cfg.out_dim,
-            intermediate_dim=cfg.out_dim,
-            out_dim=cfg.out_dim,
+        self.cls_projection_layer = (
+            torch.nn.Linear(cfg.out_dim, cfg.out_dim)
+            if self.granularity_level in ["sentence", "multi"]
+            else None
         )
+
         self.phrase_projection_layer = (
-            self.__create_linear_layers_for_multi_granularity(
-                input_dim=cfg.out_dim,
-                intermediate_dim=cfg.out_dim,
-                out_dim=cfg.out_dim,
-                force=self.is_only_phrase_score,
-            )
+            torch.nn.Linear(cfg.out_dim, cfg.out_dim)
+            if self.granularity_level in ["word", "phrase", "multi"]
+            else None
         )
+
         self.score_granularity_coeff_layer = (
             torch.nn.Sequential(
                 torch.nn.Linear(cfg.out_dim, 3), torch.nn.Softmax(dim=1)
@@ -103,7 +101,7 @@ class NewModel(torch.nn.Module):
         self.regularization = self.__create_regularization_func(
             strategy=cfg.w_regularize_strategy
         )
-        # self.__load_checkpoint()
+        self.__load_checkpoint()
 
     def __load_checkpoint(self) -> None:
         if self.cfg.ckpt_path:
@@ -159,10 +157,7 @@ class NewModel(torch.nn.Module):
 
     @property
     def is_use_multi_granularity(self) -> bool:
-        return (
-            self.granularity_level in ["word", "phrase"]
-            and not self.is_only_phrase_score
-        )
+        return self.granularity_level == "multi"
 
     def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:
         # Load pretrained backbone model
@@ -214,13 +209,6 @@ class NewModel(torch.nn.Module):
                 intermediate_dim=intermediate_dim,
                 out_dim=1,
             )
-        return None
-
-    def __create_linear_layers_for_multi_granularity(
-        self, input_dim: int, intermediate_dim: int, out_dim: int, force: bool = False
-    ) -> torch.nn.Module:
-        if self.is_use_multi_granularity or force:
-            return torch.nn.Linear(input_dim, out_dim)
         return None
 
     def __create_regularization_func(
@@ -338,12 +326,10 @@ class NewModel(torch.nn.Module):
             q_cls_scale_factor = q_cls_scale_factor * cls_coeff
             q_tok_scale_factor = q_tok_scale_factor * tok_coeff
             q_phrase_scale_factor = q_phrase_scale_factor * phrase_coeff
-        elif self.is_only_phrase_score:
-            cls_coeff = tok_coeff = phrase_coeff = None
         else:
             cls_coeff = tok_coeff = phrase_coeff = None
         # Compute scores with cls
-        if q_cls_projected is not None:
+        if self.granularity_level in ["sentence", "multi"]:
             (
                 cls_intra_scores,
                 cls_inter_scores,
@@ -364,7 +350,7 @@ class NewModel(torch.nn.Module):
                 return_entire_scores=is_analyze,
             )
         # Compute scores with token
-        if not self.is_only_phrase_score:
+        if self.granularity_level in ["token", "multi"]:
             (
                 tok_intra_scores,
                 tok_inter_scores,
@@ -385,7 +371,7 @@ class NewModel(torch.nn.Module):
                 return_entire_scores=is_analyze,
             )
         # Compute scores with phrase
-        if q_phrase_projected is not None:
+        if self.granularity_level in ["phrase", "multi"]:
             (
                 phrase_intra_scores,
                 phrase_inter_scores,
@@ -407,12 +393,12 @@ class NewModel(torch.nn.Module):
             )
 
         # Sum scores across different granularity
-        if self.is_only_phrase_score:
-            intra_scores = 0
-            inter_scores = 0
-        else:
+        if self.granularity_level in ["token", "multi"]:
             intra_scores = tok_intra_scores
             inter_scores = tok_inter_scores
+        else:
+            intra_scores = 0
+            inter_scores = 0
         if q_cls_projected is not None:
             intra_scores = intra_scores + cls_intra_scores
             inter_scores = inter_scores + cls_inter_scores
@@ -558,7 +544,8 @@ class NewModel(torch.nn.Module):
         # Perform projection for token
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
-        if self.is_use_multi_granularity:
+        encoded_phrase_vectors = None
+        if self.granularity_level in ["word", "phrase", "multi"]:
             # Embedding to coarse level
             encoded_phrase_vectors = get_vectors_from_ranges(
                 tensors=projected_tok_vectors,
@@ -566,27 +553,16 @@ class NewModel(torch.nn.Module):
                 reduce=self.reduce_strategy,
             )
 
+            projected_phrase_vectors = self.phrase_projection_layer(
+                encoded_phrase_vectors
+            )
+
+        projected_cls_vectors = None
+        if self.granularity_level in ["sentence", "multi"]:
             # Perform projection for cls and phrase
             projected_cls_vectors = self.cls_projection_layer(
                 projected_tok_vectors[:, 0:1]
             )
-            projected_phrase_vectors = self.phrase_projection_layer(
-                encoded_phrase_vectors
-            )
-        elif self.is_only_phrase_score:
-            # Embedding to coarse level
-            encoded_phrase_vectors = get_vectors_from_ranges(
-                tensors=projected_tok_vectors,
-                scatter_indices=scatter_indices,
-                reduce=self.reduce_strategy,
-            )
-            projected_phrase_vectors = self.phrase_projection_layer(
-                encoded_phrase_vectors
-            )
-            projected_cls_vectors = None
-        else:
-            # Dummy values
-            projected_cls_vectors = projected_phrase_vectors = None
 
         return (
             encoded_tok_vectors,
@@ -656,7 +632,7 @@ class NewModel(torch.nn.Module):
             phrase_scale_factor = self.get_scale_factor(mask=phrase_mask)
 
         # Normalize
-        if not self.is_only_phrase_score:
+        if self.granularity_level in ["token", "multi"]:
             projected_tok_vectors = torch.nn.functional.normalize(
                 projected_tok_vectors, p=2, dim=2
             )
@@ -792,7 +768,7 @@ class NewModel(torch.nn.Module):
                     )
 
         # Normalize
-        if not self.is_only_phrase_score:
+        if self.granularity_level in ["token", "multi"]:
             projected_tok_vectors = torch.nn.functional.normalize(
                 projected_tok_vectors, p=2, dim=2
             )

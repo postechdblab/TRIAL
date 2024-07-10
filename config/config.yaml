@@ -81,10 +81,11 @@ model:
     is_use_q_weight: False
     is_use_d_weight: False
     is_use_fine_grained_loss: False
-    is_only_phrase_score: False
     granularity_level: token
     # granularity_level: word
     # granularity_level: phrase
+    # granularity_level: sentence
+    # granularity_level: multi
     is_d_independent: False
     w_regularize_strategy: l1
     # Loss coefficient
