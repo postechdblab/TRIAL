@@ -544,7 +544,7 @@ class NewModel(torch.nn.Module):
         # Perform projection for token
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
-        encoded_phrase_vectors = None
+        projected_phrase_vectors = None
         if self.granularity_level in ["word", "phrase", "multi"]:
             # Embedding to coarse level
             encoded_phrase_vectors = get_vectors_from_ranges(
