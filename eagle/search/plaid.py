@@ -41,6 +41,7 @@ class PLAID:
         query: torch.Tensor,
         weight: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
+        gold_doc_ids: Optional[torch.Tensor] = None,
         return_intermediate_pids: bool = False,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
@@ -52,6 +53,16 @@ class PLAID:
         # Stage 3: Filter pids using full centroid scores
         pids = self.filter_without_pruning_centroids(pids, centroid_scores, weight)
         pids3 = pids.tolist()
+        if gold_doc_ids is not None:
+            # Find unselected gold_doc_ids
+            gold_doc_ids = [doc_id for doc_id in gold_doc_ids if doc_id not in pids]
+            # Replace the last pids with gold_doc_ids
+            pids = torch.cat(
+                [
+                    pids[: len(pids) - len(gold_doc_ids)],
+                    torch.tensor(gold_doc_ids, device=pids.device, dtype=pids.dtype),
+                ]
+            )
         # Stage 4: Final ranking with decomposed embeddings
         final_pids, scores = self.rank_pids(query, weight, mask, pids)
         if return_intermediate_pids:

@@ -190,12 +190,18 @@ class LightningNewModel(L.LightningModule):
         all_stage_3_accs: List = []
         all_stage_2_accs: List = []
         for bidx in range(bsize):
+            # Find the positive doc id
+            pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # Retrieve pids and scores
             query = projected_tok_vectors[bidx]
             mask = q_tok_mask[bidx]
             weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores, intermediate_pids = self.searcher(
-                query=query, mask=mask, weight=weight, return_intermediate_pids=True
+                query=query,
+                mask=mask,
+                weight=weight,
+                # gold_doc_ids=pos_doc_idxs,
+                return_intermediate_pids=True,
             )
             if self.dataset_name == "beir-arguana":
                 # Remove the rank 1 document (i.e., the same text as the query)
@@ -207,8 +213,6 @@ class LightningNewModel(L.LightningModule):
                     ],
                     dim=0,
                 )
-            # Find the positive doc id
-            pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # number of positive doc ids to append
             num_pids_to_append = (
                 max_pos_doc_num + max(self.searcher.ndocs, len(pids)) - len(pids)
