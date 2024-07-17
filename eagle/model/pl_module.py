@@ -33,6 +33,7 @@ class LightningNewModel(L.LightningModule):
         self.automatic_optimization = False
         # Set configurations
         self.cfg = cfg.training
+        self.dataset_name = cfg.dataset.name
         self.train_batch_num = train_batch_num
         # Tmp
         self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
@@ -55,7 +56,7 @@ class LightningNewModel(L.LightningModule):
         # For end-to-end retrieval during test (after training & indexing the corpus)
         self.index_dir_path = index_dir_path
         self.searcher = None
-        self.results: List[Tuple[Dict, int]] = []
+        self.results: List[Dict[str, float]] = []
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -185,14 +186,16 @@ class LightningNewModel(L.LightningModule):
             mask = q_tok_mask[bidx]
             weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
-            # pids = torch.cat([pids[1:], pids[0:1]], dim=0)
-            # scores = torch.cat(
-            #     [
-            #         scores[1:],
-            #         torch.tensor([0], device=scores.device, dtype=scores.dtype),
-            #     ],
-            #     dim=0,
-            # )
+            if self.dataset_name == "beir-arguana":
+                # Remove the rank 1 document (i.e., the same text as the query)
+                pids = torch.cat([pids[1:], pids[0:1]], dim=0)
+                scores = torch.cat(
+                    [
+                        scores[1:],
+                        torch.tensor([0], device=scores.device, dtype=scores.dtype),
+                    ],
+                    dim=0,
+                )
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # number of positive doc ids to append
@@ -226,13 +229,18 @@ class LightningNewModel(L.LightningModule):
         all_scores = torch.stack(all_scores)
         all_labels = torch.stack(all_labels)
 
-        # Evaluate the results
-        eval_preds = EvalPrediction(all_scores, all_labels, all_pids)
-        metrics = compute_metrics(eval_preds, prefix="test")
+        # Evaluate individually so we can remove repeated quries at the end (due to DDP)
+        metrics: List[Dict[str, float]] = []
+        for b_idx in range(bsize):
+            eval_preds = EvalPrediction(
+                all_scores[b_idx : b_idx + 1],
+                all_labels[b_idx : b_idx + 1],
+                all_pids[b_idx : b_idx + 1],
+            )
+            metrics.append(compute_metrics(eval_preds, prefix="test"))
 
         # Log metrics
-        # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
-        self.results.append((metrics, bsize))
+        self.results.append(metrics)
 
         return None
 
@@ -243,16 +251,11 @@ class LightningNewModel(L.LightningModule):
             return self._test_full_retrieval(batch, batch_idx)
 
     def on_test_epoch_end(self) -> Dict:
-        # metrics: Dict[str, torch.Tensor] = self.trainer.logged_metrics
-        # metrics = {
-        #     key: value.cpu().item() if type(value) == torch.Tensor else value
-        #     for key, value in metrics.items()
-        #     if "test" in key
-        # }
-
         # Print the result
         gathered_results = self.all_gather(self.results)
-        gathered_metrics = aggregate_metrics(gathered_results)
+        gathered_metrics = aggregate_metrics(
+            gathered_results, total_data_num=len(self.trainer.datamodule.val_dataset)
+        )
         if self.trainer.is_global_zero:
             print(json.dumps(gathered_metrics, indent=4))
         # self.trainer._logger_connector._logged_metrics = gathered_metrics

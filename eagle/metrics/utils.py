@@ -6,18 +6,32 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from transformers import EvalPrediction
 
 
-def aggregate_metrics(metrics: List[Tuple[Dict, torch.Tensor]]) -> Dict[str, float]:
+def aggregate_metrics(
+    metrics: List[List[Dict[str, torch.Tensor]]], total_data_num: int
+) -> Dict[str, float]:
     aggregated_metrics = {}
-    all_batch_num = 0
-    for metric, bsize in metrics:
-        for key, value in metric.items():
-            if key not in aggregated_metrics:
-                aggregated_metrics[key] = 0.0
-            aggregated_metrics[key] += sum(value * bsize).item()
-        all_batch_num += sum(bsize).item()
+    aggregated_num = 0
+    # Loop over each inference step
+    for metric_batch in metrics:
+        # Loop over each item in the rank
+        for metric in metric_batch:
+            # Loop over each rank
+            for rank_idx in range(len(list(metric.values())[0])):
+                # Add all key and values to the aggregated_metrics
+                if aggregated_num < total_data_num:
+                    aggregated_num += 1
+                    for key, value in metric.items():
+                        if key not in aggregated_metrics:
+                            aggregated_metrics[key] = 0.0
+                        aggregated_metrics[key] += value[rank_idx].item()
+    # Check all items are evaluated
+    assert (
+        aggregated_num == total_data_num
+    ), f"Invalid aggregated_num vs total_data_num: {aggregated_num} vs {total_data_num}"
+
     # Average the metrics
     aggregated_metrics = {
-        key: value / all_batch_num for key, value in aggregated_metrics.items()
+        key: value / total_data_num for key, value in aggregated_metrics.items()
     }
     return aggregated_metrics
 
