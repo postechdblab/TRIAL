@@ -5,6 +5,11 @@ from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
 
+def pid_found_percentage(pids_to_find: List[int], pids_corpus: List[int]) -> float:
+    """Calculate the percentage of pids that are found in the corpus"""
+    return len(set(pids_to_find).intersection(set(pids_corpus))) / len(pids_to_find)
+
+
 def initialize_weights(m):
     if isinstance(m, torch.nn.Sequential):
         for layer in m:

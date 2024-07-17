@@ -6,15 +6,38 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from transformers import EvalPrediction
 
 
-def aggregate_metrics(
+def aggregate_intermediate_metrics(
+    probs: List[List[torch.Tensor]], total_data_num: int
+) -> float:
+    aggregated_probs = 0.0
+    aggregated_num = 0
+    # Loop over each inference step
+    for probs_from_each_step in probs:
+        # Loop over each item in the rank
+        for probs_from_each_rank in probs_from_each_step:
+            # Loop over each rank
+            for probs_from_each_item in probs_from_each_rank:
+                # Check if the number of data is valid
+                if aggregated_num < total_data_num:
+                    aggregated_num += 1
+                    aggregated_probs += probs_from_each_item.item()
+    # Check all items are evaluated
+    assert (
+        aggregated_num == total_data_num
+    ), f"Invalid aggregated_num vs total_data_num: {aggregated_num} vs {total_data_num}"
+
+    return aggregated_probs / total_data_num
+
+
+def aggregate_final_metrics(
     metrics: List[List[Dict[str, torch.Tensor]]], total_data_num: int
 ) -> Dict[str, float]:
     aggregated_metrics = {}
     aggregated_num = 0
     # Loop over each inference step
-    for metric_batch in metrics:
+    for metric_from_each_step in metrics:
         # Loop over each item in the rank
-        for metric in metric_batch:
+        for metric in metric_from_each_step:
             # Loop over each rank
             for rank_idx in range(len(list(metric.values())[0])):
                 # Add all key and values to the aggregated_metrics

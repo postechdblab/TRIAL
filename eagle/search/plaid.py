@@ -41,15 +41,21 @@ class PLAID:
         query: torch.Tensor,
         weight: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
+        return_intermediate_pids: bool = False,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
         pids, centroid_scores = self.get_initial_pids(query, mask)
+        pids1 = pids.tolist()
         # Stage 2: Filter pids using pruned centroid scores
         pids = self.filter_with_pruning_centroids(pids, centroid_scores, weight)
+        pids2 = pids.tolist()
         # Stage 3: Filter pids using full centroid scores
         pids = self.filter_without_pruning_centroids(pids, centroid_scores, weight)
+        pids3 = pids.tolist()
         # Stage 4: Final ranking with decomposed embeddings
-        return self.rank_pids(query, weight, mask, pids)
+        final_pids, scores = self.rank_pids(query, weight, mask, pids)
+        if return_intermediate_pids:
+            return final_pids, scores, (pids1, pids2, pids3)
 
     def _set_embeddings_strided(self) -> None:
         self.embeddings_strided = ResidualEmbeddingsStrided(

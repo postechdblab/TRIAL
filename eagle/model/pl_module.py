@@ -10,12 +10,17 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
-from eagle.metrics import aggregate_metrics, compute_metrics
+from eagle.metrics import (
+    aggregate_final_metrics,
+    aggregate_intermediate_metrics,
+    compute_metrics,
+)
 from eagle.model.late_interaction import NewModel
 from eagle.model.utils import (
     _sort_by_length,
     _split_into_batches,
     append_dummy_pid,
+    pid_found_percentage,
     unwrap_logging_items,
 )
 from eagle.phrase.noun import SpacyModel
@@ -56,7 +61,8 @@ class LightningNewModel(L.LightningModule):
         # For end-to-end retrieval during test (after training & indexing the corpus)
         self.index_dir_path = index_dir_path
         self.searcher = None
-        self.results: List[Dict[str, float]] = []
+        self.final_eval_results: List[Dict[str, float]] = []
+        self.intermediate_eval_results: List[Dict[str, float]] = []
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -79,7 +85,7 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         bsize = batch["q_tok_ids"].size(0)
         # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
-        self.results.append((metrics, bsize))
+        self.final_eval_results.append((metrics, bsize))
         is_analyze = False
         if is_analyze:
             assert (
@@ -180,12 +186,17 @@ class LightningNewModel(L.LightningModule):
         all_pids: List = []
         all_scores: List = []
         all_labels: List = []
+        all_stage_1_accs: List = []
+        all_stage_3_accs: List = []
+        all_stage_2_accs: List = []
         for bidx in range(bsize):
             # Retrieve pids and scores
             query = projected_tok_vectors[bidx]
             mask = q_tok_mask[bidx]
             weight = None if tok_weights is None else tok_weights[bidx]
-            pids, scores = self.searcher(query=query, mask=mask, weight=weight)
+            pids, scores, intermediate_pids = self.searcher(
+                query=query, mask=mask, weight=weight, return_intermediate_pids=True
+            )
             if self.dataset_name == "beir-arguana":
                 # Remove the rank 1 document (i.e., the same text as the query)
                 pids = torch.cat([pids[1:], pids[0:1]], dim=0)
@@ -220,10 +231,23 @@ class LightningNewModel(L.LightningModule):
             # Create labels
             labels = torch.zeros_like(scores)
             labels[pos_indices] = 1
+
+            # Evaluate intermediate candidate documents
+            all_stage_1_accs.append(
+                pid_found_percentage(pos_doc_idxs, intermediate_pids[0])
+            )
+            all_stage_2_accs.append(
+                pid_found_percentage(pos_doc_idxs, intermediate_pids[1])
+            )
+            all_stage_3_accs.append(
+                pid_found_percentage(pos_doc_idxs, intermediate_pids[2])
+            )
+
             # Append to the list
             all_pids.append(pids)
             all_scores.append(scores)
             all_labels.append(labels)
+
         # Stack the results
         all_pids = torch.stack(all_pids)
         all_scores = torch.stack(all_scores)
@@ -240,7 +264,10 @@ class LightningNewModel(L.LightningModule):
             metrics.append(compute_metrics(eval_preds, prefix="test"))
 
         # Log metrics
-        self.results.append(metrics)
+        self.final_eval_results.append(metrics)
+        self.intermediate_eval_results.append(
+            (all_stage_1_accs, all_stage_2_accs, all_stage_3_accs)
+        )
 
         return None
 
@@ -252,15 +279,40 @@ class LightningNewModel(L.LightningModule):
 
     def on_test_epoch_end(self) -> Dict:
         # Print the result
-        gathered_results = self.all_gather(self.results)
-        gathered_metrics = aggregate_metrics(
-            gathered_results, total_data_num=len(self.trainer.datamodule.val_dataset)
+        gathered_final_results = self.all_gather(self.final_eval_results)
+        gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
+        # Aggregate the final results
+        gathered_final_metrics = aggregate_final_metrics(
+            gathered_final_results,
+            total_data_num=len(self.trainer.datamodule.val_dataset),
         )
+        # Aggregate the intermediate results
+        gathered_stage1_prob = aggregate_intermediate_metrics(
+            [_[0] for _ in gathered_intermediate_results],
+            total_data_num=len(self.trainer.datamodule.val_dataset),
+        )
+        gathered_stage2_prob = aggregate_intermediate_metrics(
+            [_[1] for _ in gathered_intermediate_results],
+            total_data_num=len(self.trainer.datamodule.val_dataset),
+        )
+        gathered_stage3_prob = aggregate_intermediate_metrics(
+            [_[2] for _ in gathered_intermediate_results],
+            total_data_num=len(self.trainer.datamodule.val_dataset),
+        )
+        gathered_intermediate_metrics = {
+            "stage1": gathered_stage1_prob,
+            "stage2": gathered_stage2_prob,
+            "stage3": gathered_stage3_prob,
+        }
+
         if self.trainer.is_global_zero:
-            print(json.dumps(gathered_metrics, indent=4))
+            print("Intermediate results:")
+            print(json.dumps(gathered_intermediate_metrics, indent=4))
+            print("\nFinal results:")
+            print(json.dumps(gathered_final_metrics, indent=4))
         # self.trainer._logger_connector._logged_metrics = gathered_metrics
         self.trainer.strategy.barrier()
-        return gathered_metrics
+        return gathered_final_metrics
 
     def validation_step(self, batch: Dict, batch_idx: int) -> None:
         bsize = batch["q_tok_ids"].size(0)
