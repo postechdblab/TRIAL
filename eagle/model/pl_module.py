@@ -186,6 +186,13 @@ class LightningNewModel(L.LightningModule):
             weight = None if tok_weights is None else tok_weights[bidx]
             pids, scores = self.searcher(query=query, mask=mask, weight=weight)
             # pids = torch.cat([pids[1:], pids[0:1]], dim=0)
+            # scores = torch.cat(
+            #     [
+            #         scores[1:],
+            #         torch.tensor([0], device=scores.device, dtype=scores.dtype),
+            #     ],
+            #     dim=0,
+            # )
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # number of positive doc ids to append
@@ -445,7 +452,7 @@ class LightningNewModel(L.LightningModule):
         bsize: Optional[int] = None,
         keep_dims="flatten",
         showprogress=False,
-    ):
+    ) -> Tuple[torch.Tensor, List[int]]:
         assert keep_dims == "flatten", "Only 'flatten' is supported for keep_dims."
         assert bsize, "Please provide the batch size for the indexing."
 
