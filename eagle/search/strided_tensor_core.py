@@ -1,10 +1,8 @@
-import torch
 import random
 
+import hkkang_utils.list as list_utils
 import numpy as np
-
-from colbert.utils.utils import flatten
-
+import torch
 
 """
 import line_profiler
@@ -62,7 +60,7 @@ class StridedTensorCore:
 
     @classmethod
     def from_nested_list(cls, lst):
-        flat_lst = flatten(lst)
+        flat_lst = list_utils.do_flatten_list(lst)
 
         tensor = torch.Tensor(flat_lst)
         lengths = [len(sublst) for sublst in lst]

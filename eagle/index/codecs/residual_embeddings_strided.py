@@ -1,7 +1,5 @@
-# from colbert.indexing.codecs.residual import ResidualCodec
-import colbert.indexing.codecs.residual_embeddings as residual_embeddings
-
-from colbert.search.strided_tensor import StridedTensor
+import eagle.index.codecs.residual_embeddings as residual_embeddings
+from eagle.search.strided_tensor import StridedTensor
 
 
 class ResidualEmbeddingsStrided:

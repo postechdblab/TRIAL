@@ -98,7 +98,7 @@ class BaseTokenizer:
         texts: List[str] = list(map(self._preprocess_text, texts))
         batch_size = 100000
 
-        if len(texts) > batch_size:
+        if len(texts) > batch_size and False:
             if True:
                 chunks = list_utils.divide_into_chunks(texts, 32)
                 multiprocessor = concurrent_utils.MultiProcessor(num_workers=32)

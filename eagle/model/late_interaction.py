@@ -21,10 +21,10 @@ from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import Tokenizers
 from eagle.utils import add_config, handle_old_ckpt
 
-logger = logging.getLogger("NewModel")
+logger = logging.getLogger("EAGLE")
 
 
-class NewModel(torch.nn.Module):
+class EAGLE(torch.nn.Module):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizers) -> None:
         super().__init__()
         self.cfg = cfg

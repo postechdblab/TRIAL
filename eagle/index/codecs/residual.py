@@ -1,18 +1,15 @@
-"""
-EVENTUALLY: Tune the batch sizes selected here for a good balance of speed and generality.
-"""
-
 import os
-import torch
-import numpy as np
-from itertools import product
-
-from colbert.infra.config import ColBERTConfig
-from colbert.indexing.codecs.residual_embeddings import ResidualEmbeddings
-from colbert.utils.utils import print_message
-
 import pathlib
+from itertools import product
+from typing import *
+
+import hkkang_utils.file as file_utils
+import numpy as np
+import torch
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.cpp_extension import load
+
+from eagle.index.codecs.residual_embeddings import ResidualEmbeddings
 
 
 class ResidualCodec:
@@ -20,50 +17,137 @@ class ResidualCodec:
 
     def __init__(
         self,
-        config,
-        centroids,
+        cfg: DictConfig,
+        centroids: torch.Tensor = None,
         avg_residual=None,
         bucket_cutoffs=None,
         bucket_weights=None,
     ):
-        self.use_gpu = config.total_visible_gpus > 0
-
+        # Load the torch extensions
         ResidualCodec.try_load_torch_extensions(self.use_gpu)
 
-        if self.use_gpu > 0:
-            self.centroids = centroids.half().cuda()
-            # self.centroids = centroids.float().cuda()
-        else:
-            self.centroids = centroids.float()
-        self.dim, self.nbits = config.dim, config.nbits
-        self.avg_residual = avg_residual
+        # Save configs
+        self.cfg = cfg
+        self.dim = cfg.dim
+        self.nbits = cfg.nbits
 
-        if torch.is_tensor(self.avg_residual):
-            if self.use_gpu:
-                self.avg_residual = self.avg_residual.cuda().half()
-                # self.avg_residual = self.avg_residual.cuda()
+        # Convert dtype if necessary
+        if self.use_gpu:
+            centroids = centroids.half().cuda()
+            if torch.is_tensor(avg_residual):
+                avg_residual = avg_residual.half().cuda()
 
-        if torch.is_tensor(bucket_cutoffs):
-            if self.use_gpu:
+            if torch.is_tensor(bucket_cutoffs):
                 bucket_cutoffs = bucket_cutoffs.cuda()
                 bucket_weights = bucket_weights.half().cuda()
-                # bucket_weights = bucket_weights.cuda()
+        else:
+            centroids = centroids.float()
+            if torch.is_tensor(avg_residual):
+                avg_residual = avg_residual.to(torch.float32)
 
+            if torch.is_tensor(bucket_weights):
+                bucket_weights = bucket_weights.to(torch.float32)
+
+        # Save arguments
+        self.centroids = centroids
+        self.avg_residual = avg_residual
         self.bucket_cutoffs = bucket_cutoffs
         self.bucket_weights = bucket_weights
-        if not self.use_gpu and self.bucket_weights is not None:
-            self.bucket_weights = self.bucket_weights.to(torch.float32)
-
-        self.arange_bits = torch.arange(
-            0, self.nbits, device="cuda" if self.use_gpu else "cpu", dtype=torch.uint8
+        # Initialize the reversed bit map and the decompression lookup table
+        self.reversed_bit_map = self._init_reversed_bit_map()
+        self.decompression_lookup_table = self._init_decompression_lookup_table(
+            bucket_weights=self.bucket_weights
         )
 
-        self.rank = config.rank
+    @property
+    def use_gpu(self) -> bool:
+        return torch.cuda.is_available()
 
+    @property
+    def arange_bits(self) -> torch.Tensor:
+        return torch.arange(0, self.nbits, device=self.device, dtype=torch.uint8)
+
+    @property
+    def device(self) -> torch.device:
+        return torch.device("cuda" if self.use_gpu else "cpu")
+
+    @property
+    def keys_per_byte(self) -> int:
+        return 8 // self.nbits
+
+    @classmethod
+    def try_load_torch_extensions(cls, use_gpu):
+        if hasattr(cls, "loaded_extensions") or not use_gpu:
+            return
+
+        print(
+            f"Loading decompress_residuals_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)..."
+        )
+        decompress_residuals_cpp = load(
+            name="decompress_residuals_cpp",
+            sources=[
+                os.path.join(
+                    pathlib.Path(__file__).parent.resolve(),
+                    "kernel/decompress_residuals.cpp",
+                ),
+                os.path.join(
+                    pathlib.Path(__file__).parent.resolve(),
+                    "kernel/decompress_residuals.cu",
+                ),
+            ],
+            verbose=os.getenv("COLBERT_LOAD_TORCH_EXTENSION_VERBOSE", "False")
+            == "True",
+        )
+        cls.decompress_residuals = decompress_residuals_cpp.decompress_residuals_cpp
+
+        print(
+            f"Loading packbits_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)..."
+        )
+        packbits_cpp = load(
+            name="packbits_cpp",
+            sources=[
+                os.path.join(
+                    pathlib.Path(__file__).parent.resolve(), "kernel/packbits.cpp"
+                ),
+                os.path.join(
+                    pathlib.Path(__file__).parent.resolve(), "kernel/packbits.cu"
+                ),
+            ],
+            verbose=os.getenv("COLBERT_LOAD_TORCH_EXTENSION_VERBOSE", "False")
+            == "True",
+        )
+        cls.packbits = packbits_cpp.packbits_cpp
+
+        cls.loaded_extensions = True
+
+    @classmethod
+    def load(cls, index_path: str) -> "ResidualCodec":
+        plan_path = os.path.join(index_path, "plan.json")
+        centroids_path = os.path.join(index_path, "centroids.pt")
+        avgresidual_path = os.path.join(index_path, "avg_residual.pt")
+        buckets_path = os.path.join(index_path, "buckets.pt")
+
+        plan = OmegaConf.create(file_utils.read_json_file(plan_path))
+        centroids = torch.load(centroids_path, map_location="cpu")
+        avg_residual = torch.load(avgresidual_path, map_location="cpu")
+        bucket_cutoffs, bucket_weights = torch.load(buckets_path, map_location="cpu")
+
+        if avg_residual.dim() == 0:
+            avg_residual = avg_residual.item()
+
+        return cls(
+            cfg=plan.config,
+            centroids=centroids,
+            avg_residual=avg_residual,
+            bucket_cutoffs=bucket_cutoffs,
+            bucket_weights=bucket_weights,
+        )
+
+    def _init_reversed_bit_map(self) -> torch.Tensor:
         # We reverse the residual bits because arange_bits as
         # currently constructed produces results with the reverse
         # of the expected endianness
-        self.reversed_bit_map = []
+        reversed_bit_map: List[int] = []
         mask = (1 << self.nbits) - 1
         for i in range(256):
             # The reversed byte
@@ -81,87 +165,34 @@ class ResidualCodec:
                 z |= y
                 if j > self.nbits:
                     z <<= self.nbits
-            self.reversed_bit_map.append(z)
-        self.reversed_bit_map = torch.tensor(self.reversed_bit_map).to(torch.uint8)
+            reversed_bit_map.append(z)
+        reversed_bit_map = torch.tensor(reversed_bit_map).to(torch.uint8)
 
+        if self.use_gpu:
+            reversed_bit_map = reversed_bit_map.cuda()
+
+        return reversed_bit_map
+
+    def _init_decompression_lookup_table(
+        self, bucket_weights: Optional[torch.Tensor]
+    ) -> Union[None, torch.Tensor]:
         # A table of all possible lookup orders into bucket_weights
         # given n bits per lookup
-        keys_per_byte = 8 // self.nbits
-        if self.bucket_weights is not None:
-            self.decompression_lookup_table = torch.tensor(
-                list(
-                    product(list(range(len(self.bucket_weights))), repeat=keys_per_byte)
+        if bucket_weights is None:
+            return None
+        decomporession_lookup_table = torch.tensor(
+            list(
+                product(
+                    list(range(len(self.bucket_weights))),
+                    repeat=self.keys_per_byte,
                 )
-            ).to(torch.uint8)
-        else:
-            self.decompression_lookup_table = None
-        if self.use_gpu:
-            self.reversed_bit_map = self.reversed_bit_map.cuda()
-            if self.decompression_lookup_table is not None:
-                self.decompression_lookup_table = self.decompression_lookup_table.cuda()
-
-    @classmethod
-    def try_load_torch_extensions(cls, use_gpu):
-        if hasattr(cls, "loaded_extensions") or not use_gpu:
-            return
-
-        print_message(
-            f"Loading decompress_residuals_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)..."
+            ),
+            device=self.device,
+            dtype=torch.uint8,
         )
-        decompress_residuals_cpp = load(
-            name="decompress_residuals_cpp",
-            sources=[
-                os.path.join(
-                    pathlib.Path(__file__).parent.resolve(), "decompress_residuals.cpp"
-                ),
-                os.path.join(
-                    pathlib.Path(__file__).parent.resolve(), "decompress_residuals.cu"
-                ),
-            ],
-            verbose=os.getenv("COLBERT_LOAD_TORCH_EXTENSION_VERBOSE", "False")
-            == "True",
-        )
-        cls.decompress_residuals = decompress_residuals_cpp.decompress_residuals_cpp
+        return decomporession_lookup_table
 
-        print_message(
-            f"Loading packbits_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)..."
-        )
-        packbits_cpp = load(
-            name="packbits_cpp",
-            sources=[
-                os.path.join(pathlib.Path(__file__).parent.resolve(), "packbits.cpp"),
-                os.path.join(pathlib.Path(__file__).parent.resolve(), "packbits.cu"),
-            ],
-            verbose=os.getenv("COLBERT_LOAD_TORCH_EXTENSION_VERBOSE", "False")
-            == "True",
-        )
-        cls.packbits = packbits_cpp.packbits_cpp
-
-        cls.loaded_extensions = True
-
-    @classmethod
-    def load(cls, index_path):
-        config = ColBERTConfig.load_from_index(index_path)
-        centroids_path = os.path.join(index_path, "centroids.pt")
-        avgresidual_path = os.path.join(index_path, "avg_residual.pt")
-        buckets_path = os.path.join(index_path, "buckets.pt")
-
-        centroids = torch.load(centroids_path, map_location="cpu")
-        avg_residual = torch.load(avgresidual_path, map_location="cpu")
-        bucket_cutoffs, bucket_weights = torch.load(buckets_path, map_location="cpu")
-
-        if avg_residual.dim() == 0:
-            avg_residual = avg_residual.item()
-
-        return cls(
-            config=config,
-            centroids=centroids,
-            avg_residual=avg_residual,
-            bucket_cutoffs=bucket_cutoffs,
-            bucket_weights=bucket_weights,
-        )
-
-    def save(self, index_path):
+    def save(self, index_path: str) -> None:
         assert self.avg_residual is not None
         assert torch.is_tensor(self.bucket_cutoffs), self.bucket_cutoffs
         assert torch.is_tensor(self.bucket_weights), self.bucket_weights
@@ -178,7 +209,7 @@ class ResidualCodec:
         else:
             torch.save(torch.tensor([self.avg_residual]), avgresidual_path)
 
-    def compress(self, embs):
+    def compress(self, embs: torch.Tensor) -> ResidualEmbeddings:
         codes, residuals = [], []
 
         for batch in embs.split(1 << 18):
@@ -197,7 +228,7 @@ class ResidualCodec:
 
         return ResidualCodec.Embeddings(codes, residuals)
 
-    def binarize(self, residuals):
+    def binarize(self, residuals) -> torch.Tensor:
         residuals = torch.bucketize(residuals.float(), self.bucket_cutoffs).to(
             dtype=torch.uint8
         )
@@ -223,7 +254,7 @@ class ResidualCodec:
 
         return residuals_packed
 
-    def compress_into_codes(self, embs, out_device):
+    def compress_into_codes(self, embs, out_device: torch.device) -> torch.Tensor:
         """
         EVENTUALLY: Fusing the kernels or otherwise avoiding materalizing the entire matrix before max(dim=0)
                     seems like it would help here a lot.
@@ -249,7 +280,7 @@ class ResidualCodec:
 
         return torch.cat(codes)
 
-    def lookup_centroids(self, codes, out_device):
+    def lookup_centroids(self, codes, out_device: torch.device) -> torch.Tensor:
         """
         Handles multi-dimensional codes too.
 
@@ -269,7 +300,7 @@ class ResidualCodec:
         return torch.cat(centroids)
 
     # @profile
-    def decompress(self, compressed_embs: Embeddings):
+    def decompress(self, compressed_embs: ResidualEmbeddings) -> torch.Tensor:
         """
         We batch below even if the target device is CUDA to avoid large temporary buffers causing OOM.
         """

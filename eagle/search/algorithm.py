@@ -3,7 +3,7 @@ from typing import *
 import torch
 
 
-from colbert.search.strided_tensor import StridedTensor
+from eagle.search.strided_tensor import StridedTensor
 
 
 def compute_sum_maxsim(

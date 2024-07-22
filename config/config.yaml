@@ -8,6 +8,8 @@ indexing:
     dir_path: /root/EAGLE/index/
     nbits: 2
     bsize: 256
+    dim: 128
+    kmeans_niters: 20
 training:
     resume_ckpt_path: Null
     max_epochs: 1
@@ -78,8 +80,8 @@ model:
     is_use_lora: False
     # ideas
     is_use_dynamic_granularity_coeff: False
-    is_use_q_weight: False
-    is_use_d_weight: False
+    is_use_q_weight: True
+    is_use_d_weight: True
     is_use_fine_grained_loss: False
     granularity_level: token
     # granularity_level: word

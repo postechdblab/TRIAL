@@ -3,11 +3,11 @@ from typing import *
 import hkkang_utils.list as list_utils
 import torch
 
-from colbert.indexing.codecs.residual_embeddings_strided import (
+from eagle.index.codecs.residual_embeddings_strided import (
     ResidualEmbeddingsStrided,
 )
-from colbert.search.index_loader import IndexLoader
-from colbert.search.strided_tensor import StridedTensor
+from eagle.index.index_loader import IndexLoader
+from eagle.search.strided_tensor import StridedTensor
 from eagle.search.algorithm import (
     compute_sum_maxsim,
     reduce_element_wise_relevance_scores,

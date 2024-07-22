@@ -4,8 +4,6 @@ import torch
 import tqdm
 import ujson
 
-from colbert.utils.utils import print_message
-
 
 class ResidualEmbeddings:
     # from colbert.indexing.codecs.residual_embeddings_strided import \
@@ -43,7 +41,7 @@ class ResidualEmbeddings:
                     "Use the colbert/utils/coalesce.py to prepare index for memory mapping."
                 )
 
-            print_message("#> Loading codes and residuals with memory mapping...")
+            print("#> Loading codes and residuals with memory mapping...")
 
             residuals_path = os.path.join(index_path, f"0.residuals.pt")
             codes_path = os.path.join(index_path, f"0.codes.pt")
@@ -65,7 +63,7 @@ class ResidualEmbeddings:
             ret = torch.reshape(ret, (codes_size, packed_dim))
             residuals = ret
         else:
-            print_message("#> Loading codes and residuals...")
+            print("#> Loading codes and residuals...")
 
             codes = torch.empty(num_embeddings, dtype=torch.int32)
             residuals = torch.empty(num_embeddings, dim // 8 * nbits, dtype=torch.uint8)
@@ -93,7 +91,7 @@ class ResidualEmbeddings:
         return cls(codes, residuals)
 
     @classmethod
-    def load_codes(self, index_path, chunk_idx):
+    def load_codes(self, index_path: str, chunk_idx: int) -> torch.Tensor:
         codes_path = os.path.join(index_path, f"{chunk_idx}.codes.pt")
         return torch.load(codes_path, map_location="cpu")
 

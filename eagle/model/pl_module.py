@@ -15,7 +15,7 @@ from eagle.metrics import (
     aggregate_intermediate_metrics,
     compute_metrics,
 )
-from eagle.model.late_interaction import NewModel
+from eagle.model.late_interaction import EAGLE
 from eagle.model.utils import (
     _sort_by_length,
     _split_into_batches,
@@ -43,7 +43,7 @@ class LightningNewModel(L.LightningModule):
         # Tmp
         self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
         # Load model
-        self.model = NewModel(
+        self.model = EAGLE(
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
         self.swa_model = (

@@ -1,12 +1,15 @@
 import os
 import pathlib
 
+import hkkang_utils.list as list_utils
 import torch
 from torch.utils.cpp_extension import load
 
-from colbert.utils.utils import flatten, print_message
-
-from .strided_tensor_core import StridedTensorCore, _create_mask, _create_view
+from eagle.search.strided_tensor_core import (
+    StridedTensorCore,
+    _create_mask,
+    _create_view,
+)
 
 
 class StridedTensor(StridedTensorCore):
@@ -20,7 +23,7 @@ class StridedTensor(StridedTensorCore):
         if hasattr(cls, "loaded_extensions") or use_gpu:
             return
 
-        print_message(
+        print(
             f"Loading segmented_lookup_cpp extension (set COLBERT_LOAD_TORCH_EXTENSION_VERBOSE=True for more info)..."
         )
         segmented_lookup_cpp = load(
@@ -230,7 +233,7 @@ if __name__ == "__main__":
 
     print(emb_ids_lengths)
 
-    slow_result = flatten(
+    slow_result = list_utils.do_flatten_list(
         [ivf_list[idx] for idx in probed_centroids.flatten().tolist()]
     )
     print(emb_ids.size(), len(slow_result))

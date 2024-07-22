@@ -1,21 +1,47 @@
 import os
+import re
+
+import hkkang_utils.list as list_utils
 import torch
 import tqdm
+import ujson
 
-from colbert.indexing.loaders import load_doclens
-from colbert.utils.utils import print_message, flatten
+
+def load_doclens(directory, flatten=True):
+    doclens_filenames = {}
+
+    for filename in os.listdir(directory):
+        match = re.match("doclens.(\d+).json", filename)
+
+        if match is not None:
+            doclens_filenames[int(match.group(1))] = filename
+
+    doclens_filenames = [
+        os.path.join(directory, doclens_filenames[i])
+        for i in sorted(doclens_filenames.keys())
+    ]
+
+    all_doclens = [ujson.load(open(filename)) for filename in doclens_filenames]
+
+    if flatten:
+        all_doclens = [x for sub_doclens in all_doclens for x in sub_doclens]
+
+    if len(all_doclens) == 0:
+        raise ValueError("Could not load doclens")
+
+    return all_doclens
 
 
 def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
     if verbose > 1:
-        print_message("#> Optimizing IVF to store map from centroids to list of pids..")
+        print("#> Optimizing IVF to store map from centroids to list of pids..")
 
-        print_message("#> Building the emb2pid mapping..")
+        print("#> Building the emb2pid mapping..")
     all_doclens = load_doclens(index_path, flatten=False)
 
     # assert self.num_embeddings == sum(flatten(all_doclens))
 
-    all_doclens = flatten(all_doclens)
+    all_doclens = list_utils.do_flatten_list(all_doclens)
     total_num_embeddings = sum(all_doclens)
 
     emb2pid = torch.zeros(total_num_embeddings, dtype=torch.int)
@@ -31,7 +57,7 @@ def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
         offset_doclens += dlength
 
     if verbose > 1:
-        print_message("len(emb2pid) =", len(emb2pid))
+        print("len(emb2pid) =", len(emb2pid))
 
     ivf = emb2pid[orig_ivf]
     unique_pids_per_centroid = []
@@ -50,10 +76,8 @@ def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
     optimized_ivf_path = os.path.join(index_path, "ivf.pid.pt")
     torch.save((ivf, ivf_lengths), optimized_ivf_path)
     if verbose > 1:
-        print_message(f"#> Saved optimized IVF to {optimized_ivf_path}")
+        print(f"#> Saved optimized IVF to {optimized_ivf_path}")
         if os.path.exists(original_ivf_path):
-            print_message(
-                f'#> Original IVF at path "{original_ivf_path}" can now be removed'
-            )
+            print(f'#> Original IVF at path "{original_ivf_path}" can now be removed')
 
     return ivf, ivf_lengths
