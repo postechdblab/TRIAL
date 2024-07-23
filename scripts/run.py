@@ -19,7 +19,7 @@ from eagle.index.indexer import multi_process_indexing
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import DTokenizer, QTokenizer
-from eagle.utils import add_global_configs
+from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, join_word
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -281,4 +281,5 @@ if __name__ == "__main__":
         datefmt="%m/%d %H:%M:%S",
         level=logging.INFO,
     )
+    set_random_seed()
     main()

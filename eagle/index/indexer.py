@@ -18,7 +18,7 @@ from eagle.dataset.utils import get_mask
 from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.corpus import Corpus
 from eagle.index.index_saver import IndexSaver
-from eagle.index.utils import optimize_ivf
+from eagle.index.utils import all_gather_nd, optimize_ivf
 from eagle.model import EAGLE
 from eagle.model.utils import _sort_by_length, _split_into_batches
 from eagle.tokenizer import Tokenizers
@@ -75,8 +75,8 @@ class Indexer:
         self.train_kmeans(sample_embs)
         self._distributed_barrier()
 
-        # Perform indexing
-        self.indexing()
+        # Encode all documents
+        self.encoding()
         self._distributed_barrier()
 
         # Finalize
@@ -124,9 +124,7 @@ class Indexer:
     def _check_index_already_exists(self) -> bool:
         if os.path.exists(self.dir_path):
             self._log_info(f"Index directory already exists: {self.dir_path}")
-            user_input = input("Override? (Enter to continue, Ctrl+C to exit)")
-            if "exit" in user_input:
-                return False
+            exit(0)
         else:
             # Create direcrtory if not exists
             os.makedirs(self.dir_path)
@@ -198,7 +196,7 @@ class Indexer:
     def _sample_embeddings(self, sampled_pids: List[int]) -> Tuple[torch.Tensor, float]:
         # Extract documents
         local_samples: List[str] = [
-            passage.text
+            str(passage)
             for pid, passage in self.corpus.enumerate(
                 rank=self.rank, world_size=self.world_size
             )
@@ -209,52 +207,23 @@ class Indexer:
             local_samples, show_progress=self.is_main_thread
         )
 
-        if self.use_gpu:
-            self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
-            torch.distributed.all_reduce(self.num_sample_embs)
-
-            avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
-            avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
-            torch.distributed.all_reduce(avg_doclen_est)
-
-            nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cuda()
-            torch.distributed.all_reduce(nonzero_ranks)
-        else:
-            if torch.distributed.is_available() and torch.distributed.is_initialized():
-                self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
-                torch.distributed.all_reduce(self.num_sample_embs)
-
-                avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
-                avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
-                torch.distributed.all_reduce(avg_doclen_est)
-
-                nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cpu()
-                torch.distributed.all_reduce(nonzero_ranks)
-            else:
-                self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cpu()
-
-                avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
-                avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
-
-                nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cpu()
-
+        # Compute average document length estimattion
+        avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
+        avg_doclen_est = torch.tensor([avg_doclen_est], device=local_sample_embs.device)
+        torch.distributed.all_reduce(avg_doclen_est)
+        nonzero_ranks = torch.tensor(
+            [float(len(local_samples) > 0)], device=avg_doclen_est.device
+        )
+        torch.distributed.all_reduce(nonzero_ranks)
         avg_doclen_est = avg_doclen_est.item() / nonzero_ranks.item()
         self.avg_doclen_est = avg_doclen_est
 
-        self._log_info(f"Sample embeddings shape: {local_sample_embs.shape}")
-
         # Gather all samples
-        sample_embs = [
-            torch.empty(
-                self.num_sample_embs,
-                self.cfg.dim,
-                dtype=torch.float16,
-                device=self.device,
-            )
-            for _ in range(self.world_size)
-        ]
-        torch.distributed.all_gather(sample_embs, local_sample_embs)
-        sample_embs = torch.cat(sample_embs).cpu()
+        sample_embs = all_gather_nd(local_sample_embs, world_size=self.world_size)
+        if self.is_main_thread:
+            sample_embs = torch.cat(sample_embs).cpu()
+        else:
+            sample_embs = None
 
         return sample_embs, self.avg_doclen_est
 
@@ -429,7 +398,7 @@ class Indexer:
         )
         codec.save(index_path=self.dir_path)
 
-    def indexing(self) -> None:
+    def encoding(self) -> None:
         """
         Encode embeddings for all passages in the corpus.
         Each embedding is converted to code (centroid id) and residual.
@@ -440,13 +409,14 @@ class Indexer:
             {CHUNK#}.residuals.pt:  16-bits residual for each embedding in chunk
             doclens.{CHUNK#}.pt:    number of embeddings within each passage in chunk
         """
+        self._log_info_main_thread_only("Encoding documents...")
         with self.saver.thread():
             for chunk_idx, offset, passages in tqdm.tqdm(
                 self.corpus.enumerate_chunk(rank=self.rank, world_size=self.world_size),
                 disable=not self.is_main_thread,
             ):
                 # Convert Document to string
-                passages: List[str] = [passage.text for passage in passages]
+                passages: List[str] = [str(passage) for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
                 embs, doclens = self.encode_passages(
                     passages, show_progress=self.is_main_thread

@@ -15,6 +15,9 @@ class Document:
     text: str
     title: str
 
+    def __str__(self) -> str:
+        return f"{self.title} | {self.text}"
+
 
 class Corpus:
     def __init__(self, cfg: DictConfig) -> None:

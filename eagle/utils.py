@@ -1,7 +1,9 @@
 import logging
+import random
 from typing import *
 
 import diskcache as dc
+import numpy as np
 import torch
 from beir.retrieval.evaluation import EvaluateRetrieval
 from omegaconf import DictConfig, open_dict
@@ -11,6 +13,13 @@ from eagle.metrics import get_recall_rates
 
 # Create a cache object
 cache = dc.Cache("/tmp/diskcache")
+
+
+def set_random_seed(seed: int = 12345) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
 # Decorator to cache function results

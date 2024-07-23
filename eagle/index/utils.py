@@ -7,6 +7,44 @@ import tqdm
 import ujson
 
 
+def all_gather_nd(tensor: torch.Tensor, world_size: int) -> torch.Tensor:
+    """
+    Gathers tensor arrays of different lengths in a list.
+    The length dimension is 0. This supports any number of extra dimensions in the tensors.
+    All the other dimensions should be equal between the tensors.
+
+    Args:
+        tensor (Tensor): Tensor to be broadcast from current process.
+
+    Returns:
+        (Tensor): output list of tensors that can be of different sizes
+    """
+    # Gather the size of the tensors
+    local_size = torch.tensor(tensor.size(), device=tensor.device)
+    all_sizes = [torch.zeros_like(local_size) for _ in range(world_size)]
+    torch.distributed.all_gather(all_sizes, local_size)
+
+    # Find the max size
+    max_length = max(size[0] for size in all_sizes)
+
+    # Create a tensor of max size and fill it with the current tensor and padding
+    length_diff = max_length.item() - local_size[0].item()
+    if length_diff:
+        pad_size = (length_diff, *tensor.size()[1:])
+        padding = torch.zeros(pad_size, device=tensor.device, dtype=tensor.dtype)
+        tensor = torch.cat((tensor, padding))
+
+    # Gather all tensors
+    all_tensors_padded = [torch.zeros_like(tensor) for _ in range(world_size)]
+    torch.distributed.all_gather(all_tensors_padded, tensor)
+
+    # Remove the padding
+    all_tensors = []
+    for tensor_, size in zip(all_tensors_padded, all_sizes):
+        all_tensors.append(tensor_[: size[0]])
+    return all_tensors
+
+
 def load_doclens(directory, flatten=True):
     doclens_filenames = {}
 
