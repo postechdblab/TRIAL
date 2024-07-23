@@ -6,16 +6,16 @@ import hkkang_utils.slack as slack_utils
 import hydra
 import lightning as L
 import torch
+import torch.multiprocessing as mp
 from omegaconf import DictConfig
 
-from colbert.indexer import Indexer
-from colbert.infra import ColBERTConfig, Run, RunConfig
 from eagle.dataset import ContrastiveDataModule, InferenceDataModule
 from eagle.dataset.utils import (
     add_doc_ranges_and_mask,
     add_query_ranges_and_mask,
     collate_fn,
 )
+from eagle.index.indexer import multi_process_indexing
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenizer import DTokenizer, QTokenizer
@@ -163,9 +163,8 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     data_module = InferenceDataModule(cfg)
 
     # Load index
-    index_name = f"{cfg.dataset.name}.{cfg._global.tag}.nbits={cfg.indexing.nbits}"
     index_dir_path = os.path.join(
-        cfg.indexing.dir_path, cfg.dataset.name, "indexes", index_name
+        cfg.indexing.dir_path, cfg.dataset.name, cfg._global.tag
     )
     logger.info(f"Index directory path: {index_dir_path}")
 
@@ -200,34 +199,25 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     return None
 
 
-def indexing(cfg: DictConfig, ckpt_path: str) -> None:
-    # Load trained model
-    assert ckpt_path, "Please provide the path to the checkpoint"
-
+def indexing(cfg: DictConfig) -> None:
     # Get configs
-    nbits = cfg.indexing.nbits
-    bsize = cfg.indexing.bsize
-    dir_path = cfg.indexing.dir_path
-    dataset_name = cfg.dataset.name
-    collection_path = os.path.join("/root/EAGLE/data", dataset_name, "corpus.jsonl")
+    world_size = torch.cuda.device_count()
 
-    index_name = f"{dataset_name}.{cfg._global.tag}.nbits={cfg.indexing.nbits}"
-    total_visible_gpus = torch.cuda.device_count()
-
-    with Run().context(
-        RunConfig(root=dir_path, nranks=total_visible_gpus, experiment=dataset_name)
-    ):
-        colbert_config = ColBERTConfig(
-            bsize=bsize,
-            nbits=nbits,
-            root=dir_path,
-        )
-        indexer = Indexer(checkpoint=ckpt_path, config=colbert_config)
-        indexer.index(name=index_name, collection=collection_path)
+    mp.spawn(
+        multi_process_indexing,
+        args=(cfg, world_size),
+        nprocs=world_size,
+        join=True,
+    )
+    print("Done!")
 
 
 def run(
-    cfg: DictConfig, mode: str, is_analyze: bool, ckpt_path: str, use_slack: bool
+    cfg: DictConfig,
+    mode: str,
+    is_analyze: bool,
+    ckpt_path: str = None,
+    use_slack: bool = False,
 ) -> None:
     with slack_utils.notification(
         channel="question-answering",
@@ -239,7 +229,7 @@ def run(
             if mode == "inference":
                 return inference(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
             elif mode == "indexing":
-                return indexing(cfg, ckpt_path=ckpt_path)
+                return indexing(cfg)
             elif mode == "evaluate_retrieval":
                 return full_retrieval(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
             elif mode == "evaluate_reranking":

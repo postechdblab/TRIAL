@@ -3,15 +3,13 @@ from typing import *
 import hkkang_utils.list as list_utils
 import torch
 
-from eagle.index.codecs.residual_embeddings_strided import (
-    ResidualEmbeddingsStrided,
-)
+from eagle.index.codecs.residual_embeddings_strided import ResidualEmbeddingsStrided
 from eagle.index.index_loader import IndexLoader
-from eagle.search.strided_tensor import StridedTensor
 from eagle.search.algorithm import (
     compute_sum_maxsim,
     reduce_element_wise_relevance_scores,
 )
+from eagle.search.strided_tensor import StridedTensor
 
 
 class PLAID:

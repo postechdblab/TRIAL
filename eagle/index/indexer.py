@@ -64,6 +64,10 @@ class Indexer:
         self.avg_doclen_est = None
 
     def __call__(self) -> None:
+        # Check if directory exists
+        self._check_index_already_exists()
+        self._distributed_barrier()
+
         # Plan indexing
         sample_embs = self.plan()
 
@@ -88,7 +92,9 @@ class Indexer:
 
     @property
     def dir_path(self) -> str:
-        return os.path.join(self.cfg.dir_path, self.cfg.tag)
+        return os.path.join(
+            self.cfg.dir_path, self.corpus.cfg.dataset.name, self.cfg.tag
+        )
 
     @property
     def plan_path(self) -> str:
@@ -115,6 +121,18 @@ class Indexer:
         self._log_info(*args, **kwargs)
 
     @main_thread_only
+    def _check_index_already_exists(self) -> bool:
+        if os.path.exists(self.dir_path):
+            self._log_info(f"Index directory already exists: {self.dir_path}")
+            user_input = input("Override? (Enter to continue, Ctrl+C to exit)")
+            if "exit" in user_input:
+                return False
+        else:
+            # Create direcrtory if not exists
+            os.makedirs(self.dir_path)
+        return True
+
+    @main_thread_only
     def _save_plan(self) -> None:
         # Create indexing plan
         d = {"config": dict(self.cfg)}
@@ -132,11 +150,10 @@ class Indexer:
             torch.distributed.barrier()
 
     def _log_info(self, *args, **kwargs) -> None:
-        args = (f"[Rank {self.rank}]" + args[0], *args[1:])
+        args = (f"[Rank {self.rank}] " + args[0], *args[1:])
         logger.info(*args, **kwargs)
 
     def _get_kmeans_heldout_size(self, sample_num: int) -> int:
-
         return int(min(HELDOUT_FRACTION * sample_num, MIN_HELDOUT_NUM))
 
     def _compute_avg_residual(
@@ -164,10 +181,10 @@ class Indexer:
         bucket_weights = heldout_avg_residual.float().quantile(bucket_weights_quantiles)
 
         self._log_info(
-            f"#> Got bucket_cutoffs_quantiles = {bucket_cutoffs_quantiles} and bucket_weights_quantiles = {bucket_weights_quantiles}"
+            f"Got bucket_cutoffs_quantiles = {bucket_cutoffs_quantiles} and bucket_weights_quantiles = {bucket_weights_quantiles}"
         )
         self._log_info(
-            f"#> Got bucket_cutoffs = {bucket_cutoffs} and bucket_weights = {bucket_weights}"
+            f"Got bucket_cutoffs = {bucket_cutoffs} and bucket_weights = {bucket_weights}"
         )
 
         return bucket_cutoffs, bucket_weights, avg_residual.mean()
@@ -188,7 +205,9 @@ class Indexer:
             if pid in sampled_pids
         ]
 
-        local_sample_embs, doclens = self.encode_passages(local_samples)
+        local_sample_embs, doclens = self.encode_passages(
+            local_samples, show_progress=self.is_main_thread
+        )
 
         if self.use_gpu:
             self.num_sample_embs = torch.tensor([local_sample_embs.size(0)]).cuda()
@@ -295,7 +314,7 @@ class Indexer:
         return embedding_offset, embedding_offsets
 
     def _build_ivf(self, num_embeddings: int, embedding_offsets: List[int]) -> None:
-        # TODO: Implement this method
+        """"""
         # Maybe we should several small IVFs? Every 250M embeddings, so that's every 1 GB.
         # It would save *memory* here and *disk space* regarding the int64.
         # But we'd have to decide how many IVFs to use during retrieval: many (loop) or one?
@@ -424,12 +443,14 @@ class Indexer:
         with self.saver.thread():
             for chunk_idx, offset, passages in tqdm.tqdm(
                 self.corpus.enumerate_chunk(rank=self.rank, world_size=self.world_size),
-                disable=self.rank > 0,
+                disable=not self.is_main_thread,
             ):
                 # Convert Document to string
                 passages: List[str] = [passage.text for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
-                embs, doclens = self.encode_passages(passages)
+                embs, doclens = self.encode_passages(
+                    passages, show_progress=self.is_main_thread
+                )
                 assert embs.dtype == (torch.float16 if self.use_gpu else torch.float32)
                 embs = embs.half()
                 self._log_info_main_thread_only(
@@ -467,11 +488,13 @@ class Indexer:
         )
         self._update_metadata(num_embeddings=num_embeddings)
 
-    def encode_passages(self, passages: List[str]) -> Tuple[torch.Tensor, List[int]]:
+    def encode_passages(
+        self, passages: List[str], show_progress: bool = False
+    ) -> Tuple[torch.Tensor, List[int]]:
         with torch.inference_mode():
             all_embs, all_doclens = [], []
             for passages_batch in list_utils.chunks(
-                passages, chunk_size=self.cfg.bsize, show_progress=True
+                passages, chunk_size=self.cfg.bsize, show_progress=show_progress
             ):
                 # Tokenize given texts
                 result = self.tokenizers.d_tokenizer(
@@ -537,7 +560,7 @@ class Indexer:
 import hydra
 
 
-def _main(rank: int, cfg: DictConfig, world_size: int) -> None:
+def multi_process_indexing(rank: int, cfg: DictConfig, world_size: int) -> None:
     logging.basicConfig(
         format="[%(asctime)s %(levelname)s %(name)s] %(message)s",
         datefmt="%m/%d %H:%M:%S",
@@ -561,7 +584,7 @@ def _main(rank: int, cfg: DictConfig, world_size: int) -> None:
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
-def main(cfg: DictConfig) -> None:
+def _main(cfg: DictConfig) -> None:
     from omegaconf import open_dict
 
     cfg: DictConfig = add_global_configs(cfg, exclude_keys=["args"])
@@ -573,7 +596,7 @@ def main(cfg: DictConfig) -> None:
         cfg.indexing.path = f"/root/EAGLE/index/"
     world_size = 2  # torch.cuda.device_count()
     mp.spawn(
-        _main,
+        multi_process_indexing,
         args=(cfg, world_size),
         nprocs=world_size,
         join=True,
@@ -582,4 +605,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    _main()

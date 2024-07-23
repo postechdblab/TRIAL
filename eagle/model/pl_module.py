@@ -312,7 +312,9 @@ class LightningNewModel(L.LightningModule):
         if self.trainer.is_global_zero:
             print("Intermediate results:")
             print(json.dumps(gathered_intermediate_metrics, indent=4))
-            print("\nFinal results:")
+            print(
+                f"\nFinal results (Total data: {len(self.trainer.datamodule.val_dataset)}):"
+            )
             print(json.dumps(gathered_final_metrics, indent=4))
         # self.trainer._logger_connector._logged_metrics = gathered_metrics
         self.trainer.strategy.barrier()
