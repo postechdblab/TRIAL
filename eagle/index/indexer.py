@@ -19,7 +19,6 @@ from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.corpus import Corpus
 from eagle.index.index_saver import IndexSaver
 from eagle.index.utils import all_gather_nd, optimize_ivf
-from eagle.model import EAGLE
 from eagle.model.utils import _sort_by_length, _split_into_batches
 from eagle.tokenizer import Tokenizers
 from eagle.utils import add_global_configs
@@ -51,6 +50,9 @@ class Indexer:
         self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
         # Set model
         assert cfg.model.ckpt_path, "model ckpt_path is not provided."
+        # TODO: Placing the import here to avoid circular import. Need to fix this
+        from eagle.model.late_interaction import EAGLE
+
         self.model = DDP(
             EAGLE(cfg=cfg.model, tokenizers=self.tokenizers).to(self.device),
             device_ids=[self.rank],
