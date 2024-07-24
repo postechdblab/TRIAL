@@ -211,7 +211,13 @@ class Indexer:
                 local_samples_word_ranges.append(word_ranges)
                 local_samples_phrase_ranges.append(phrase_ranges)
 
-        local_sample_embs, doclens = self.encode_passages(
+        (
+            local_sample_cls_embs,
+            local_sample_tok_embs,
+            local_sample_phrase_embs,
+            tok_lens,
+            phrase_lens,
+        ) = self.encode_passages(
             local_samples,
             word_ranges=local_samples_word_ranges,
             phrase_ranges=local_samples_phrase_ranges,
@@ -219,8 +225,10 @@ class Indexer:
         )
 
         # Compute average document length estimattion
-        avg_doclen_est = sum(doclens) / len(doclens) if doclens else 0
-        avg_doclen_est = torch.tensor([avg_doclen_est], device=local_sample_embs.device)
+        avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
+        avg_doclen_est = torch.tensor(
+            [avg_doclen_est], device=local_sample_tok_embs.device
+        )
         torch.distributed.all_reduce(avg_doclen_est)
         nonzero_ranks = torch.tensor(
             [float(len(local_samples) > 0)], device=avg_doclen_est.device
@@ -230,7 +238,7 @@ class Indexer:
         self.avg_doclen_est = avg_doclen_est
 
         # Gather all samples
-        sample_embs = all_gather_nd(local_sample_embs, world_size=self.world_size)
+        sample_embs = all_gather_nd(local_sample_tok_embs, world_size=self.world_size)
         if self.is_main_thread:
             sample_embs = torch.cat(sample_embs).cpu()
         else:
@@ -251,16 +259,22 @@ class Indexer:
             raise ValueError(f"Some files are missing! (check_results:{check_results})")
         return None
 
-    def _collect_embedding_id_offset(self) -> Tuple[int, List[int]]:
+    def _collect_embedding_id_offset(
+        self,
+    ) -> Tuple[int, List[int], int, List[int], int, List[int]]:
         """
         Count the embedding offsets from the first chunk to the last chunk.
         This is done here because we asynchronously save the embeddings.
         """
         passage_offset = 0
-        embedding_offset = 0
+        cls_embedding_offset = 0
+        tok_embedding_offset = 0
+        phrase_embedding_offset = 0
 
         # Calculate embedding ids for each chunk
-        embedding_offsets: List[int] = []
+        cls_embedding_offsets: List[int] = []
+        tok_embedding_offsets: List[int] = []
+        phrase_embedding_offsets: List[int] = []
         for chunk_idx in range(self.num_chunks):
             # Get metadata path
             metadata_path = os.path.join(self.dir_path, f"{chunk_idx}.metadata.json")
@@ -275,59 +289,155 @@ class Indexer:
                     chunk_metadata,
                 )
 
-                # Add the embedding offset
-                chunk_metadata["embedding_offset"] = embedding_offset
+                # Add the embedding offsets
+                chunk_metadata["cls_embedding_offset"] = cls_embedding_offset
+                chunk_metadata["tok_embedding_offset"] = tok_embedding_offset
+                chunk_metadata["phrase_embedding_offset"] = phrase_embedding_offset
 
                 # Update the offsets
-                embedding_offsets.append(embedding_offset)
+                cls_embedding_offsets.append(cls_embedding_offset)
+                tok_embedding_offsets.append(tok_embedding_offset)
+                phrase_embedding_offsets.append(phrase_embedding_offset)
+
                 passage_offset += chunk_metadata["num_passages"]
-                embedding_offset += chunk_metadata["num_embeddings"]
+                cls_embedding_offset += chunk_metadata["num_cls_embeddings"]
+                tok_embedding_offset += chunk_metadata["num_tok_embeddings"]
+                phrase_embedding_offset += chunk_metadata["num_phrase_embeddings"]
 
             # Write the updated metadata back
             with open(metadata_path, "w") as f:
                 f.write(ujson.dumps(chunk_metadata, indent=4) + "\n")
 
         assert (
-            len(embedding_offsets) == self.num_chunks
-        ), f"{len(embedding_offsets)} vs. {self.num_chunks}"
+            len(tok_embedding_offsets) == self.num_chunks
+        ), f"{len(tok_embedding_offsets)} vs. {self.num_chunks}"
 
-        return embedding_offset, embedding_offsets
+        return (
+            cls_embedding_offset,
+            cls_embedding_offsets,
+            tok_embedding_offset,
+            tok_embedding_offsets,
+            phrase_embedding_offset,
+            phrase_embedding_offsets,
+        )
 
-    def _build_ivf(self, num_embeddings: int, embedding_offsets: List[int]) -> None:
+    def _build_ivf(
+        self,
+        num_cls_embeddings: int,
+        cls_embedding_offsets: List[int],
+        num_tok_embeddings: int,
+        tok_embedding_offsets: List[int],
+        num_phrase_embeddings: int,
+        phrase_embedding_offsets: List[int],
+    ) -> None:
         """"""
         # Maybe we should several small IVFs? Every 250M embeddings, so that's every 1 GB.
         # It would save *memory* here and *disk space* regarding the int64.
         # But we'd have to decide how many IVFs to use during retrieval: many (loop) or one?
         # A loop seems nice if we can find a size that's large enough for speed yet small enough to fit on GPU!
         # Then it would help nicely for batching later: 1GB.
-
+        use_cls_embed = num_cls_embeddings > 0
+        use_phrase_embed = num_phrase_embeddings > 0
         self._log_info("Building IVF...")
-        codes = torch.zeros(num_embeddings, dtype=torch.long)
+        cls_codes = (
+            torch.zeros(num_cls_embeddings, dtype=torch.long)
+            if num_cls_embeddings
+            else None
+        )
+        tok_codes = torch.zeros(num_tok_embeddings, dtype=torch.long)
+        phrase_codes = (
+            torch.zeros(num_phrase_embeddings, dtype=torch.long)
+            if num_phrase_embeddings
+            else None
+        )
 
         self._log_info("Loading codes...")
         for chunk_idx in tqdm.tqdm(range(self.num_chunks)):
-            offset = embedding_offsets[chunk_idx]
-            chunk_codes = ResidualCodec.Embeddings.load_codes(self.dir_path, chunk_idx)
-            codes[offset : offset + chunk_codes.size(0)] = chunk_codes
+            # Get codes
+            cls_chunk_codes, tok_chunk_codes, phrase_chunk_codes = (
+                ResidualCodec.Embeddings.load_codes(self.dir_path, chunk_idx)
+            )
+            # Handle token codes
+            tok_offset = tok_embedding_offsets[chunk_idx]
+            tok_codes[tok_offset : tok_offset + tok_chunk_codes.size(0)] = (
+                tok_chunk_codes
+            )
+            # Handle cls codes
+            if use_cls_embed:
+                cls_offset = cls_embedding_offsets[chunk_idx]
+                cls_codes[cls_offset : cls_offset + cls_chunk_codes.size(0)] = (
+                    cls_chunk_codes
+                )
+            # Handle phrase codes
+            if use_phrase_embed:
+                phrase_offset = phrase_embedding_offsets[chunk_idx]
+                phrase_codes[
+                    phrase_offset : phrase_offset + phrase_chunk_codes.size(0)
+                ] = phrase_chunk_codes
 
-        assert offset + chunk_codes.size(0) == codes.size(0), (
-            offset,
-            chunk_codes.size(0),
-            codes.size(),
+        assert tok_offset + tok_chunk_codes.size(0) == tok_codes.size(0), (
+            tok_offset,
+            tok_chunk_codes.size(0),
+            tok_codes.size(),
         )
+        if use_cls_embed:
+            assert cls_offset + cls_chunk_codes.size(0) == cls_codes.size(0), (
+                cls_offset,
+                cls_chunk_codes.size(0),
+                cls_codes.size(),
+            )
+        if use_phrase_embed:
+            assert phrase_offset + phrase_chunk_codes.size(0) == phrase_codes.size(0), (
+                phrase_offset,
+                phrase_chunk_codes.size(0),
+                phrase_codes.size(),
+            )
         self._log_info(f"Sorting codes...")
 
-        codes = codes.sort()
-        ivf, values = codes.indices, codes.values
-
-        self._log_info(f"Getting unique codes...")
-        ivf_lengths = torch.bincount(values, minlength=self.num_partitions)
-        assert ivf_lengths.size(0) == self.num_partitions
-
+        # Handle token codes
+        tok_codes = tok_codes.sort()
+        tok_ivf, tok_values = tok_codes.indices, tok_codes.values
+        ## Handle phrase codes
+        self._log_info(f"Getting unique codes for tokens...")
+        tok_ivf_lengths = torch.bincount(tok_values, minlength=self.num_partitions)
+        assert tok_ivf_lengths.size(0) == self.num_partitions
         # Transforms centroid->embedding ivf to centroid->passage ivf
-        _, _ = optimize_ivf(ivf, ivf_lengths, self.dir_path)
+        _, _ = optimize_ivf(tok_ivf, tok_ivf_lengths, self.dir_path, granularity="tok")
 
-    def _update_metadata(self, num_embeddings: int) -> None:
+        # Handle cls codes
+        if use_cls_embed:
+            cls_codes = cls_codes.sort()
+            cls_ivf, cls_values = cls_codes.indices, cls_codes.values
+            ## Handle phrase codes
+            self._log_info(f"Getting unique codes for tokens...")
+            cls_ivf_lengths = torch.bincount(cls_values, minlength=self.num_partitions)
+            assert cls_ivf_lengths.size(0) == self.num_partitions
+            ## Transforms centroid->embedding ivf to centroid->passage ivf
+            _, _ = optimize_ivf(
+                cls_ivf, cls_ivf_lengths, self.dir_path, granularity="cls"
+            )
+
+        # Handle phrase codes
+        if use_phrase_embed:
+            phrase_codes = phrase_codes.sort()
+            phrase_ivf, phrase_values = phrase_codes.indices, phrase_codes.values
+            ## Handle phrase codes
+            self._log_info(f"Getting unique codes for tokens...")
+            phrase_ivf_lengths = torch.bincount(
+                phrase_values, minlength=self.num_partitions
+            )
+            assert phrase_ivf_lengths.size(0) == self.num_partitions
+            ## Transforms centroid->embedding ivf to centroid->passage ivf
+            _, _ = optimize_ivf(
+                phrase_ivf, phrase_ivf_lengths, self.dir_path, granularity="phrase"
+            )
+
+    def _update_metadata(
+        self,
+        num_cls_embeddings: int,
+        num_tok_embeddings: int,
+        num_phrase_embeddings: int,
+    ) -> None:
         metadata_path = os.path.join(self.dir_path, "metadata.json")
         self._log_info(f"#> Saving the indexing metadata to {metadata_path} ...")
 
@@ -335,8 +445,11 @@ class Indexer:
             d = {"config": dict(self.cfg)}
             d["num_chunks"] = self.num_chunks
             d["num_partitions"] = self.num_partitions
-            d["num_embeddings"] = num_embeddings
-            d["avg_doclen"] = num_embeddings / len(self.corpus)
+            d["num_cls_embeddings"] = num_cls_embeddings
+            d["num_tok_embeddings"] = num_tok_embeddings
+            d["num_phrase_embeddings"] = num_phrase_embeddings
+            d["avg_tok_len"] = num_tok_embeddings / len(self.corpus)
+            d["avg_phrase_len"] = num_phrase_embeddings / len(self.corpus)
 
             f.write(ujson.dumps(d, indent=4) + "\n")
 
@@ -422,27 +535,44 @@ class Indexer:
         """
         self._log_info_main_thread_only("Encoding documents...")
         with self.saver.thread():
-            for chunk_idx, offset, passages in tqdm.tqdm(
+            for chunk_idx, offset, passages, word_ranges, phrase_ranges in tqdm.tqdm(
                 self.corpus.enumerate_chunk(rank=self.rank, world_size=self.world_size),
                 disable=not self.is_main_thread,
             ):
                 # Convert Document to string
                 passages: List[str] = [str(passage) for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
-                embs, doclens = self.encode_passages(
-                    passages, show_progress=self.is_main_thread
+                cls_embs, tok_embs, phrase_embs, tok_lens, phrase_lens = (
+                    self.encode_passages(
+                        passages,
+                        word_ranges=word_ranges,
+                        phrase_ranges=phrase_ranges,
+                        show_progress=self.is_main_thread,
+                    )
                 )
-                assert embs.dtype == (torch.float16 if self.use_gpu else torch.float32)
-                embs = embs.half()
+                assert tok_embs.dtype == (
+                    torch.float16 if self.use_gpu else torch.float32
+                )
+                if cls_embs is not None:
+                    cls_embs = cls_embs.half()
+                tok_embs = tok_embs.half()
+                if phrase_embs is not None:
+                    phrase_embs = phrase_embs.half()
                 self._log_info_main_thread_only(
                     f"#> Saving chunk {chunk_idx}: \t {len(passages):,} passages "
-                    f"and {embs.size(0):,} embeddings. From #{offset:,} onward."
+                    f"and {tok_embs.size(0):,} embeddings. From #{offset:,} onward."
                 )
 
                 self.saver.save_chunk(
-                    chunk_idx, offset, embs, doclens
+                    chunk_idx=chunk_idx,
+                    offset=offset,
+                    cls_embs=cls_embs,
+                    tok_embs=tok_embs,
+                    phrase_embs=phrase_embs,
+                    tok_lens=tok_lens,
+                    phrase_lens=phrase_lens,
                 )  # offset = first passage index in chunk
-                del embs, doclens
+                del cls_embs, tok_embs, phrase_embs, tok_lens, phrase_lens
 
     @main_thread_only
     def finalize(self) -> None:
@@ -461,13 +591,29 @@ class Indexer:
         self._check_all_files_are_saved()
 
         # Get the total number and offsets of embeddings
-        num_embeddings, embedding_offsets = self._collect_embedding_id_offset()
+        (
+            num_cls_embeddings,
+            cls_embedding_offsets,
+            num_tok_embeddings,
+            tok_embedding_offsets,
+            num_phrase_embeddings,
+            phrase_embedding_offsets,
+        ) = self._collect_embedding_id_offset()
 
         # build ivf and update the metadata
         self._build_ivf(
-            num_embeddings=num_embeddings, embedding_offsets=embedding_offsets
+            num_cls_embeddings=num_cls_embeddings,
+            cls_embedding_offsets=cls_embedding_offsets,
+            num_tok_embeddings=num_tok_embeddings,
+            tok_embedding_offsets=tok_embedding_offsets,
+            num_phrase_embeddings=num_phrase_embeddings,
+            phrase_embedding_offsets=phrase_embedding_offsets,
         )
-        self._update_metadata(num_embeddings=num_embeddings)
+        self._update_metadata(
+            num_cls_embeddings=num_cls_embeddings,
+            num_tok_embeddings=num_tok_embeddings,
+            num_phrase_embeddings=num_phrase_embeddings,
+        )
 
     def encode_passages(
         self,
@@ -475,9 +621,15 @@ class Indexer:
         word_ranges: List[List[Tuple[int, int]]] = None,
         phrase_ranges: List[List[Tuple[int, int]]] = None,
         show_progress: bool = False,
-    ) -> Tuple[torch.Tensor, List[int]]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[int]]:
         with torch.inference_mode():
-            all_embs, all_doclens = [], []
+            (
+                all_cls_embs,
+                all_tok_embs,
+                all_phrase_embs,
+                all_tok_lens,
+                all_phrase_lens,
+            ) = ([], [], [], [], [])
             indices = list(range(len(passages)))
             for indices_batch in list_utils.chunks(
                 indices, chunk_size=self.cfg.bsize, show_progress=show_progress
@@ -575,34 +727,87 @@ class Indexer:
                 ]
 
                 # Flatten
-                D, mask = [], []
+                D_cls, D_tok, D_phrase, mask = [], [], [], []
                 for i in range(len(result_batches)):
-                    D_ = result_batches[i][1].half()
+                    if result_batches[i][0] is not None:
+                        D_cls_ = result_batches[i][0].half()
+                        D_cls.append(D_cls_)
+                    if result_batches[i][2] is not None:
+                        D_phrase_ = result_batches[i][2].half()
+                        D_phrase.append(D_phrase_)
+
+                    D_tok_ = result_batches[i][1].half()
                     mask_ = text_batches[i][2].bool()
-                    D.append(D_)
+                    D_tok.append(D_tok_)
                     mask.append(mask_)
 
-                D, mask = (
-                    torch.cat(D)[reverse_indices],
+                if len(D_cls) > 0:
+                    D_cls = torch.cat(D_cls)[reverse_indices]
+                if len(D_phrase) > 0:
+                    D_phrase = torch.cat(D_phrase)[reverse_indices]
+                D_tok, mask = (
+                    torch.cat(D_tok)[reverse_indices],
                     torch.cat(mask)[reverse_indices],
                 )
-                doclens = mask.squeeze(-1).sum(-1).tolist()
+                tok_lens = mask.squeeze(-1).sum(-1).tolist()
+
+                if len(D_cls) > 0:
+                    D_cls = D_cls.view(-1, D_cls.shape[-1])
+
+                if len(D_phrase) > 0:
+                    phrase_lens = []
+                    new_D_phrase = []
+                    i = 0
+                    for _, _, _, scatter_indices_item in text_batches:
+                        for indices in scatter_indices_item:
+                            phrase_len = indices[-1].item() + 1
+                            phrase_lens.append(phrase_len)
+                            new_D_phrase.append(D_phrase[i][:phrase_len])
+                            i += 1
+                    D_phrase = torch.cat(new_D_phrase)
+                    assert len(tok_lens) == len(
+                        phrase_lens
+                    ), f"{len(tok_lens)} vs.{len(phrase_lens)}"
+                    D_phrase = D_phrase.view(-1, D_phrase.shape[-1])
 
                 # Serialize and remove the masked tokens
-                D = D.view(-1, D.shape[-1])
-                D = D[mask.bool().flatten()]
+                D_tok = D_tok.view(-1, D_tok.shape[-1])
+                D_tok = D_tok[mask.bool().flatten()]
 
                 # Check if flatten is correct
-                assert len(D) == sum(
-                    doclens
-                ), f"len(D)={len(D)} != sum(doclens)={sum(doclens)}"
+                assert len(D_tok) == sum(
+                    tok_lens
+                ), f"len(D)={len(D_tok)} != sum(tok_lens)={sum(tok_lens)}"
 
-                all_embs.append(D)
-                all_doclens.extend(doclens)
+                if len(D_cls) > 0:
+                    all_cls_embs.append(D_cls)
 
-            all_embs = torch.cat(all_embs)
+                if len(D_phrase) > 0:
+                    all_phrase_embs.append(D_phrase)
+                    all_phrase_lens.extend(phrase_lens)
 
-        return all_embs, all_doclens
+                all_tok_embs.append(D_tok)
+                all_tok_lens.extend(tok_lens)
+
+            if len(all_cls_embs) > 0:
+                all_cls_embs = torch.cat(all_cls_embs)
+            else:
+                all_cls_embs = None
+
+            if len(all_phrase_embs) > 0:
+                all_phrase_embs = torch.cat(all_phrase_embs)
+            else:
+                all_phrase_embs = None
+
+            all_tok_embs = torch.cat(all_tok_embs)
+
+        return (
+            all_cls_embs,
+            all_tok_embs,
+            all_phrase_embs,
+            all_tok_lens,
+            all_phrase_lens,
+        )
 
 
 import hydra

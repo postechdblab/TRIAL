@@ -9,6 +9,7 @@ import ujson
 from omegaconf import DictConfig
 
 from eagle.index.codecs.residual import ResidualCodec
+from eagle.index.codecs.residual_embeddings import ResidualEmbeddings
 
 
 class IndexSaver:
@@ -20,20 +21,52 @@ class IndexSaver:
         for args in iter(self.saver_queue.get, None):
             self._write_chunk_to_disk(*args)
 
-    def _write_chunk_to_disk(self, chunk_idx, offset, compressed_embs, doclens) -> None:
+    def _write_chunk_to_disk(
+        self,
+        chunk_idx: int,
+        offset: int,
+        compressed_cls_embs: ResidualEmbeddings,
+        compressed_tok_embs: ResidualEmbeddings,
+        compressed_phrase_embs: ResidualEmbeddings,
+        tok_lens: List[int],
+        phrase_lens: List[int],
+    ) -> None:
         path_prefix = os.path.join(self.dir_path, str(chunk_idx))
-        compressed_embs.save(path_prefix)
+        if compressed_cls_embs is not None:
+            compressed_cls_embs.save(path_prefix + "-cls")
+        compressed_tok_embs.save(path_prefix + "-tok")
+        if compressed_phrase_embs is not None:
+            compressed_phrase_embs.save(path_prefix + "-phrase")
 
-        doclens_path = os.path.join(self.dir_path, f"doclens.{chunk_idx}.json")
-        with open(doclens_path, "w") as output_doclens:
-            ujson.dump(doclens, output_doclens)
+        cls_lens_path = os.path.join(self.dir_path, f"cls_lens.{chunk_idx}.json")
+        tok_lens_path = os.path.join(self.dir_path, f"tok_lens.{chunk_idx}.json")
+        phrase_lens_path = os.path.join(self.dir_path, f"phrase_lens.{chunk_idx}.json")
+
+        # Save the lengths of the embeddings
+        if compressed_cls_embs is not None:
+            with open(cls_lens_path, "w") as output_cls_lens:
+                cls_lens = [1] * compressed_cls_embs.codes.size(0)
+                ujson.dump(cls_lens, output_cls_lens)
+        with open(tok_lens_path, "w") as output_tok_lens:
+            ujson.dump(tok_lens, output_tok_lens)
+        if compressed_phrase_embs is not None:
+            with open(phrase_lens_path, "w") as output_phrase_lens:
+                ujson.dump(phrase_lens, output_phrase_lens)
 
         metadata_path = os.path.join(self.dir_path, f"{chunk_idx}.metadata.json")
         with open(metadata_path, "w") as output_metadata:
             metadata = {
                 "passage_offset": offset,
-                "num_passages": len(doclens),
-                "num_embeddings": len(compressed_embs),
+                "num_passages": len(tok_lens),
+                "num_cls_embeddings": (
+                    len(compressed_cls_embs) if compressed_cls_embs is not None else 0
+                ),
+                "num_tok_embeddings": len(compressed_tok_embs),
+                "num_phrase_embeddings": (
+                    len(compressed_phrase_embs)
+                    if compressed_phrase_embs is not None
+                    else 0
+                ),
             }
             ujson.dump(metadata, output_metadata)
 
@@ -53,8 +86,8 @@ class IndexSaver:
     def check_chunk_exists(self, chunk_idx):
         # TODO: Verify that the chunk has the right amount of data?
 
-        doclens_path = os.path.join(self.dir_path, f"doclens.{chunk_idx}.json")
-        if not os.path.exists(doclens_path):
+        tok_lens_path = os.path.join(self.dir_path, f"tok_lens.{chunk_idx}.json")
+        if not os.path.exists(tok_lens_path):
             return False
 
         metadata_path = os.path.join(self.dir_path, f"{chunk_idx}.metadata.json")
@@ -62,11 +95,13 @@ class IndexSaver:
             return False
 
         path_prefix = os.path.join(self.dir_path, str(chunk_idx))
-        codes_path = f"{path_prefix}.codes.pt"
+        codes_path = f"{path_prefix}-tok.codes.pt"
         if not os.path.exists(codes_path):
             return False
 
-        residuals_path = f"{path_prefix}.residuals.pt"  # f'{path_prefix}.residuals.bn'
+        residuals_path = (
+            f"{path_prefix}-tok.residuals.pt"  # f'{path_prefix}.residuals.bn'
+        )
         if not os.path.exists(residuals_path):
             return False
 
@@ -91,8 +126,35 @@ class IndexSaver:
             del self.codec
 
     def save_chunk(
-        self, chunk_idx: int, offset: int, embs: torch.Tensor, doclens: int
+        self,
+        chunk_idx: int,
+        offset: int,
+        cls_embs: Optional[torch.Tensor],
+        tok_embs: torch.Tensor,
+        phrase_embs: Optional[torch.Tensor],
+        tok_lens: List[int],
+        phrase_lens: List[int],
     ) -> None:
-        compressed_embs = self.codec.compress(embs)
+        compressed_tok_embs = self.codec.compress(tok_embs)
 
-        self.saver_queue.put((chunk_idx, offset, compressed_embs, doclens))
+        if cls_embs is None:
+            compressed_cls_embs = None
+        else:
+            compressed_cls_embs = self.codec.compress(cls_embs)
+
+        if phrase_embs is None:
+            compressed_phrase_embs = None
+        else:
+            compressed_phrase_embs = self.codec.compress(phrase_embs)
+
+        self.saver_queue.put(
+            (
+                chunk_idx,
+                offset,
+                compressed_cls_embs,
+                compressed_tok_embs,
+                compressed_phrase_embs,
+                tok_lens,
+                phrase_lens,
+            )
+        )

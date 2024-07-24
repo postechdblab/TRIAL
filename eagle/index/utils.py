@@ -45,11 +45,11 @@ def all_gather_nd(tensor: torch.Tensor, world_size: int) -> torch.Tensor:
     return all_tensors
 
 
-def load_doclens(directory, flatten=True):
+def load_item_lens(directory, flatten=True, granularity="tok"):
     doclens_filenames = {}
 
     for filename in os.listdir(directory):
-        match = re.match("doclens.(\d+).json", filename)
+        match = re.match(f"{granularity}_lens.(\d+).json", filename)
 
         if match is not None:
             doclens_filenames[int(match.group(1))] = filename
@@ -70,19 +70,21 @@ def load_doclens(directory, flatten=True):
     return all_doclens
 
 
-def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
+def optimize_ivf(
+    orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3, granularity: str = "tok"
+):
     if verbose > 1:
         print("#> Optimizing IVF to store map from centroids to list of pids..")
 
         print("#> Building the emb2pid mapping..")
-    all_doclens = load_doclens(index_path, flatten=False)
+    all_item_lens = load_item_lens(index_path, flatten=False, granularity=granularity)
 
     # assert self.num_embeddings == sum(flatten(all_doclens))
 
-    all_doclens = list_utils.do_flatten_list(all_doclens)
-    total_num_embeddings = sum(all_doclens)
+    all_item_lens = list_utils.do_flatten_list(all_item_lens)
+    total_num_tok_embeddings = sum(all_item_lens)
 
-    emb2pid = torch.zeros(total_num_embeddings, dtype=torch.int)
+    emb2pid = torch.zeros(total_num_tok_embeddings, dtype=torch.int)
 
     """
     EVENTUALLY: Use two tensors. emb2pid_offsets will have every 256th element.
@@ -90,7 +92,7 @@ def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
     """
 
     offset_doclens = 0
-    for pid, dlength in enumerate(all_doclens):
+    for pid, dlength in enumerate(all_item_lens):
         emb2pid[offset_doclens : offset_doclens + dlength] = pid
         offset_doclens += dlength
 
@@ -110,8 +112,8 @@ def optimize_ivf(orig_ivf, orig_ivf_lengths, index_path, verbose: int = 3):
     ivf = torch.cat(unique_pids_per_centroid)
     ivf_lengths = torch.tensor(ivf_lengths)
 
-    original_ivf_path = os.path.join(index_path, "ivf.pt")
-    optimized_ivf_path = os.path.join(index_path, "ivf.pid.pt")
+    original_ivf_path = os.path.join(index_path, f"{granularity}-ivf.pt")
+    optimized_ivf_path = os.path.join(index_path, f"{granularity}-ivf.pid.pt")
     torch.save((ivf, ivf_lengths), optimized_ivf_path)
     if verbose > 1:
         print(f"#> Saved optimized IVF to {optimized_ivf_path}")

@@ -154,6 +154,7 @@ class LightningNewModel(L.LightningModule):
         q_tok_att_mask = batch["q_tok_att_mask"]
         q_tok_mask = batch["q_tok_mask"]
         q_scatter_indices = batch["q_scatter_indices"]
+        q_phrase_mask = batch["q_phrase_mask"]
 
         # Encode the query
         (
@@ -170,6 +171,7 @@ class LightningNewModel(L.LightningModule):
             tok_ids=q_tok_ids,
             att_mask=q_tok_att_mask,
             tok_mask=q_tok_mask,
+            phrase_mask=q_phrase_mask,
             scatter_indices=q_scatter_indices,
         )
 

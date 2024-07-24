@@ -48,6 +48,7 @@ def _split_into_batches(
                 (
                     ids[offset : offset + bsize],
                     att_mask[offset : offset + bsize],
+                    None,
                     scatter_indices[offset : offset + bsize],
                 )
             )
@@ -57,6 +58,7 @@ def _split_into_batches(
                     ids[offset : offset + bsize],
                     att_mask[offset : offset + bsize],
                     tok_mask[offset : offset + bsize],
+                    None,
                 )
             )
         else:

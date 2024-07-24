@@ -67,10 +67,28 @@ class PLAID:
             return final_pids, scores, (pids1, pids2, pids3)
 
     def _set_embeddings_strided(self) -> None:
-        self.embeddings_strided = ResidualEmbeddingsStrided(
-            self.index.codec, self.index.embeddings, self.index.doclens
+        self.tok_embeddings_strided = ResidualEmbeddingsStrided(
+            self.index.codec, self.index.tok_embeddings, self.index.tok_lens
         )
-        self.offsets = self.embeddings_strided.codes_strided.offsets
+        self.tok_offsets = self.tok_embeddings_strided.codes_strided.offsets
+
+        if self.index.cls_embeddings is None:
+            self.cls_embeddings_strided = None
+            self.cls_offsets = None
+        else:
+            self.cls_embeddings_strided = ResidualEmbeddingsStrided(
+                self.index.codec, self.index.cls_embeddings, self.index.cls_lens
+            )
+            self.cls_offsets = self.cls_embeddings_strided.codes_strided.offsets
+
+        if self.index.phrase_embeddings is None:
+            self.phrase_embeddings_strided = None
+            self.phrase_offsets = None
+        else:
+            self.phrase_embeddings_strided = ResidualEmbeddingsStrided(
+                self.index.codec, self.index.phrase_embeddings, self.index.phrase_lens
+            )
+            self.phrase_offsets = self.phrase_embeddings_strided.codes_strided.offsets
 
     def get_top_centroids(
         self, query: torch.Tensor, mask: torch.Tensor, topk: int
@@ -112,7 +130,7 @@ class PLAID:
         centroids, scores = self.get_top_centroids(
             query=query, mask=mask, topk=self.ncells
         )
-        pids, cell_lengths = self.index.ivf.lookup(centroids)
+        pids, cell_lengths = self.index.tok_ivf.lookup(centroids)
         pids = pids.unique(sorted=False)
         return pids, scores
 
@@ -158,7 +176,7 @@ class PLAID:
         # Perform computation in chunks to avoid OOM
         for pids_chunk in list_utils.chunks(pids, chunk_size=batch_size):
             # Get the centroid indices and the number of codes in each pid
-            centroid_ids, codes_lengths = self.embeddings_strided.lookup_codes(
+            centroid_ids, codes_lengths = self.tok_embeddings_strided.lookup_codes(
                 pids_chunk
             )
 
@@ -289,7 +307,7 @@ class PLAID:
         if q_mask is not None:
             query.masked_fill_(q_mask, 0)
         # Extract document embeddings
-        d_packed, d_length = self.embeddings_strided.lookup_pids(pids)
+        d_packed, d_length = self.tok_embeddings_strided.lookup_pids(pids)
 
         # If use document weight, compute document weights and scale the embeddings
         if self.d_cross_attention_layer is not None:

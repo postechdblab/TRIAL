@@ -15,54 +15,78 @@ class IndexLoader:
         self.use_gpu = use_gpu
         self.load_index_with_mmap = load_index_with_mmap
 
-        self._load_codec()
-        self._load_ivf()
+        self._load_codec()  # Centroids information
 
-        self._load_doclens()
-        self._load_embeddings()
+        # Load ivfs
+        self.cls_ivf = self._load_ivf(granularity="cls", must_exists=False)
+        self.tok_ivf = self._load_ivf(granularity="tok", must_exists=True)
+        self.phrase_ivf = self._load_ivf(granularity="phrase", must_exists=False)
+
+        self.cls_lens = self._load_item_lens(granularity="cls", must_exists=False)
+        self.tok_lens = self._load_item_lens(granularity="tok", must_exists=True)
+        self.phrase_lens = self._load_item_lens(
+            granularity="phrase", must_exists=False
+        )  # Document lengths
+        self._load_embeddings()  # Document embeddings
 
     def _load_codec(self):
         print(f"#> Loading codec...")
         self.codec = ResidualCodec.load(self.index_path)
 
-    def _load_ivf(self):
+    def _load_ivf(self, granularity: str, must_exists: bool = True) -> StridedTensor:
         print(f"#> Loading IVF...")
 
-        if os.path.exists(os.path.join(self.index_path, "ivf.pid.pt")):
-            ivf, ivf_lengths = torch.load(
-                os.path.join(self.index_path, "ivf.pid.pt"), map_location="cpu"
-            )
+        ivf_path = os.path.join(self.index_path, f"{granularity}-ivf.pt")
+        ivf_pid_path = os.path.join(self.index_path, f"{granularity}-ivf.pid.pt")
+        if os.path.exists(ivf_pid_path):
+            ivf, ivf_lengths = torch.load(ivf_pid_path, map_location="cpu")
         else:
-            assert os.path.exists(os.path.join(self.index_path, "ivf.pt"))
-            ivf, ivf_lengths = torch.load(
-                os.path.join(self.index_path, "ivf.pt"), map_location="cpu"
-            )
+            if not must_exists:
+                return None
+            assert os.path.exists(ivf_path)
+            ivf, ivf_lengths = torch.load(ivf_path, map_location="cpu")
             ivf, ivf_lengths = optimize_ivf(ivf, ivf_lengths, self.index_path)
 
         # ivf, ivf_lengths = ivf.cuda(), torch.LongTensor(ivf_lengths).cuda()  # FIXME: REMOVE THIS LINE!
         ivf = StridedTensor(ivf, ivf_lengths, use_gpu=self.use_gpu)
 
-        self.ivf = ivf
+        return ivf
 
-    def _load_doclens(self):
+    def _load_item_lens(
+        self, granularity: str, must_exists: bool = True
+    ) -> torch.Tensor:
         doclens = []
 
         print("#> Loading doclens...")
 
         for chunk_idx in tqdm.tqdm(range(self.num_chunks)):
-            with open(os.path.join(self.index_path, f"doclens.{chunk_idx}.json")) as f:
+            file_path = os.path.join(
+                self.index_path, f"{granularity}_lens.{chunk_idx}.json"
+            )
+            # Skip if file doesn't exist
+            if not must_exists and not os.path.exists(file_path):
+                continue
+
+            with open(file_path) as f:
                 chunk_doclens = ujson.load(f)
                 doclens.extend(chunk_doclens)
 
-        self.doclens = torch.tensor(doclens)
+        return torch.tensor(doclens)
 
-    def _load_embeddings(self):
-        self.embeddings = ResidualCodec.Embeddings.load_chunks(
-            self.index_path,
-            range(self.num_chunks),
-            self.num_embeddings,
-            self.load_index_with_mmap,
+    def _load_embeddings(self) -> None:
+        cls_embeddings, tok_embeddings, phrase_embeddings = (
+            ResidualCodec.Embeddings.load_chunks(
+                index_path=self.index_path,
+                chunk_idxs=range(self.num_chunks),
+                num_cls_embeddings=self.num_cls_embeddings,
+                num_tok_embeddings=self.num_tok_embeddings,
+                num_phrase_embeddings=self.num_phrase_embeddings,
+                load_index_with_mmap=self.load_index_with_mmap,
+            )
         )
+        self.cls_embeddings = cls_embeddings
+        self.tok_embeddings = tok_embeddings
+        self.phrase_embeddings = phrase_embeddings
 
     @property
     def metadata(self):
@@ -84,6 +108,16 @@ class IndexLoader:
         return self.metadata["num_chunks"]
 
     @property
-    def num_embeddings(self):
+    def num_cls_embeddings(self):
         # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
-        return self.metadata["num_embeddings"]
+        return self.metadata["num_cls_embeddings"]
+
+    @property
+    def num_tok_embeddings(self):
+        # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
+        return self.metadata["num_tok_embeddings"]
+
+    @property
+    def num_phrase_embeddings(self):
+        # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
+        return self.metadata["num_phrase_embeddings"]

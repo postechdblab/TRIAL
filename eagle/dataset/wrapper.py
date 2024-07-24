@@ -52,7 +52,7 @@ class DatasetWrapper:
             or len(self.dataset[0]["neg_doc_ids"]) == 0
             or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
         ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
-        assert self.granularity_level in ["token", "word", "phrase"]
+        assert self.granularity_level in ["token", "word", "phrase", "multi"]
         if q_word_ranges is not None:
             assert len(self.q_word_ranges) == len(
                 self.query_mapping

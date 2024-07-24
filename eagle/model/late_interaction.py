@@ -57,7 +57,9 @@ class EAGLE(torch.nn.Module):
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
-            self.llm.config.hidden_size, cfg.out_dim, bias=False
+            self.llm.config.hidden_size,
+            cfg.out_dim,
+            bias=self.granularity_level == "multi",
         )
         self.cls_projection_layer = (
             torch.nn.Linear(cfg.out_dim, cfg.out_dim)
