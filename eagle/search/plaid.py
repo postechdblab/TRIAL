@@ -5,6 +5,7 @@ import torch
 
 from eagle.index.codecs.residual_embeddings_strided import ResidualEmbeddingsStrided
 from eagle.index.index_loader import IndexLoader
+from eagle.model.utils import get_vectors_from_ranges
 from eagle.search.algorithm import (
     compute_sum_maxsim,
     reduce_element_wise_relevance_scores,
@@ -36,20 +37,23 @@ class PLAID:
 
     def __call__(
         self,
-        query: torch.Tensor,
-        weight: Optional[torch.Tensor] = None,
+        query_cls: torch.Tensor,
+        query_tok: torch.Tensor,
+        query_phrase: torch.Tensor,
+        tok_weight: Optional[torch.Tensor] = None,
+        phrase_weight: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         gold_doc_ids: Optional[torch.Tensor] = None,
         return_intermediate_pids: bool = False,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
-        pids, centroid_scores = self.get_initial_pids(query, mask)
+        pids, centroid_scores = self.get_initial_pids(query_tok, mask)
         pids1 = pids.tolist()
         # Stage 2: Filter pids using pruned centroid scores
-        pids = self.filter_with_pruning_centroids(pids, centroid_scores, weight)
+        pids = self.filter_with_pruning_centroids(pids, centroid_scores, tok_weight)
         pids2 = pids.tolist()
         # Stage 3: Filter pids using full centroid scores
-        pids = self.filter_without_pruning_centroids(pids, centroid_scores, weight)
+        pids = self.filter_without_pruning_centroids(pids, centroid_scores, tok_weight)
         pids3 = pids.tolist()
         if gold_doc_ids is not None:
             # Find unselected gold_doc_ids
@@ -62,7 +66,15 @@ class PLAID:
                 ]
             )
         # Stage 4: Final ranking with decomposed embeddings
-        final_pids, scores = self.rank_pids(query, weight, mask, pids)
+        final_pids, scores = self.rank_pids(
+            query_cls=query_cls,
+            query_tok=query_tok,
+            query_phrase=query_phrase,
+            q_tok_weight=tok_weight,
+            q_phrase_weight=phrase_weight,
+            q_mask=mask,
+            pids=pids,
+        )
         if return_intermediate_pids:
             return final_pids, scores, (pids1, pids2, pids3)
 
@@ -281,8 +293,11 @@ class PLAID:
 
     def rank_pids(
         self,
-        query: torch.Tensor,
-        q_weight: torch.Tensor,
+        query_cls: torch.Tensor,
+        query_tok: torch.Tensor,
+        query_phrase: torch.Tensor,
+        q_tok_weight: torch.Tensor,
+        q_phrase_weight: torch.Tensor,
         q_mask: torch.Tensor,
         pids: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -301,38 +316,78 @@ class PLAID:
         :rtype: List[int]
         """
         # Apply weights
-        if q_weight is not None:
-            query = query * q_weight
+        if q_tok_weight is not None:
+            query_tok = query_tok * q_tok_weight
+        if q_phrase_weight is not None:
+            query_phrase = query_phrase * q_phrase_weight
+
         # Apply mask
         if q_mask is not None:
-            query.masked_fill_(q_mask, 0)
-        # Extract document embeddings
-        d_packed, d_length = self.tok_embeddings_strided.lookup_pids(pids)
+            query_tok.masked_fill_(q_mask, 0)
+
+        # Extract document token embeddings
+        d_tok_packed, d_tok_length = self.tok_embeddings_strided.lookup_pids(pids)
+
+        # Extract document cls embeddings
+        if self.cls_embeddings_strided is not None:
+            d_cls_packed, d_cls_length = self.cls_embeddings_strided.lookup_pids(pids)
+
+        # Extract document phrase embeddings
+        if self.phrase_embeddings_strided is not None:
+            d_phrase_packed, d_phrase_length = (
+                self.phrase_embeddings_strided.lookup_pids(pids)
+            )
 
         # If use document weight, compute document weights and scale the embeddings
         if self.d_cross_attention_layer is not None:
-            # Compute document weights
+            # Compute document token weights
             cross_encoded_vectors, cross_attn_weights = self.d_cross_attention_layer(
-                query=d_packed.unsqueeze(0).float(),
-                key=query.unsqueeze(0).float(),
-                value=query.unsqueeze(0).float(),
+                query=d_tok_packed.unsqueeze(0).float(),
+                key=query_tok.unsqueeze(0).float(),
+                value=query_tok.unsqueeze(0).float(),
                 key_padding_mask=q_mask.unsqueeze(0).squeeze(-1),
             )
             # Add and normalize
-            cross_encoded_vectors = cross_encoded_vectors.squeeze(0) + d_packed
+            cross_encoded_vectors = cross_encoded_vectors.squeeze(0) + d_tok_packed
             # Compute weights
             cross_encoded_vectors = self.d_weight_layer_norm(cross_encoded_vectors)
             d_weights = self.d_weight_project_layer(cross_encoded_vectors)
             # Scale embeddings
-            d_packed = d_packed * d_weights
+            d_tok_packed = d_tok_packed * d_weights
 
-        if query.dtype != d_packed.dtype:
-            query = query.to(d_packed.dtype)
+        # Convert data type if necessary
+        if query_tok.dtype != d_tok_packed.dtype:
+            query_tok = query_tok.to(d_tok_packed.dtype)
+        if query_cls is not None and query_cls.dtype != d_cls_packed.dtype:
+            query_cls = query_cls.to(d_cls_packed.dtype)
+        if query_phrase is not None and query_phrase.dtype != d_phrase_packed.dtype:
+            query_phrase = query_phrase.to(d_phrase_packed.dtype)
 
         # Compute scores
-        max_scores, _, _ = compute_sum_maxsim(
-            q_encoded=query, k_encoded=d_packed, k_lengths=d_length
+        max_scores_by_token, _, _ = compute_sum_maxsim(
+            q_encoded=query_tok, k_encoded=d_tok_packed, k_lengths=d_tok_length
         )
+        if self.phrase_embeddings_strided is not None:
+            max_scores_by_phrase, _, _ = compute_sum_maxsim(
+                q_encoded=query_phrase,
+                k_encoded=d_phrase_packed,
+                k_lengths=d_phrase_length,
+            )
+        if self.cls_embeddings_strided is not None:
+            max_scores_by_cls, _, _ = compute_sum_maxsim(
+                q_encoded=query_cls, k_encoded=d_cls_packed, k_lengths=d_cls_length
+            )
+        if (
+            self.phrase_embeddings_strided is not None
+            and self.cls_embeddings_strided is not None
+        ):
+            max_scores = (
+                max_scores_by_token * 0.6
+                + max_scores_by_phrase * 0.3
+                + max_scores_by_cls * 0.1
+            )
+        else:
+            max_scores = max_scores_by_token
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)
         pids = pids[indices]

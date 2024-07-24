@@ -175,9 +175,10 @@ class LightningNewModel(L.LightningModule):
             scatter_indices=q_scatter_indices,
         )
 
-        projected_tok_vectors = projected_tok_vectors
         if tok_weights is not None:
             tok_weights = tok_weights.half()
+        if phrase_weights is not None:
+            phrase_weights = phrase_weights.half()
 
         # Get max positive document number
         max_pos_doc_num = max(
@@ -195,13 +196,19 @@ class LightningNewModel(L.LightningModule):
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # Retrieve pids and scores
-            query = projected_tok_vectors[bidx]
+            query_cls = projected_cls_vectors[bidx]
+            query_tok = projected_tok_vectors[bidx]
+            query_phrase = projected_phrase_vectors[bidx]
             mask = q_tok_mask[bidx]
-            weight = None if tok_weights is None else tok_weights[bidx]
+            tok_weight = None if tok_weights is None else tok_weights[bidx]
+            phrase_weight = None if phrase_weights is None else phrase_weights[bidx]
             pids, scores, intermediate_pids = self.searcher(
-                query=query,
+                query_cls=query_cls,
+                query_tok=query_tok,
+                query_phrase=query_phrase,
                 mask=mask,
-                weight=weight,
+                tok_weight=tok_weight,
+                phrase_weight=phrase_weight,
                 # gold_doc_ids=pos_doc_idxs,
                 return_intermediate_pids=True,
             )
