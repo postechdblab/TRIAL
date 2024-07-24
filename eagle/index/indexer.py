@@ -732,14 +732,14 @@ class Indexer:
                 D_cls, D_tok, D_phrase, mask = [], [], [], []
                 for i in range(len(result_batches)):
                     if result_batches[i][0] is not None:
-                        D_cls_ = result_batches[i][0].half()
+                        D_cls_ = result_batches[i][0].cpu().half()
                         D_cls.append(D_cls_)
                     if result_batches[i][2] is not None:
-                        D_phrase_ = result_batches[i][2].half()
+                        D_phrase_ = result_batches[i][2].cpu().half()
                         D_phrase.append(D_phrase_)
 
-                    D_tok_ = result_batches[i][1].half()
-                    mask_ = text_batches[i][2].bool()
+                    D_tok_ = result_batches[i][1].cpu().half()
+                    mask_ = text_batches[i][2].cpu().bool()
                     D_tok.append(D_tok_)
                     mask.append(mask_)
 
