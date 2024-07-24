@@ -196,9 +196,9 @@ class LightningNewModel(L.LightningModule):
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # Retrieve pids and scores
-            query_cls = projected_cls_vectors[bidx]
+            query_cls = None if projected_cls_vectors is None else projected_cls_vectors[bidx] 
             query_tok = projected_tok_vectors[bidx]
-            query_phrase = projected_phrase_vectors[bidx]
+            query_phrase = None if projected_phrase_vectors is None else projected_phrase_vectors[bidx]
             mask = q_tok_mask[bidx]
             tok_weight = None if tok_weights is None else tok_weights[bidx]
             phrase_weight = None if phrase_weights is None else phrase_weights[bidx]

@@ -76,10 +76,10 @@ class Indexer:
         self._distributed_barrier()
 
         # Plan indexing
-        sample_embs = self.plan()
+        self.plan()
 
         # Train kmeans
-        self.train_kmeans(sample_embs)
+        self.train_kmeans()
         self._distributed_barrier()
 
         # Encode all documents
@@ -226,27 +226,66 @@ class Indexer:
             show_progress=self.is_main_thread,
         )
 
-        # Compute average document length estimattion
-        avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
-        avg_doclen_est = torch.tensor(
-            [avg_doclen_est], device=local_sample_tok_embs.device
-        )
-        torch.distributed.all_reduce(avg_doclen_est)
-        nonzero_ranks = torch.tensor(
-            [float(len(local_samples) > 0)], device=avg_doclen_est.device
-        )
-        torch.distributed.all_reduce(nonzero_ranks)
+        if torch.cuda.is_available():
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                self.num_sample_embs = torch.tensor(
+                    [local_sample_tok_embs.size(0)]
+                ).cuda()
+                torch.distributed.all_reduce(self.num_sample_embs)
+
+                avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
+                avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+                torch.distributed.all_reduce(avg_doclen_est)
+
+                nonzero_ranks = torch.tensor(
+                    [float(len(local_sample_tok_embs) > 0)]
+                ).cuda()
+                torch.distributed.all_reduce(nonzero_ranks)
+            else:
+                self.num_sample_embs = torch.tensor(
+                    [local_sample_tok_embs.size(0)]
+                ).cuda()
+
+                avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
+                avg_doclen_est = torch.tensor([avg_doclen_est]).cuda()
+
+                nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cuda()
+        else:
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                self.num_sample_embs = torch.tensor(
+                    [local_sample_tok_embs.size(0)]
+                ).cpu()
+                torch.distributed.all_reduce(self.num_sample_embs)
+
+                avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
+                avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+                torch.distributed.all_reduce(avg_doclen_est)
+
+                nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cpu()
+                torch.distributed.all_reduce(nonzero_ranks)
+            else:
+                self.num_sample_embs = torch.tensor(
+                    [local_sample_tok_embs.size(0)]
+                ).cpu()
+
+                avg_doclen_est = sum(tok_lens) / len(tok_lens) if tok_lens else 0
+                avg_doclen_est = torch.tensor([avg_doclen_est]).cpu()
+
+                nonzero_ranks = torch.tensor([float(len(local_samples) > 0)]).cpu()
+
         avg_doclen_est = avg_doclen_est.item() / nonzero_ranks.item()
         self.avg_doclen_est = avg_doclen_est
 
-        # Gather all samples
-        sample_embs = all_gather_nd(local_sample_tok_embs, world_size=self.world_size)
-        if self.is_main_thread:
-            sample_embs = torch.cat(sample_embs).cpu()
-        else:
-            sample_embs = None
+        self._log_info_main_thread_only(
+            f"avg_doclen_est = {avg_doclen_est} \t len(local_sample_tok_embs) = {len(local_sample_tok_embs):,}"
+        )
 
-        return sample_embs, self.avg_doclen_est
+        torch.save(
+            local_sample_tok_embs.half(),
+            os.path.join(self.dir_path, f"tok_sample.{self.rank}.pt"),
+        )
+
+        return avg_doclen_est
 
     def _check_all_files_are_saved(self) -> None:
         """Check all chunks are created"""
@@ -455,10 +494,37 @@ class Indexer:
 
             f.write(ujson.dumps(d, indent=4) + "\n")
 
-    def plan(self) -> torch.Tensor:
+    def _concatenate_and_split_sample(self):
+        # TODO: Allocate a float16 array. Load the samples from disk, copy to array.
+        sample = torch.empty(self.num_sample_embs, self.cfg.dim, dtype=torch.float16)
+
+        offset = 0
+        for r in range(self.world_size):
+            sub_sample_path = os.path.join(self.dir_path, f"tok_sample.{r}.pt")
+            sub_sample = torch.load(sub_sample_path)
+            os.remove(sub_sample_path)
+
+            endpos = offset + sub_sample.size(0)
+            sample[offset:endpos] = sub_sample
+            offset = endpos
+
+        assert endpos == sample.size(0), (endpos, sample.size())
+
+        # Shuffle and split out a 5% "heldout" sub-sample [up to 50k elements]
+        sample = sample[torch.randperm(sample.size(0))]
+
+        heldout_fraction = 0.05
+        heldout_size = int(min(heldout_fraction * sample.size(0), 50_000))
+        sample, sample_heldout = sample.split(
+            [sample.size(0) - heldout_size, heldout_size], dim=0
+        )
+
+        return sample, sample_heldout
+
+    def plan(self) -> None:
         """Calcuate and saves plan.json for the whole corpus."""
         sample_pids = self._sample_pids()
-        sample_embs, avg_doclen_est = self._sample_embeddings(sample_pids)
+        avg_doclen_est = self._sample_embeddings(sample_pids)
 
         # Select the number of partitions
         self.num_embeddings_est = self.num_doc * avg_doclen_est
@@ -475,20 +541,20 @@ class Indexer:
 
         self._save_plan()
 
-        return sample_embs
-
     @main_thread_only
-    def train_kmeans(self, sample: torch.Tensor) -> None:
+    def train_kmeans(self) -> None:
         # Shuffle and split out a 5% "heldout" sub-sample [up to 50k elements]
-        sample_num = sample.size(0)
-        sample = sample[torch.randperm(sample_num)]
+        sample, heldout_sample = self._concatenate_and_split_sample()
 
-        # Shuffle and split out a 5% "heldout" sub-sample [up to 50k elements]
-        heldout_num = self._get_kmeans_heldout_size(sample_num)
-        sample, heldout_sample = sample.split(
-            [sample_num - heldout_num, heldout_num], dim=0
-        )
-        sample = sample[: sample_num - heldout_num].numpy()
+        # sample_num = sample.size(0)
+        # sample = sample[torch.randperm(sample_num)]
+
+        # # Shuffle and split out a 5% "heldout" sub-sample [up to 50k elements]
+        # heldout_num = self._get_kmeans_heldout_size(sample_num)
+        # sample, heldout_sample = sample.split(
+        #     [sample_num - heldout_num, heldout_num], dim=0
+        # )
+        # sample = sample[: sample_num - heldout_num].numpy()
 
         assert torch.cuda.is_available(), "CUDA is not available."
         torch.cuda.empty_cache()
