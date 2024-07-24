@@ -14,7 +14,12 @@ import ujson
 from omegaconf import DictConfig
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from eagle.dataset.utils import get_mask
+from eagle.dataset.utils import (
+    combine_word_phrase_ranges,
+    convert_range_for_scatter,
+    fill_ranges,
+    get_mask,
+)
 from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.corpus import Corpus
 from eagle.index.index_saver import IndexSaver
@@ -195,16 +200,22 @@ class Indexer:
 
     def _sample_embeddings(self, sampled_pids: List[int]) -> Tuple[torch.Tensor, float]:
         # Extract documents
-        local_samples: List[str] = [
-            str(passage)
-            for pid, passage in self.corpus.enumerate(
-                rank=self.rank, world_size=self.world_size
-            )
-            if pid in sampled_pids
-        ]
+        local_samples: List[str] = []
+        local_samples_word_ranges: List[List[Tuple[int, int]]] = []
+        local_samples_phrase_ranges: List[List[Tuple[int, int]]] = []
+        for pid, passage, word_ranges, phrase_ranges in self.corpus.enumerate(
+            rank=self.rank, world_size=self.world_size
+        ):
+            if pid in sampled_pids:
+                local_samples.append(str(passage))
+                local_samples_word_ranges.append(word_ranges)
+                local_samples_phrase_ranges.append(phrase_ranges)
 
         local_sample_embs, doclens = self.encode_passages(
-            local_samples, show_progress=self.is_main_thread
+            local_samples,
+            word_ranges=local_samples_word_ranges,
+            phrase_ranges=local_samples_phrase_ranges,
+            show_progress=self.is_main_thread,
         )
 
         # Compute average document length estimattion
@@ -459,13 +470,27 @@ class Indexer:
         self._update_metadata(num_embeddings=num_embeddings)
 
     def encode_passages(
-        self, passages: List[str], show_progress: bool = False
+        self,
+        passages: List[str],
+        word_ranges: List[List[Tuple[int, int]]] = None,
+        phrase_ranges: List[List[Tuple[int, int]]] = None,
+        show_progress: bool = False,
     ) -> Tuple[torch.Tensor, List[int]]:
         with torch.inference_mode():
             all_embs, all_doclens = [], []
-            for passages_batch in list_utils.chunks(
-                passages, chunk_size=self.cfg.bsize, show_progress=show_progress
+            indices = list(range(len(passages)))
+            for indices_batch in list_utils.chunks(
+                indices, chunk_size=self.cfg.bsize, show_progress=show_progress
             ):
+                # Get batch inputs
+                passages_batch = [passages[i] for i in indices_batch]
+                word_ranges_batch = (
+                    [word_ranges[i] for i in indices_batch] if word_ranges else None
+                )
+                phrase_ranges_batch = (
+                    [phrase_ranges[i] for i in indices_batch] if phrase_ranges else None
+                )
+
                 # Tokenize given texts
                 result = self.tokenizers.d_tokenizer(
                     passages_batch, padding=True, return_tensors="pt"
@@ -481,9 +506,61 @@ class Indexer:
                     input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
                 ).unsqueeze(-1)
 
+                # Select scatter indices
+                if self.model.module.granularity_level in ["word"]:
+                    scatter_indices = []
+                    for i, word_ranges_batch_item in enumerate(word_ranges_batch):
+                        # Cutoff my max tokenized length
+                        max_len = ids[i].size(0)
+                        word_ranges_batch_item = [
+                            (start, end)
+                            for start, end in word_ranges_batch_item
+                            if end <= max_len
+                        ]
+                        ranges = fill_ranges(
+                            word_ranges_batch_item,
+                            max_len=max_len,
+                        )
+                        indices = convert_range_for_scatter(ranges)
+                        scatter_indices.append(
+                            torch.tensor(indices, device=self.device)
+                        )
+                    scatter_indices = torch.stack(scatter_indices)
+                elif self.model.module.granularity_level in ["phrase", "multi"]:
+                    scatter_indices = []
+                    for i, (
+                        word_ranges_batch_item,
+                        phrase_ranges_batch_item,
+                    ) in enumerate(zip(word_ranges_batch, phrase_ranges_batch)):
+                        # Cutoff my max tokenized length
+                        max_len = ids[i].size(0)
+                        word_ranges_batch_item = [
+                            (start, end)
+                            for start, end in word_ranges_batch_item
+                            if end <= max_len
+                        ]
+                        phrase_ranges_batch_item = [
+                            (start, end)
+                            for start, end in phrase_ranges_batch_item
+                            if end <= max_len
+                        ]
+                        ranges = fill_ranges(
+                            combine_word_phrase_ranges(
+                                word_ranges_batch_item, phrase_ranges_batch_item
+                            ),
+                            max_len=max_len,
+                        )
+                        indices = convert_range_for_scatter(ranges)
+                        scatter_indices.append(
+                            torch.tensor(indices, device=self.device)
+                        )
+                    scatter_indices = torch.stack(scatter_indices)
+                else:
+                    scatter_indices = None
+
                 # Create batch
                 text_batches = _split_into_batches(
-                    ids, att_mask, tok_mask, bsize=self.cfg.bsize
+                    ids, att_mask, tok_mask, scatter_indices, bsize=self.cfg.bsize
                 )
 
                 # Encode
@@ -491,9 +568,10 @@ class Indexer:
                     self.model.module.encode_d_text(
                         tok_ids=input_ids.to(self.device),
                         att_mask=attention_mask.to(self.device),
+                        scatter_indices=scatter_indices_item,
                         is_encoding=True,
                     )
-                    for input_ids, attention_mask, token_mask in text_batches
+                    for input_ids, attention_mask, token_mask, scatter_indices_item in text_batches
                 ]
 
                 # Flatten

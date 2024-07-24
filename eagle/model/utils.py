@@ -30,12 +30,34 @@ def _sort_by_length(ids, mask, bsize):
     return ids[indices], mask[indices], reverse_indices
 
 
-def _split_into_batches(ids, att_mask, tok_mask=None, bsize: int = 1):
+def _split_into_batches(
+    ids: torch.Tensor,
+    att_mask: torch.Tensor,
+    tok_mask: torch.Tensor = None,
+    scatter_indices: List[List[Tuple[int, int]]] = None,
+    bsize: int = 1,
+) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     batches = []
     for offset in range(0, ids.size(0), bsize):
-        if tok_mask is None:
+        if tok_mask is None and scatter_indices is None:
             batches.append(
                 (ids[offset : offset + bsize], att_mask[offset : offset + bsize])
+            )
+        elif tok_mask is None:
+            batches.append(
+                (
+                    ids[offset : offset + bsize],
+                    att_mask[offset : offset + bsize],
+                    scatter_indices[offset : offset + bsize],
+                )
+            )
+        elif scatter_indices is None:
+            batches.append(
+                (
+                    ids[offset : offset + bsize],
+                    att_mask[offset : offset + bsize],
+                    tok_mask[offset : offset + bsize],
+                )
             )
         else:
             batches.append(
@@ -43,6 +65,7 @@ def _split_into_batches(ids, att_mask, tok_mask=None, bsize: int = 1):
                     ids[offset : offset + bsize],
                     att_mask[offset : offset + bsize],
                     tok_mask[offset : offset + bsize],
+                    scatter_indices[offset : offset + bsize],
                 )
             )
 
