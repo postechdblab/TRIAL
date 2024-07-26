@@ -70,41 +70,6 @@ dataset:
         negative_start_offset: 0
         override_nway: 100
         data_file: dev.jsonl
-model:
-    name: bert-base-uncased
-    ckpt_path: Null
-    out_dim: 128
-    # Quantization
-    is_use_quantization: False
-    quantization_bit: 8
-    is_use_lora: False
-    # ideas
-    is_use_dynamic_granularity_coeff: False
-    is_use_q_weight: True
-    is_use_d_weight: True
-    is_use_fine_grained_loss: False
-    granularity_level: token
-    # granularity_level: word
-    # granularity_level: phrase
-    # granularity_level: sentence
-    # granularity_level: multi
-    is_d_independent: False
-    w_regularize_strategy: l1
-    # Loss coefficient
-    inter_loss_coeff: 1.0
-    intra_loss_coeff: 1.0
-    fine_grained_loss_coeff: 1.0
-    q_weight_coeff: 0.01
-    d_weight_coeff: 0.0000005
-    # q_weight_strategy: sigmoid
-    q_weight_strategy: relu
-    # q_weight_strategy: attention
-    # d_weight_strategy: sigmoid
-    d_weight_strategy: relu
-    # d_weight_strategy: attention
-    reduce_strategy: mean
-    # reduce_strategy: max
-    # reduce_strategy: min
 q_tokenizer:
     new_tok_offset: 0
     special_tok: "[QXQ]"
@@ -115,3 +80,5 @@ d_tokenizer:
     special_tok: "[DXD]"
     skip_new_special_token: True
     max_len: 220
+defaults:
+    - model: late_interaction
