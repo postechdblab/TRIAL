@@ -30,6 +30,13 @@ class Corpus:
     def __len__(self) -> int:
         return len(self.data)
 
+    def get_document(self, idx: int) -> Document:
+        return self.data[idx]
+
+    def get_document_by_id(self, pid: int) -> List[Document]:
+        docs = [doc for doc in self.data if doc._id == pid]
+        return docs
+
     @property
     def corpus_path(self) -> str:
         return os.path.join(

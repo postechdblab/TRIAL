@@ -214,6 +214,7 @@ class Indexer:
                 local_samples_phrase_ranges.append(phrase_ranges)
 
         (
+            local_sample_tok_ids,
             local_sample_cls_embs,
             local_sample_tok_embs,
             local_sample_phrase_embs,
@@ -610,7 +611,7 @@ class Indexer:
                 # Convert Document to string
                 passages: List[str] = [str(passage) for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
-                cls_embs, tok_embs, phrase_embs, tok_lens, phrase_lens = (
+                tok_ids, cls_embs, tok_embs, phrase_embs, tok_lens, phrase_lens = (
                     self.encode_passages(
                         passages,
                         word_ranges=word_ranges,
@@ -634,6 +635,7 @@ class Indexer:
                 self.saver.save_chunk(
                     chunk_idx=chunk_idx,
                     offset=offset,
+                    tok_ids=tok_ids,
                     cls_embs=cls_embs,
                     tok_embs=tok_embs,
                     phrase_embs=phrase_embs,
@@ -693,11 +695,12 @@ class Indexer:
         with torch.inference_mode():
             (
                 all_cls_embs,
+                all_tok_ids,
                 all_tok_embs,
                 all_phrase_embs,
                 all_tok_lens,
                 all_phrase_lens,
-            ) = ([], [], [], [], [])
+            ) = ([], [], [], [], [], [])
             indices = list(range(len(passages)))
             for indices_batch in list_utils.chunks(
                 indices, chunk_size=self.cfg.bsize, show_progress=show_progress
@@ -795,6 +798,7 @@ class Indexer:
                 ]
 
                 # Flatten
+                D_tok_ids = []
                 D_cls, D_tok, D_phrase, mask = [], [], [], []
                 for i in range(len(result_batches)):
                     if result_batches[i][0] is not None:
@@ -806,8 +810,10 @@ class Indexer:
 
                     D_tok_ = result_batches[i][1].cpu().half()
                     mask_ = text_batches[i][2].cpu().bool()
+
                     D_tok.append(D_tok_)
                     mask.append(mask_)
+                    D_tok_ids.append(text_batches[i][0])
 
                 if len(D_cls) > 0:
                     D_cls = torch.cat(D_cls)[reverse_indices]
@@ -817,6 +823,7 @@ class Indexer:
                     torch.cat(D_tok)[reverse_indices],
                     torch.cat(mask)[reverse_indices],
                 )
+                D_tok_ids = torch.cat(D_tok_ids)[reverse_indices]
                 tok_lens = mask.squeeze(-1).sum(-1).tolist()
 
                 if len(D_cls) > 0:
@@ -841,6 +848,8 @@ class Indexer:
                 # Serialize and remove the masked tokens
                 D_tok = D_tok.view(-1, D_tok.shape[-1])
                 D_tok = D_tok[mask.bool().flatten()]
+                D_tok_ids = D_tok_ids.view(-1)
+                D_tok_ids = D_tok_ids[mask.bool().flatten()]
 
                 # Check if flatten is correct
                 assert len(D_tok) == sum(
@@ -854,6 +863,7 @@ class Indexer:
                     all_phrase_embs.append(D_phrase)
                     all_phrase_lens.extend(phrase_lens)
 
+                all_tok_ids.append(D_tok_ids)
                 all_tok_embs.append(D_tok)
                 all_tok_lens.extend(tok_lens)
 
@@ -868,8 +878,10 @@ class Indexer:
                 all_phrase_embs = None
 
             all_tok_embs = torch.cat(all_tok_embs)
+            all_tok_ids = torch.cat(all_tok_ids)
 
         return (
+            all_tok_ids,
             all_cls_embs,
             all_tok_embs,
             all_phrase_embs,

@@ -14,11 +14,13 @@ atexit.register(profile.print_stats)
 
 class StridedTensorCore:
     # # @profile
-    def __init__(self, packed_tensor, lengths, dim=None, use_gpu=True):
+    def __init__(self, packed_tensor, lengths, tok_ids=None, dim=None, use_gpu=True):
         self.dim = dim
         self.tensor = packed_tensor
         self.inner_dims = self.tensor.size()[1:]
         self.use_gpu = use_gpu
+
+        self.tok_ids = tok_ids
 
         self.lengths = (
             lengths.long() if torch.is_tensor(lengths) else torch.LongTensor(lengths)

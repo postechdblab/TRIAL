@@ -10,6 +10,7 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
+from eagle.index.corpus import Corpus
 from eagle.metrics import (
     aggregate_final_metrics,
     aggregate_intermediate_metrics,
@@ -63,6 +64,9 @@ class LightningNewModel(L.LightningModule):
         self.searcher = None
         self.final_eval_results: List[Dict[str, float]] = []
         self.intermediate_eval_results: List[Dict[str, float]] = []
+        # For debugging
+        self.dataset_cfg = cfg
+        self.corpus = None
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -144,10 +148,14 @@ class LightningNewModel(L.LightningModule):
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
         bsize = batch["q_tok_ids"].size(0)
+        is_debug = False
 
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
+        if is_debug and self.corpus is None:
+            print("Loading the corpus...")
+            self.corpus = Corpus(cfg=self.dataset_cfg)
 
         # Extract query ids, mask, and scatter indices
         q_tok_ids = batch["q_tok_ids"]
@@ -192,17 +200,27 @@ class LightningNewModel(L.LightningModule):
         all_stage_1_accs: List = []
         all_stage_3_accs: List = []
         all_stage_2_accs: List = []
+        all_max_key_tok_ids: List = []
+        all_max_sim_by_token: List = []
+        all_max_scores_by_cls: List = []
+        all_max_scores_by_phrase: List = []
         for bidx in range(bsize):
             # Find the positive doc id
             pos_doc_idxs = batch["pos_doc_idxs"][bidx]
             # Retrieve pids and scores
-            query_cls = None if projected_cls_vectors is None else projected_cls_vectors[bidx] 
+            query_cls = (
+                None if projected_cls_vectors is None else projected_cls_vectors[bidx]
+            )
             query_tok = projected_tok_vectors[bidx]
-            query_phrase = None if projected_phrase_vectors is None else projected_phrase_vectors[bidx]
+            query_phrase = (
+                None
+                if projected_phrase_vectors is None
+                else projected_phrase_vectors[bidx]
+            )
             mask = q_tok_mask[bidx]
             tok_weight = None if tok_weights is None else tok_weights[bidx]
             phrase_weight = None if phrase_weights is None else phrase_weights[bidx]
-            pids, scores, intermediate_pids = self.searcher(
+            result = self.searcher(
                 query_cls=query_cls,
                 query_tok=query_tok,
                 query_phrase=query_phrase,
@@ -211,7 +229,22 @@ class LightningNewModel(L.LightningModule):
                 phrase_weight=phrase_weight,
                 # gold_doc_ids=pos_doc_idxs,
                 return_intermediate_pids=True,
+                is_debug=is_debug
             )
+            if is_debug:
+                pids, scores, intermediate_pids, (max_scores_by_token,
+                max_scores_by_phrase,
+                max_scores_by_cls,
+                max_sim_by_token,
+                max_sim_by_phrase,
+                max_sim_by_cls,
+                max_key_tok_ids) = result
+                all_max_scores_by_cls.append(max_scores_by_cls)
+                all_max_scores_by_phrase.append(max_scores_by_phrase)
+                all_max_sim_by_token.append(max_sim_by_token)
+                all_max_key_tok_ids.append(max_key_tok_ids)
+            else:
+                pids, scores, intermediate_pids = result
             if self.dataset_name == "beir-arguana":
                 # Remove the rank 1 document (i.e., the same text as the query)
                 pids = torch.cat([pids[1:], pids[0:1]], dim=0)
@@ -282,6 +315,87 @@ class LightningNewModel(L.LightningModule):
             (all_stage_1_accs, all_stage_2_accs, all_stage_3_accs)
         )
 
+        if is_debug:
+            # Convert query ids back into tokens
+            q_toks_batch = [
+                self.tokenizers.q_tokenizer.tokenizer.convert_ids_to_tokens(
+                    q_toks, skip_special_tokens=False
+                )
+                for q_toks in q_tok_ids
+            ]
+            # Get Top-10 pids
+            for b_idx in range(bsize):
+                max_sim_by_cls = all_max_scores_by_cls[b_idx]
+                max_sim_by_phrase = all_max_scores_by_phrase[b_idx]
+                max_sim_by_token = all_max_sim_by_token[b_idx]
+                max_key_tok_ids = [self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(item, skip_special_tokens=False) for item in all_max_key_tok_ids[b_idx]]
+                # Query
+                q_tok_ids = batch["q_tok_ids"][b_idx].tolist()
+                q_toks = q_toks_batch[b_idx]
+                # Document
+                top_10_scores = all_scores[b_idx, :10].tolist()
+                top_10_pids = all_pids[b_idx, :10].tolist()
+                gold_pids = batch["pos_doc_idxs"][b_idx]
+                gold_indics = [all_pids[b_idx].tolist().index(gold_pid) for gold_pid in gold_pids]
+                gold_scores = [all_scores[b_idx][gold_idx].item() for gold_idx in gold_indics]
+                gold_max_key_tok_ids = [max_key_tok_ids[gold_idx] for gold_idx in gold_indics]
+                gold_tok_scores = [max_sim_by_token[gold_idx].tolist() for gold_idx in gold_indics]
+                # Get the negative pids
+                negatives = []
+                negative_scores = []
+                if gold_pids[0] in top_10_pids:
+                    # Find the rank of the gold pid
+                    gold_pid_rank = top_10_pids.index(gold_pids[0])
+                    # Find negatives in front of the gold
+                    for idx in range(0, gold_pid_rank):
+                        negatives.append(top_10_pids[idx])
+                        negative_scores.append(top_10_scores[idx])
+                else:
+                    negatives = top_10_pids
+                    negative_scores = top_10_scores
+
+                # Get gold documents
+                gold_docs = [self.corpus.get_document_by_id(gold_pid+1)[0] for gold_pid in gold_pids]
+                gold_docs_tok_ids = [self.tokenizers.d_tokenizer(str(gold_doc))[
+                    "input_ids"
+                ][0] for gold_doc in gold_docs]
+                gold_doc_toks = [self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(gold_doc_tok_ids, skip_special_tokens=False) for gold_doc_tok_ids in gold_docs_tok_ids]
+                # Get negative documents
+                negative_docs = []
+                negative_doc_toks = []
+                negative_doc_tok_ids = []
+                negative_max_key_tok_ids = []
+                negative_tok_scores = []
+                for n_pid in negatives:
+                    # Search document
+                    doc = self.corpus.get_document_by_id(n_pid+1)[0]
+                    negative_docs.append(doc)
+                    # Tokenize the text
+                    tok_ids = self.tokenizers.d_tokenizer(str(doc))["input_ids"][0]
+                    negative_doc_tok_ids.append(tok_ids)
+                    negative_doc_toks.append(
+                        self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
+                            tok_ids, skip_special_tokens=False
+                        )
+                    )
+                    negative_max_key_tok_ids.append(
+                        max_key_tok_ids[all_pids[b_idx].tolist().index(n_pid)]
+                    )
+                    negative_tok_scores.append(
+                        max_sim_by_token[all_pids[b_idx].tolist().index(n_pid)].tolist()
+                    )
+                print("\n\n")
+                print(f"Query: {" ".join(q_toks)}")
+                for j in range(len(gold_docs)):
+                    print(f"Gold {j+1} (score: {gold_scores[j]:.2f}): {" ".join(gold_doc_toks[j])}")
+                    print(f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, gold_max_key_tok_ids[j], gold_tok_scores[j])]}\n")
+                for j in range(len(negative_docs)):
+                    print(f"\nNegative {j+1} (score: {negative_scores[j]:.2f}): {" ".join(negative_doc_toks[j])}")
+                    print(f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, negative_max_key_tok_ids[j], negative_tok_scores[j])]}\n")
+
+                    # Show which query token is mapped with which document token
+                stop = 1
+
         return None
 
     def test_step(self, batch: Dict, batch_idx: int) -> None:
@@ -293,6 +407,16 @@ class LightningNewModel(L.LightningModule):
     def on_test_epoch_end(self) -> Dict:
         # Print the result
         gathered_final_results = self.all_gather(self.final_eval_results)
+        # Write results
+        import copy
+        import hkkang_utils.file as file_utils
+        tmp = copy.deepcopy(gathered_final_results)
+        collected = []
+        for item1 in tmp:
+            for item2 in item1:
+                collected.append(item2["test_NDCG@10"].tolist())
+        file_path = "/root/EAGLE/tmp.json"
+        file_utils.write_json_file(collected, file_path)
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
         # Aggregate the final results
         gathered_final_metrics = aggregate_final_metrics(

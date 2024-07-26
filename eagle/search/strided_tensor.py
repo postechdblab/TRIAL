@@ -13,8 +13,10 @@ from eagle.search.strided_tensor_core import (
 
 
 class StridedTensor(StridedTensorCore):
-    def __init__(self, packed_tensor, lengths, dim=None, use_gpu=True):
-        super().__init__(packed_tensor, lengths, dim=dim, use_gpu=use_gpu)
+    def __init__(self, packed_tensor, lengths, tok_ids=None, dim=None, use_gpu=True):
+        super().__init__(
+            packed_tensor, lengths, tok_ids=tok_ids, dim=dim, use_gpu=use_gpu
+        )
 
         StridedTensor.try_load_torch_extensions(use_gpu)
 
@@ -70,6 +72,9 @@ class StridedTensor(StridedTensorCore):
         assert pids.dim() == 1
 
         pids = pids.long().cpu()
+        if len(self.lengths) in pids:  # TODO: Need to fix this hot-fix.
+            index = pids.tolist().index(len(self.lengths))
+            pids[index] = pids[index] - 1
         lengths = self.lengths[pids]
         offsets = self.offsets[pids]
 

@@ -820,28 +820,32 @@ class EAGLE(torch.nn.Module):
             q_encoded = q_encoded * q_weight
 
         # Perform Maxsim
-        intra_scores, intra_q_max_scores, intra_qd_scores = self.compute_intra_scores(
-            q_encoded,
-            q_mask=q_mask,
-            d_encoded=d_encoded,
-            d_weight=d_weight_intra,
-            d_mask=d_mask,
-            nway=nway,
-            return_max_scores=return_max_scores,
-            return_entire_scores=return_entire_scores,
+        intra_scores, intra_q_max_scores, intra_qd_scores, _ = (
+            self.compute_intra_scores(
+                q_encoded,
+                q_mask=q_mask,
+                d_encoded=d_encoded,
+                d_weight=d_weight_intra,
+                d_mask=d_mask,
+                nway=nway,
+                return_max_scores=return_max_scores,
+                return_entire_scores=return_entire_scores,
+            )
         )
 
         # For optimizing the memory usage
-        inter_scores, inter_q_max_scores, inter_qd_scores = self.compute_inter_scores(
-            q_encoded,
-            q_mask=q_mask,
-            d_encoded=d_encoded,
-            d_weight=d_weight_inter,
-            d_mask=d_mask,
-            nway=nway,
-            ib_nhard=ib_nhard,
-            return_max_scores=return_max_scores,
-            return_entire_scores=return_entire_scores,
+        inter_scores, inter_q_max_scores, inter_qd_scores, _ = (
+            self.compute_inter_scores(
+                q_encoded,
+                q_mask=q_mask,
+                d_encoded=d_encoded,
+                d_weight=d_weight_inter,
+                d_mask=d_mask,
+                nway=nway,
+                ib_nhard=ib_nhard,
+                return_max_scores=return_max_scores,
+                return_entire_scores=return_entire_scores,
+            )
         )
 
         # Apply scale factor

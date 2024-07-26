@@ -17,9 +17,14 @@ class IndexLoader:
 
         self._load_codec()  # Centroids information
 
+        # Load tok_ids
+        self.tok_ids = self._load_tok_ids()
+
         # Load ivfs
         self.cls_ivf = self._load_ivf(granularity="cls", must_exists=False)
-        self.tok_ivf = self._load_ivf(granularity="tok", must_exists=True)
+        self.tok_ivf = self._load_ivf(
+            granularity="tok", tok_ids=self.tok_ids, must_exists=True
+        )
         self.phrase_ivf = self._load_ivf(granularity="phrase", must_exists=False)
 
         self.cls_lens = self._load_item_lens(granularity="cls", must_exists=False)
@@ -29,11 +34,25 @@ class IndexLoader:
         )  # Document lengths
         self._load_embeddings()  # Document embeddings
 
+    def _load_tok_ids(self) -> torch.Tensor:
+        tok_ids = []
+        for chunk_idx in tqdm.tqdm(range(self.num_chunks)):
+            file_path = os.path.join(self.index_path, f"tok_ids.{chunk_idx}.pt")
+            # Skip if file doesn't exist
+            if not os.path.exists(file_path):
+                continue
+            tok_ids_ = torch.load(file_path, map_location="cpu")
+            tok_ids.append(tok_ids_)
+
+        return torch.cat(tok_ids)
+
     def _load_codec(self):
         print(f"#> Loading codec...")
         self.codec = ResidualCodec.load(self.index_path)
 
-    def _load_ivf(self, granularity: str, must_exists: bool = True) -> StridedTensor:
+    def _load_ivf(
+        self, granularity: str, tok_ids: torch.Tensor = None, must_exists: bool = True
+    ) -> StridedTensor:
         print(f"#> Loading IVF...")
 
         ivf_path = os.path.join(self.index_path, f"{granularity}-ivf.pt")
@@ -48,7 +67,7 @@ class IndexLoader:
             ivf, ivf_lengths = optimize_ivf(ivf, ivf_lengths, self.index_path)
 
         # ivf, ivf_lengths = ivf.cuda(), torch.LongTensor(ivf_lengths).cuda()  # FIXME: REMOVE THIS LINE!
-        ivf = StridedTensor(ivf, ivf_lengths, use_gpu=self.use_gpu)
+        ivf = StridedTensor(ivf, ivf_lengths, tok_ids=tok_ids, use_gpu=self.use_gpu)
 
         return ivf
 

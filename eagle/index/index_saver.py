@@ -25,6 +25,7 @@ class IndexSaver:
         self,
         chunk_idx: int,
         offset: int,
+        tok_ids: torch.Tensor,
         compressed_cls_embs: ResidualEmbeddings,
         compressed_tok_embs: ResidualEmbeddings,
         compressed_phrase_embs: ResidualEmbeddings,
@@ -52,6 +53,10 @@ class IndexSaver:
         if compressed_phrase_embs is not None:
             with open(phrase_lens_path, "w") as output_phrase_lens:
                 ujson.dump(phrase_lens, output_phrase_lens)
+
+        # Save token ids
+        tok_ids_path = os.path.join(self.dir_path, f"tok_ids.{chunk_idx}.pt")
+        torch.save(tok_ids, tok_ids_path)
 
         metadata_path = os.path.join(self.dir_path, f"{chunk_idx}.metadata.json")
         with open(metadata_path, "w") as output_metadata:
@@ -129,6 +134,7 @@ class IndexSaver:
         self,
         chunk_idx: int,
         offset: int,
+        tok_ids: torch.Tensor,
         cls_embs: Optional[torch.Tensor],
         tok_embs: torch.Tensor,
         phrase_embs: Optional[torch.Tensor],
@@ -151,6 +157,7 @@ class IndexSaver:
             (
                 chunk_idx,
                 offset,
+                tok_ids,
                 compressed_cls_embs,
                 compressed_tok_embs,
                 compressed_phrase_embs,

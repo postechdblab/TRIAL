@@ -14,6 +14,7 @@ def compute_sum_maxsim(
     k_lengths: Optional[torch.Tensor] = None,
     return_max_scores: bool = False,
     return_element_wise_scores: bool = False,
+    k_ids: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """Compute the sum of the maximum similarity scores between the query and the documents.
 
@@ -30,12 +31,13 @@ def compute_sum_maxsim(
     :return: Sum of the maximum similarity scores between the query and the documents.
     :rtype: torch.Tensor
     """
-    max_sim_scores, element_wise_scores = compute_maxsim(
+    max_sim_scores, element_wise_scores, max_sim_indices = compute_maxsim(
         q_encoded=q_encoded,
         k_encoded=k_encoded,
         k_mask=k_mask,
         k_lengths=k_lengths,
         return_element_wise_scores=return_element_wise_scores,
+        is_debug=k_ids is not None,
     )
 
     if q_mask is None:
@@ -56,13 +58,24 @@ def compute_sum_maxsim(
         # sum_maxsim_scores = torch.scatter(src=torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype), sum_maxsim_scores = sum_maxsim_scores[:, 0]
         # torch.zeros((max_sim_scores.shape[0], 2), device=max_sim_scores.device, dtype=max_sim_scores.dtype).scatter_add_(dim=1, index=q_mask.long(), src=max_sim_scores)
 
+    if k_ids is not None:
+        k_ids_strided, k_ids_mask = StridedTensor(
+            k_ids, k_lengths, use_gpu=True
+        ).as_padded_tensor()
+        max_key_tok_ids = []
+        for b_idx in range(k_ids_strided.shape[0]):
+            max_key_tok_ids.append(k_ids_strided[b_idx][max_sim_indices[b_idx]])
+        max_key_tok_ids = torch.stack(max_key_tok_ids)
+    else:
+        max_key_tok_ids = None
+
     if not return_max_scores:
         max_sim_scores = None
 
     if not return_element_wise_scores:
         element_wise_scores = None
 
-    return sum_maxsim_scores, max_sim_scores, element_wise_scores
+    return sum_maxsim_scores, max_sim_scores, element_wise_scores, max_key_tok_ids
 
 
 def compute_maxsim(
@@ -71,6 +84,7 @@ def compute_maxsim(
     k_mask: Optional[torch.Tensor] = None,
     k_lengths: Optional[torch.Tensor] = None,
     return_element_wise_scores: bool = False,
+    is_debug: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     # Compute the element-wise relevance scores
     element_wise_scores = k_encoded @ q_encoded.transpose(-2, -1)
@@ -88,10 +102,15 @@ def compute_maxsim(
         element_wise_scores=element_wise_scores, k_mask=k_mask
     )
 
+    if is_debug:
+        max_sim_indices = element_wise_scores.argmax(dim=1)
+    else:
+        max_sim_indices = None
+
     if not return_element_wise_scores:
         element_wise_scores = None
 
-    return max_sim_scores, element_wise_scores
+    return max_sim_scores, element_wise_scores, max_sim_indices
 
 
 def maxsim_from_element_wise_relevance_score(
