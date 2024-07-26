@@ -1,0 +1,5 @@
+dir_path: /root/EAGLE/index/
+nbits: 2
+bsize: 256
+dim: 128
+kmeans_niters: 20

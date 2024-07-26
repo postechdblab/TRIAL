@@ -52,11 +52,11 @@ class Indexer:
         self.rank = rank
         self.world_size = world_size
         self.corpus: Corpus = Corpus(cfg)
-        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
+        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.backbone_name)
         # Set model
         assert cfg.model.ckpt_path, "model ckpt_path is not provided."
         # TODO: Placing the import here to avoid circular import. Need to fix this
-        from eagle.model.late_interaction import EAGLE
+        from eagle.model.eagle import EAGLE
 
         self.model = DDP(
             EAGLE(cfg=cfg.model, tokenizers=self.tokenizers).to(self.device),

@@ -23,7 +23,7 @@ def pickleable_func(tokenizer, *args, **kwargs):
     return tokenizer(*args, **kwargs)
 
 
-class BaseTokenizer:
+class Tokenizer:
     def __init__(self, cfg: DictConfig, model_name: str) -> None:
         self.cfg = cfg
         self.name = model_name
@@ -98,6 +98,7 @@ class BaseTokenizer:
         texts: List[str] = list(map(self._preprocess_text, texts))
         batch_size = 100000
 
+        # TODO: Need this?
         if len(texts) > batch_size and False:
             if True:
                 chunks = list_utils.divide_into_chunks(texts, 32)

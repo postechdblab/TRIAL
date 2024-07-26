@@ -4,26 +4,18 @@ import torch
 from omegaconf import DictConfig
 from transformers import AutoModel
 
-from eagle.tokenizer import Tokenizers
+from eagle.tokenizer import Tokenizer
 
 
 class CrossEncoder(torch.nn.Module):
-    def __init__(self, cfg: DictConfig, tokenizers: Tokenizers) -> None:
+    def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
         super().__init__()
         self.cfg = cfg
-        self.q_special_tok_ids = tokenizers.q_special_tok_ids
-        self.d_special_tok_ids = tokenizers.d_special_tok_ids
-        self.punct_tok_ids = tokenizers.punct_tok_ids
-        self.q_maxlen = tokenizers.q_maxlen
         # Configs
         self.nway = cfg.nway
         # Backbone model
         self.llm = self.__create_backbone_model(
             cfg.llm.name, vocab_num=tokenizers.vocab_num
-        )
-        # Projection layer
-        self.tok_projection_layer = torch.nn.Linear(
-            self.llm.config.hidden_size, cfg.out_dim, bias=False
         )
 
     def forward(
@@ -56,15 +48,6 @@ class CrossEncoder(torch.nn.Module):
         ), f"Batch size mismatch: {q_tok_ids.size(0)} != {bsize}"
         # Encode
         self.compute_scores()
-
-    @property
-    def q_skiplist(self) -> List[int]:
-        return self.q_special_tok_ids
-
-    @property
-    def d_skiplist(self) -> List[int]:
-        return self.d_special_tok_ids
-        # return self.d_special_tok_ids + self.punct_tok_ids
 
     def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:
         # Load pretrained backbone model

@@ -11,19 +11,13 @@ from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
 from eagle.index.corpus import Corpus
-from eagle.metrics import (
-    aggregate_final_metrics,
-    aggregate_intermediate_metrics,
-    compute_metrics,
-)
-from eagle.model.late_interaction import EAGLE
-from eagle.model.utils import (
-    _sort_by_length,
-    _split_into_batches,
-    append_dummy_pid,
-    pid_found_percentage,
-    unwrap_logging_items,
-)
+from eagle.metrics import (aggregate_final_metrics,
+                           aggregate_intermediate_metrics, compute_metrics)
+from eagle.model.cross_encoder import CrossEncoder
+from eagle.model.eagle import EAGLE
+from eagle.model.utils import (_sort_by_length, _split_into_batches,
+                               append_dummy_pid, pid_found_percentage,
+                               unwrap_logging_items)
 from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
 from eagle.tokenizer import Tokenizers
@@ -42,9 +36,11 @@ class LightningNewModel(L.LightningModule):
         self.dataset_name = cfg.dataset.name
         self.train_batch_num = train_batch_num
         # Tmp
-        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
+        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.backbone_name)
         # Load model
-        self.model = EAGLE(
+        assert cfg.model.name in ["eagle", "cross_encoder"]
+        model_module = EAGLE if cfg.model.name == "eagle" else CrossEncoder
+        self.model = model_module(
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
         self.swa_model = (
@@ -409,6 +405,7 @@ class LightningNewModel(L.LightningModule):
         gathered_final_results = self.all_gather(self.final_eval_results)
         # Write results
         import copy
+
         import hkkang_utils.file as file_utils
         tmp = copy.deepcopy(gathered_final_results)
         collected = []

@@ -1,10 +1,10 @@
 from typing import *
 
-from eagle.tokenizer import BaseTokenizer
+from eagle.tokenizer import Tokenizer
 
 
 def tokenize_and_cache_corpus(
-    tokenizer: BaseTokenizer, corpus: Dict[str, str]
+    tokenizer: Tokenizer, corpus: Dict[str, str]
 ) -> Dict[str, List[int]]:
     """Tokenize a list of texts using the provided tokenizer."""
     tokenized_items = tokenizer.tokenize_batch(corpus.values())

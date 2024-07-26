@@ -4,11 +4,11 @@ import hydra
 
 from eagle.phrase.noun import SpacyModel, Text
 from eagle.phrase.utils import get_phrase_indices
-from eagle.tokenizer import BaseTokenizer, QTokenizer
+from eagle.tokenizer import Tokenizer, QTokenizer
 
 
 class PhraseExtractor:
-    def __init__(self, tokenizer: BaseTokenizer) -> None:
+    def __init__(self, tokenizer: Tokenizer) -> None:
         self.tokenizer = tokenizer
         self.spacy_model = SpacyModel()
 

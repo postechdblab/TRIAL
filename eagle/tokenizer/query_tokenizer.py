@@ -1,9 +1,9 @@
 from typing import *
 
-from eagle.tokenizer import BaseTokenizer
+from eagle.tokenizer import Tokenizer
 
 
-class QTokenizer(BaseTokenizer):
+class QTokenizer(Tokenizer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

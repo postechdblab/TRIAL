@@ -1,9 +1,9 @@
 from typing import *
 
-from eagle.tokenizer import Tokenizer
+from eagle.tokenizer import Tokenizers
 
 
-class DTokenizer(Tokenizer):
+class FullInteractionTokenizer(Tokenizers):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -13,4 +13,4 @@ class DTokenizer(Tokenizer):
             special_toks_ids = self.special_toks_ids[0:1] + self.special_toks_ids[2:]
         else:
             special_toks_ids = self.special_toks_ids
-        return special_toks_ids + self.punctuations
+        return special_toks_ids

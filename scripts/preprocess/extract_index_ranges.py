@@ -72,7 +72,7 @@ def extract(
     dataset_path = os.path.join(dir_path, filename)
 
     tokenizers = Tokenizers(
-        q_cfg=cfg.q_tokenizer, d_cfg=cfg.d_tokenizer, model_name=cfg.model.name
+        q_cfg=cfg.q_tokenizer, d_cfg=cfg.d_tokenizer, model_name=cfg.model.backbone_name
     )
     tokenizer = tokenizers.q_tokenizer if prefix == "query" else tokenizers.d_tokenizer
     extractor = PhraseExtractor(tokenizer=tokenizer)

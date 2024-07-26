@@ -1,3 +1,4 @@
+name: cross_encoder
 backbone_name: bert-base-uncased
 ckpt_path: Null
 out_dim: 128

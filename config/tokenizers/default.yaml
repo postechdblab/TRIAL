@@ -1,0 +1,3 @@
+defaults:
+  - query: default
+  - document: default

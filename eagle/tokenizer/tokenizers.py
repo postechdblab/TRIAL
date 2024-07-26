@@ -1,3 +1,4 @@
+import abc
 import logging
 from typing import *
 
@@ -7,7 +8,7 @@ from eagle.tokenizer import QTokenizer, DTokenizer
 logger = logging.getLogger("Tokenizers")
 
 
-class Tokenizers:
+class Tokenizers(abc.ABC):
     def __init__(self, q_cfg: DictConfig, d_cfg: DictConfig, model_name: str) -> None:
         self.q_tokenizer = QTokenizer(q_cfg, model_name)
         self.d_tokenizer = DTokenizer(d_cfg, model_name)

@@ -31,7 +31,9 @@ class BaseDataModule(L.LightningDataModule):
         super().__init__()
         self.cfg_global: DictConfig = cfg
         self.cfg: DictConfig = cfg.dataset
-        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.name)
+        self.tokenizer = Tokenizers(
+            cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.backbone_name
+        )
         self.train_dataset = self.val_dataset = self.test_dataset = None
         self.skip_train = skip_train
 
