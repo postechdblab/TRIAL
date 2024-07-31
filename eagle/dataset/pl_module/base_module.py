@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
 from eagle.dataset.utils import (
-    collate_fn,
     get_indices_to_avoid_repeated_qids_in_minibatch,
     read_compressed,
     read_corpus,
@@ -20,7 +19,7 @@ from eagle.dataset.utils import (
     read_queries,
     save_compressed,
 )
-from eagle.dataset.wrapper import DatasetWrapper
+from eagle.dataset.wrapper import DatasetWrapperForCrossEncoder, DatasetWrapperForEAGLE
 from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("DataModule")
@@ -31,8 +30,8 @@ class BaseDataModule(L.LightningDataModule):
         super().__init__()
         self.cfg_global: DictConfig = cfg
         self.cfg: DictConfig = cfg.dataset
-        self.tokenizer = Tokenizers(
-            cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.backbone_name
+        self.tokenizers = Tokenizers(
+            cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name
         )
         self.train_dataset = self.val_dataset = self.test_dataset = None
         self.skip_train = skip_train
@@ -76,6 +75,14 @@ class BaseDataModule(L.LightningDataModule):
         return os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.d_phrase_range_file
         )
+
+    @property
+    def dataset_wrapper_cls(self) -> Type[BaseDataset]:
+        if self.cfg_global.model.name == "eagle":
+            return DatasetWrapperForEAGLE
+        elif self.cfg_global.model.name == "cross_encoder":
+            return DatasetWrapperForCrossEncoder
+        raise ValueError(f"Invalid model name: {self.cfg_global.model.name}")
 
     @functools.cached_property
     def corpus_mapping(self) -> Dict[str, int]:
@@ -177,39 +184,41 @@ class BaseDataModule(L.LightningDataModule):
             logger.info(f"Shuffling data to avoid qid repetition in the mini-batch...")
             indices = self.get_shuffled_indices_to_avoid_qid_repetition(train_dataset)
 
-        # Create DatasetWrapper
-        if not self.skip_train:
-            train_dataset = DatasetWrapper(
-                dataset=train_dataset,
-                indices=indices,
+        # Configs
+        add_kwargs = {}
+        if self.cfg_global.model.name == "eagle":
+            add_kwargs = dict(
                 q_word_ranges=q_word_ranges,
                 q_phrase_ranges=q_phrase_ranges,
                 d_word_ranges=d_word_ranges,
                 d_phrase_ranges=d_phrase_ranges,
-                corpus_mapping=self.corpus_mapping,
-                query_mapping=self.query_mapping,
-                nway=self.cfg_global.training.nway,
-                cache_nway=self.cfg.cache_nway,
-                q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
-                d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
                 granularity_level=self.cfg_global.model.granularity_level,
                 is_use_fine_grained_loss=self.cfg_global.model.is_use_fine_grained_loss,
             )
 
-        val_dataset = DatasetWrapper(
+        # Create DatasetWrapper
+        if not self.skip_train:
+            train_dataset = self.dataset_wrapper_cls(
+                dataset=train_dataset,
+                indices=indices,
+                nway=self.cfg_global.training.nway,
+                cache_nway=self.cfg.cache_nway,
+                corpus_mapping=self.corpus_mapping,
+                query_mapping=self.query_mapping,
+                q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
+                d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
+                **add_kwargs,
+            )
+
+        val_dataset = self.dataset_wrapper_cls(
             dataset=val_dataset,
-            q_word_ranges=q_word_ranges,
-            q_phrase_ranges=q_phrase_ranges,
-            d_word_ranges=d_word_ranges,
-            d_phrase_ranges=d_phrase_ranges,
-            corpus_mapping=self.corpus_mapping,
-            query_mapping=self.query_mapping,
             nway=self.cfg.val.override_nway,
             cache_nway=self.cfg.val.override_nway,
+            corpus_mapping=self.corpus_mapping,
+            query_mapping=self.query_mapping,
             q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
             d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
-            granularity_level=self.cfg_global.model.granularity_level,
-            is_use_fine_grained_loss=self.cfg_global.model.is_use_fine_grained_loss,
+            **add_kwargs,
         )
 
         # Save datasets
@@ -265,7 +274,7 @@ class BaseDataModule(L.LightningDataModule):
             self.train_dataset,
             batch_size=self.cfg_global.training.per_device_train_batch_size,
             num_workers=8,
-            collate_fn=collate_fn,
+            collate_fn=self.dataset_wrapper_cls.collate_fn,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -273,7 +282,7 @@ class BaseDataModule(L.LightningDataModule):
             self.val_dataset,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
             num_workers=4,
-            collate_fn=collate_fn,
+            collate_fn=self.dataset_wrapper_cls.collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -281,7 +290,7 @@ class BaseDataModule(L.LightningDataModule):
             self.test_dataset,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
             num_workers=1,
-            collate_fn=collate_fn,
+            collate_fn=self.dataset_wrapper_cls.collate_fn,
         )
 
     @property

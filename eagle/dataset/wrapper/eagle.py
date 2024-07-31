@@ -1,14 +1,20 @@
 import logging
 from typing import *
 
+import hkkang_utils.list as list_utils
+import torch
+from torch.nn.utils.rnn import pad_sequence
+
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.utils import (add_doc_ranges_and_mask,
-                                 add_query_ranges_and_mask, is_token_included)
+                                 add_query_ranges_and_mask, collate_ranges,
+                                 is_token_included)
+from eagle.dataset.wrapper import BaseDatasetWrapper
 
 logger = logging.getLogger("DatasetWrapper")
 
 
-class DatasetWrapper:
+class DatasetWrapperForEAGLE(BaseDatasetWrapper):
     def __init__(
         self,
         dataset: BaseDataset,
@@ -26,27 +32,23 @@ class DatasetWrapper:
         granularity_level: Optional[str] = None,
         is_use_fine_grained_loss: Optional[bool] = False,
     ):
-        self.dataset = dataset
-        self.indices = [i for i in range(len(dataset))] if indices is None else indices
-        self.nway = nway
-        self.cache_nway = cache_nway
+        super(DatasetWrapperForEAGLE, self).__init__(dataset=dataset, 
+                                                     indices=indices, 
+                                                     nway=nway, 
+                                                     cache_nway=cache_nway, 
+                                                     q_skip_ids=q_skip_ids, 
+                                                     d_skip_ids=d_skip_ids,
+                                                     query_mapping=query_mapping,
+                                                     corpus_mapping=corpus_mapping)
         self.q_word_ranges = q_word_ranges
         self.q_phrase_ranges = q_phrase_ranges
         self.d_word_ranges = d_word_ranges
         self.d_phrase_ranges = d_phrase_ranges
-        self.corpus_mapping = corpus_mapping
         self.query_mapping = query_mapping
-        self.q_skip_ids = q_skip_ids
-        self.d_skip_ids = d_skip_ids
+        self.corpus_mapping = corpus_mapping
         self.granularity_level = granularity_level
         self.is_use_fine_grained_loss = is_use_fine_grained_loss
         # Check if variables are valid
-        assert len(self.dataset) == len(
-            self.indices
-        ), f"len(self.dataset)={len(self.dataset)}, len(self.indices)={len(self.indices)}"
-        assert nway is not None, f"nway is None. Please provide nway."
-        assert cache_nway is not None, f"cache_nway is None. Please provide cache_nway."
-        assert cache_nway >= nway, f"cache_nway={cache_nway}, nway={nway}"
         assert (
             "neg_doc_ids" not in self.dataset[0] 
             or len(self.dataset[0]["neg_doc_ids"]) == 0
@@ -70,16 +72,10 @@ class DatasetWrapper:
                 self.corpus_mapping
             ), f"len(self.corpus_mapping)={len(self.corpus_mapping)}, len(self.d_phrase_ranges)={len(self.d_phrase_ranges)}"
 
-    def __getitem__(self, idx: int) -> Dict:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         # Replace the nway
-        if idx >= len(self):
-            logger.info(
-                f"idx={idx}, len(self)={len(self)}, len(self.indices)={len(self.indices)}"
-            )
-        if idx >= len(self.indices):
-            logger.info(
-                f"idx={idx}, len(self)={len(self)}, len(self.indices)={len(self.indices)}"
-            )
+        if idx > len(self):
+            raise IndexError(f"Index {idx} out of range {len(self)}")
         shuff_idx = self.indices[idx]
         data = self.dataset[shuff_idx]
         # Replace the nway
@@ -145,5 +141,94 @@ class DatasetWrapper:
 
         return data
 
-    def __len__(self) -> int:
-        return len(self.dataset)
+    @staticmethod
+    def collate_fn(input_dics: List[Dict]) -> Dict:
+        """Collate list of dictionaries into a single dictionary."""
+        def get_dtype(key: str) -> torch.dtype:
+            if "mask" in key or key == "labels":
+                return torch.bool
+            elif "id" in key:
+                return torch.int32
+            elif "scores" in key:
+                return torch.float32
+            return torch.long
+
+        new_dict = {}
+        # Assume all dictionaries have the same keys
+        keys = list(input_dics[0].keys())
+        # Collate for each key
+        for key in keys:
+            if input_dics[0][key] is None:
+                new_dict[key] = None
+                continue
+            if key == "q_scatter_indices":
+                padded_values = collate_ranges(
+                    [
+                        torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
+                        for dic in input_dics
+                    ]
+                )
+            elif key == "doc_scatter_indices":
+                padded_values = list_utils.do_flatten_list(
+                    [input_dic[key] for input_dic in input_dics]
+                )
+                padded_values = collate_ranges(
+                    [
+                        torch.tensor(item, dtype=get_dtype(key), device="cpu")
+                        for item in padded_values
+                    ]
+                )
+            elif key in ["q_tok_ids", "q_tok_att_mask", "labels"]:
+                values = [
+                    torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
+                    for dic in input_dics
+                ]
+                padded_values = pad_sequence(values, batch_first=True)
+            elif key in ["doc_tok_ids", "doc_tok_att_mask", "tok_ids", "tok_att_mask"]:
+                values = []
+                for input_dic in input_dics:
+                    for item in input_dic[key]:
+                        values.append(
+                            torch.tensor(item, dtype=get_dtype(key), device="cpu")
+                        )
+                padded_values = pad_sequence(values, batch_first=True)
+                padded_values = padded_values.reshape(
+                    len(input_dics), -1, padded_values.shape[1]
+                )
+            elif key in ["q_tok_mask", "q_phrase_mask"]:
+                values = [dic[key].clone().detach().unsqueeze(-1) for dic in input_dics]
+                padded_values = pad_sequence(values, batch_first=True) == 0
+            elif key in ["doc_tok_mask", "doc_phrase_mask", "tok_mask"]:
+                values = list_utils.do_flatten_list(
+                    [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
+                )
+                padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
+            elif key == "fine_grained_label":
+                values = []
+                for dic in input_dics:
+                    for item in dic[key]:
+                        values.append(torch.tensor(item, dtype=torch.bool, device="cpu"))
+                padded_values = pad_sequence(values, batch_first=True).float()
+                summed_padded_values = padded_values.sum(dim=1, keepdim=True)
+                mask_padded_values = (summed_padded_values > 0).squeeze()
+                padded_values = (
+                    padded_values[mask_padded_values]
+                    / summed_padded_values[mask_padded_values]
+                )
+                new_dict["fine_grained_label_mask"] = mask_padded_values
+            elif key in ["q_id", "pos_doc_idxs"]:
+                padded_values = [dic[key] for dic in input_dics]
+            elif key in ["pos_doc_ids", "neg_doc_ids"]:
+                continue
+            elif key == "distillation_scores":
+                padded_values = torch.nn.functional.log_softmax(
+                    torch.tensor(
+                        [dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"
+                    ),
+                    dim=-1,
+                )
+            else:
+                raise ValueError(f"Unsupported key: {key}")
+            new_dict[key] = padded_values
+
+        return new_dict

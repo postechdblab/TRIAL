@@ -388,97 +388,97 @@ def get_mask(input_ids: torch.Tensor, skip_ids: List[int]) -> List[int]:
     return mask.float()
 
 
-def collate_fn(input_dics: List[Dict]) -> Dict:
-    """Collate list of dictionaries into a single dictionary."""
+# def collate_fn(input_dics: List[Dict]) -> Dict:
+#     """Collate list of dictionaries into a single dictionary."""
 
-    def get_dtype(key: str) -> torch.dtype:
-        if "mask" in key or key == "labels":
-            return torch.bool
-        elif "id" in key:
-            return torch.int32
-        elif "scores" in key:
-            return torch.float32
-        return torch.long
+#     def get_dtype(key: str) -> torch.dtype:
+#         if "mask" in key or key == "labels":
+#             return torch.bool
+#         elif "id" in key:
+#             return torch.int32
+#         elif "scores" in key:
+#             return torch.float32
+#         return torch.long
 
-    new_dict = {}
-    # Assume all dictionaries have the same keys
-    keys = list(input_dics[0].keys())
-    # Collate for each key
-    for key in keys:
-        if input_dics[0][key] is None:
-            new_dict[key] = None
-            continue
-        if key == "q_scatter_indices":
-            padded_values = collate_ranges(
-                [
-                    torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
-                    for dic in input_dics
-                ]
-            )
-        elif key == "doc_scatter_indices":
-            padded_values = list_utils.do_flatten_list(
-                [input_dic[key] for input_dic in input_dics]
-            )
-            padded_values = collate_ranges(
-                [
-                    torch.tensor(item, dtype=get_dtype(key), device="cpu")
-                    for item in padded_values
-                ]
-            )
-        elif key in ["q_tok_ids", "q_tok_att_mask", "labels"]:
-            values = [
-                torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
-                for dic in input_dics
-            ]
-            padded_values = pad_sequence(values, batch_first=True)
-        elif key in ["doc_tok_ids", "doc_tok_att_mask"]:
-            values = []
-            for input_dic in input_dics:
-                for item in input_dic[key]:
-                    values.append(
-                        torch.tensor(item, dtype=get_dtype(key), device="cpu")
-                    )
-            padded_values = pad_sequence(values, batch_first=True)
-            padded_values = padded_values.reshape(
-                len(input_dics), -1, padded_values.shape[1]
-            )
-        elif key in ["q_tok_mask", "q_phrase_mask"]:
-            values = [dic[key].clone().detach().unsqueeze(-1) for dic in input_dics]
-            padded_values = pad_sequence(values, batch_first=True) == 0
-        elif key in ["doc_tok_mask", "doc_phrase_mask"]:
-            values = list_utils.do_flatten_list(
-                [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
-            )
-            padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
-        elif key == "fine_grained_label":
-            values = []
-            for dic in input_dics:
-                for item in dic[key]:
-                    values.append(torch.tensor(item, dtype=torch.bool, device="cpu"))
-            padded_values = pad_sequence(values, batch_first=True).float()
-            summed_padded_values = padded_values.sum(dim=1, keepdim=True)
-            mask_padded_values = (summed_padded_values > 0).squeeze()
-            padded_values = (
-                padded_values[mask_padded_values]
-                / summed_padded_values[mask_padded_values]
-            )
-            new_dict["fine_grained_label_mask"] = mask_padded_values
-        elif key in ["q_id", "pos_doc_idxs"]:
-            padded_values = [dic[key] for dic in input_dics]
-        elif key in ["pos_doc_ids", "neg_doc_ids"]:
-            continue
-        elif key == "distillation_scores":
-            padded_values = torch.nn.functional.log_softmax(
-                torch.tensor(
-                    [dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"
-                ),
-                dim=-1,
-            )
-        else:
-            raise ValueError(f"Unsupported key: {key}")
-        new_dict[key] = padded_values
+#     new_dict = {}
+#     # Assume all dictionaries have the same keys
+#     keys = list(input_dics[0].keys())
+#     # Collate for each key
+#     for key in keys:
+#         if input_dics[0][key] is None:
+#             new_dict[key] = None
+#             continue
+#         if key == "q_scatter_indices":
+#             padded_values = collate_ranges(
+#                 [
+#                     torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
+#                     for dic in input_dics
+#                 ]
+#             )
+#         elif key == "doc_scatter_indices":
+#             padded_values = list_utils.do_flatten_list(
+#                 [input_dic[key] for input_dic in input_dics]
+#             )
+#             padded_values = collate_ranges(
+#                 [
+#                     torch.tensor(item, dtype=get_dtype(key), device="cpu")
+#                     for item in padded_values
+#                 ]
+#             )
+#         elif key in ["q_tok_ids", "q_tok_att_mask", "labels"]:
+#             values = [
+#                 torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
+#                 for dic in input_dics
+#             ]
+#             padded_values = pad_sequence(values, batch_first=True)
+#         elif key in ["doc_tok_ids", "doc_tok_att_mask", "tok_ids", "tok_att_mask"]:
+#             values = []
+#             for input_dic in input_dics:
+#                 for item in input_dic[key]:
+#                     values.append(
+#                         torch.tensor(item, dtype=get_dtype(key), device="cpu")
+#                     )
+#             padded_values = pad_sequence(values, batch_first=True)
+#             padded_values = padded_values.reshape(
+#                 len(input_dics), -1, padded_values.shape[1]
+#             )
+#         elif key in ["q_tok_mask", "q_phrase_mask"]:
+#             values = [dic[key].clone().detach().unsqueeze(-1) for dic in input_dics]
+#             padded_values = pad_sequence(values, batch_first=True) == 0
+#         elif key in ["doc_tok_mask", "doc_phrase_mask", "tok_mask"]:
+#             values = list_utils.do_flatten_list(
+#                 [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
+#             )
+#             padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
+#         elif key == "fine_grained_label":
+#             values = []
+#             for dic in input_dics:
+#                 for item in dic[key]:
+#                     values.append(torch.tensor(item, dtype=torch.bool, device="cpu"))
+#             padded_values = pad_sequence(values, batch_first=True).float()
+#             summed_padded_values = padded_values.sum(dim=1, keepdim=True)
+#             mask_padded_values = (summed_padded_values > 0).squeeze()
+#             padded_values = (
+#                 padded_values[mask_padded_values]
+#                 / summed_padded_values[mask_padded_values]
+#             )
+#             new_dict["fine_grained_label_mask"] = mask_padded_values
+#         elif key in ["q_id", "pos_doc_idxs"]:
+#             padded_values = [dic[key] for dic in input_dics]
+#         elif key in ["pos_doc_ids", "neg_doc_ids"]:
+#             continue
+#         elif key == "distillation_scores":
+#             padded_values = torch.nn.functional.log_softmax(
+#                 torch.tensor(
+#                     [dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"
+#                 ),
+#                 dim=-1,
+#             )
+#         else:
+#             raise ValueError(f"Unsupported key: {key}")
+#         new_dict[key] = padded_values
 
-    return new_dict
+#     return new_dict
 
 
 @functools.lru_cache(maxsize=None)

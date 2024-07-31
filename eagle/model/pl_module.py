@@ -36,7 +36,7 @@ class LightningNewModel(L.LightningModule):
         self.dataset_name = cfg.dataset.name
         self.train_batch_num = train_batch_num
         # Tmp
-        self.tokenizers = Tokenizers(cfg.q_tokenizer, cfg.d_tokenizer, cfg.model.backbone_name)
+        self.tokenizers = Tokenizers(cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name)
         # Load model
         assert cfg.model.name in ["eagle", "cross_encoder"]
         model_module = EAGLE if cfg.model.name == "eagle" else CrossEncoder
@@ -451,7 +451,7 @@ class LightningNewModel(L.LightningModule):
         return gathered_final_metrics
 
     def validation_step(self, batch: Dict, batch_idx: int) -> None:
-        bsize = batch["q_tok_ids"].size(0)
+        bsize = batch["labels"].size(0)
         if self.cfg.is_use_swa and batch_idx > self.cfg.swa_start_batch_idx:
             loss_dic, scores = self.swa_model(**batch)
         else:
