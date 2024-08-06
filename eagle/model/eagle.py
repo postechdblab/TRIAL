@@ -52,7 +52,7 @@ class EAGLE(torch.nn.Module):
         self.granularity_level = handle_old_ckpt(cfg, "granularity_level")
         # Backbone model (The attribute name should be llm to be compatible with the optimizer in LightningModule)
         self.llm = self.__create_backbone_model(
-            name=cfg.name, vocab_num=tokenizers.vocab_num
+            name=cfg.backbone_name, vocab_num=tokenizers.vocab_num
         )
 
         # Projection layers

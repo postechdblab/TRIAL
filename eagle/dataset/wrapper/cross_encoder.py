@@ -114,7 +114,7 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
                     torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
                     for dic in input_dics
                 ]
-                padded_values = values
+                padded_values = pad_sequence(values, batch_first=True)
             elif key in ["doc_tok_ids", "doc_tok_att_mask"]:
                 values = []
                 for input_dic in input_dics:
@@ -147,7 +147,7 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
             q_tok_ids = new_dict["q_tok_ids"][b_idx]
             q_tok_ids = q_tok_ids.unsqueeze(0).repeat_interleave(nway, dim=0)
             tok_ids.append(
-                torch.cat([q_tok_ids, new_dict["doc_tok_ids"][b_idx]], dim=1)
+                torch.cat([q_tok_ids, new_dict["doc_tok_ids"][b_idx][:, 1:]], dim=1)
             )
         tok_ids = list_utils.do_flatten_list([item.unbind(0) for item in tok_ids])
         tok_ids = pad_sequence(tok_ids, batch_first=True, padding_value=0)
@@ -168,7 +168,10 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
             end_idx = repeat_num * (b_idx + 1)
             selected_d_tok_ids = d_tok_ids[d_indices_tensor[start_idx:end_idx]]
             # Concatenate query and document for in-batch negatives
-            ib_tok_ids.append(torch.cat([q_tok_ids, selected_d_tok_ids], dim=1))
+            ib_tok_ids.append(torch.cat([q_tok_ids, selected_d_tok_ids[:, 1:]], dim=1))
+        # Pad the ib_tok_ids
+        ib_tok_ids = list_utils.do_flatten_list([item.unbind(0) for item in ib_tok_ids])
+        ib_tok_ids = pad_sequence(ib_tok_ids, batch_first=True, padding_value=0)
         ib_tok_ids_att_mask = ib_tok_ids != 0
 
         new_dict["tok_ids"] = tok_ids

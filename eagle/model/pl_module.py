@@ -21,7 +21,7 @@ from eagle.model.utils import (_sort_by_length, _split_into_batches,
 from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
 from eagle.tokenizer import Tokenizers
-from eagle.utils import handle_old_ckpt
+from eagle.utils import handle_old_ckpt, remove_key_with_none_value
 
 
 class LightningNewModel(L.LightningModule):
@@ -471,6 +471,7 @@ class LightningNewModel(L.LightningModule):
 
         # Log metrics
         all_dic = loss_dic | metrics
+        all_dic = remove_key_with_none_value(all_dic)
         self.log_dict(
             all_dic,
             batch_size=bsize,

@@ -33,26 +33,37 @@ class CrossEncoder(torch.nn.Module):
         **kwargs,
     ) -> Dict[str, Any]:
         # Configs
-        bsize, dim = tok_ids.shape
+        bsize = len(kwargs["q_tok_ids"])
+        nway = tok_ids.shape[0] // bsize
+        _, dim = tok_ids.shape
+        ib_nhard = nway // bsize
         is_eval = labels is not None
 
         # Encode
-        pred_scores = self.compute_scores(tok_ids, tok_att_mask)
-        ib_pred_scores = self.compute_scores(ib_tok_ids, ib_tok_att_mask)
-        device = pred_scores.device
+        intra_pred_scores = self.compute_scores(tok_ids, tok_att_mask)
+        ib_inter_pred_scores = self.compute_scores(ib_tok_ids, ib_tok_att_mask)
+        device = intra_pred_scores.device
 
         # Compute loss
         loss, intra_loss, inter_loss, kl_loss = compute_loss(
-            scores=intra_scores,
-            ib_scores=inter_scores,
+            scores=intra_pred_scores,
+            ib_scores=ib_inter_pred_scores,
             distillation_scores=distillation_scores,
             bsize=bsize,
             nway=nway,
             ib_nhard=ib_nhard,
             device=device,
-            intra_loss_coeff=self.intra_loss_coeff,
-            inter_loss_coeff=self.inter_loss_coeff,
         )
+        return_dict = {
+            "loss": loss,
+            "intra_loss": intra_loss,
+            "inter_loss": inter_loss,
+            "kl_loss": kl_loss,
+        }
+        if is_eval:
+            return return_dict, intra_pred_scores.reshape(bsize, -1)
+
+        return return_dict
 
     def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:
         # Load pretrained backbone model

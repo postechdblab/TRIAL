@@ -198,3 +198,7 @@ def custome_recall_rate(
     for key, value in recalls.items():
         final_recalls[key] = sum(value) / len(value)
     return final_recalls
+
+
+def remove_key_with_none_value(dic: Dict) -> Dict:
+    return {key: value for key, value in dic.items() if value is not None}
