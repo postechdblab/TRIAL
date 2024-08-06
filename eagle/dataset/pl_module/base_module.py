@@ -37,6 +37,10 @@ class BaseDataModule(L.LightningDataModule):
         self.skip_train = skip_train
 
     @property
+    def is_debug(self) -> bool:
+        return self.cfg.is_debug
+
+    @property
     def corpus_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.corpus_file)
 
@@ -154,8 +158,51 @@ class BaseDataModule(L.LightningDataModule):
         """
         # Load tokenized corpus and queries
         logger.info(f"Loading tokenized corpus and queries...")
-        tokenized_corpus = read_compressed(self.corpus_cache_path)
-        tokenized_queries = read_compressed(self.queries_cache_path)
+
+        if self.is_debug:
+            # Load debug cache
+            debug_corpus_cache_path = self.corpus_cache_path + ".debug"
+            debug_queries_cache_path = self.queries_cache_path + ".debug"
+            if os.path.exists(debug_corpus_cache_path) and os.path.exists(
+                debug_queries_cache_path
+            ):
+                tokenized_corpus = read_compressed(debug_corpus_cache_path)
+                tokenized_queries = read_compressed(debug_queries_cache_path)
+            else:
+                # Load full cache
+                tokenized_corpus = read_compressed(self.corpus_cache_path)
+                tokenized_queries = read_compressed(self.queries_cache_path)
+                # Sample 100 data
+                train_dataset: BaseDataset = self._load_train_data(
+                    tokenized_queries=None, tokenized_corpus=None
+                )
+                val_dataset: BaseDataset = self._load_val_data(
+                    tokenized_queries=None, tokenized_corpus=None
+                )
+                # Filter with debug data
+                qids = set()
+                pids = set()
+                for datum in train_dataset.data + val_dataset.data:
+                    qids.add(datum[0])
+                    pids |= set(datum[1:])
+
+                debug_tokenized_corpus = {}
+                debug_tokenized_queries = {}
+                for qid in qids:
+                    qid_str = str(qid)
+                    debug_tokenized_queries[qid_str] = tokenized_queries[qid_str]
+                for pid in pids:
+                    pid_str = str(pid)
+                    debug_tokenized_corpus[pid_str] = tokenized_corpus[pid_str]
+                tokenized_corpus = debug_tokenized_corpus
+                tokenized_queries = debug_tokenized_queries
+
+                # Save debug cache
+                save_compressed(debug_corpus_cache_path, tokenized_corpus)
+                save_compressed(debug_queries_cache_path, tokenized_queries)
+        else:
+            tokenized_corpus = read_compressed(self.corpus_cache_path)
+            tokenized_queries = read_compressed(self.queries_cache_path)
 
         # Load train and val data
         train_dataset = []
@@ -180,7 +227,7 @@ class BaseDataModule(L.LightningDataModule):
 
         # Shuffle data to avoid qid repetition in the mini-batch
         indices = None
-        if not self.cfg.is_debug and not self.skip_train:
+        if not self.is_debug and not self.skip_train:
             logger.info(f"Shuffling data to avoid qid repetition in the mini-batch...")
             indices = self.get_shuffled_indices_to_avoid_qid_repetition(train_dataset)
 

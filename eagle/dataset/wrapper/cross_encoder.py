@@ -71,7 +71,7 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
         distillation_scores = selected_data.get("distillation_scores", None)
         labels = selected_data.get("labels", None)
 
-        return {
+        return_dic = {
             "nway": self.nway,
             "q_tok_ids": q_tok_ids,
             "q_tok_att_mask": q_tok_att_mask,
@@ -80,6 +80,8 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
             "labels": labels,
             "distillation_scores": distillation_scores,
         }
+
+        return return_dic
 
     @staticmethod
     def collate_fn(input_dics: List[Dict]) -> Dict:
@@ -156,12 +158,22 @@ class DatasetWrapperForCrossEncoder(BaseDatasetWrapper):
             bsize, nway, ib_nhard, return_as_tensor=True, device=tok_ids.device
         )
         ib_tok_ids = []
+        dim = new_dict["doc_tok_ids"].size(-1)
+        d_tok_ids = new_dict["doc_tok_ids"].reshape(-1, dim)
         for b_idx in range(bsize):
             q_tok_ids = new_dict["q_tok_ids"][b_idx]
             q_tok_ids = q_tok_ids.unsqueeze(0).repeat_interleave(repeat_num, dim=0)
-            selected_doc_tok_ids = new_dict["doc_tok_ids"][b_idx]
+            # Get document token ids for in-batch negatives
+            start_idx = repeat_num * b_idx
+            end_idx = repeat_num * (b_idx + 1)
+            selected_d_tok_ids = d_tok_ids[d_indices_tensor[start_idx:end_idx]]
+            # Concatenate query and document for in-batch negatives
+            ib_tok_ids.append(torch.cat([q_tok_ids, selected_d_tok_ids], dim=1))
+        ib_tok_ids_att_mask = ib_tok_ids != 0
 
-        q_encoded = q_encoded.repeat_interleave(repeat_num, dim=0)
-        d_encoded = d_encoded[d_indices_tensor]
+        new_dict["tok_ids"] = tok_ids
+        new_dict["tok_att_mask"] = tok_att_mask
+        new_dict["ib_tok_ids"] = ib_tok_ids
+        new_dict["ib_tok_att_mask"] = ib_tok_ids_att_mask
 
         return new_dict

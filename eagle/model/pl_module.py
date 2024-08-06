@@ -451,7 +451,7 @@ class LightningNewModel(L.LightningModule):
         return gathered_final_metrics
 
     def validation_step(self, batch: Dict, batch_idx: int) -> None:
-        bsize = batch["labels"].size(0)
+        bsize = len(batch["labels"])
         if self.cfg.is_use_swa and batch_idx > self.cfg.swa_start_batch_idx:
             loss_dic, scores = self.swa_model(**batch)
         else:

@@ -33,12 +33,12 @@ class CrossEncoder(torch.nn.Module):
         **kwargs,
     ) -> Dict[str, Any]:
         # Configs
-        bsize, nway, dim = tok_ids.shape
-        ib_nhard = nway // bsize
+        bsize, dim = tok_ids.shape
         is_eval = labels is not None
 
         # Encode
         pred_scores = self.compute_scores(tok_ids, tok_att_mask)
+        ib_pred_scores = self.compute_scores(ib_tok_ids, ib_tok_att_mask)
         device = pred_scores.device
 
         # Compute loss
