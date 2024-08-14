@@ -13,6 +13,7 @@ from omegaconf import DictConfig
 
 from eagle.dataset.utils import extract_word_range_with_multi_tokens, read_compressed
 from eagle.phrase.extraction import PhraseExtractor
+from eagle.phrase.extraction2 import PhraseExtractor2
 from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
@@ -72,7 +73,9 @@ def extract(
     dataset_path = os.path.join(dir_path, filename)
 
     tokenizers = Tokenizers(
-        q_cfg=cfg.q_tokenizer, d_cfg=cfg.d_tokenizer, model_name=cfg.model.backbone_name
+        q_cfg=cfg.tokenizers.query,
+        d_cfg=cfg.tokenizers.document,
+        model_name=cfg.model.backbone_name,
     )
     tokenizer = tokenizers.q_tokenizer if prefix == "query" else tokenizers.d_tokenizer
     extractor = PhraseExtractor(tokenizer=tokenizer)
