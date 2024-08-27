@@ -330,83 +330,101 @@ class EAGLE(torch.nn.Module):
             q_phrase_scale_factor = q_phrase_scale_factor * phrase_coeff
         else:
             cls_coeff = tok_coeff = phrase_coeff = None
-        # Compute scores with cls
-        if self.granularity_level in ["sentence", "multi"]:
-            (
-                cls_intra_scores,
-                cls_inter_scores,
-                cls_intra_q_max_scores,
-                cls_intra_qd_scores,
-            ) = self.compute_scores(
-                q_encoded=q_cls_projected,
-                d_encoded=d_cls_projected,
-                q_weight=None,
-                q_scale_factor=q_cls_scale_factor,
-                q_mask=None,
-                d_weight_intra=None,
-                d_weight_inter=None,
-                d_mask=None,
-                nway=nway,
-                ib_nhard=ib_nhard,
-                return_max_scores=is_use_fine_grained_loss,
-                return_entire_scores=is_analyze,
-            )
-        # Compute scores with token
-        if self.granularity_level in ["token", "multi"]:
-            (
-                tok_intra_scores,
-                tok_inter_scores,
-                tok_intra_q_max_scores,
-                tok_intra_qd_scores,
-            ) = self.compute_scores(
-                q_encoded=q_tok_projected,
-                q_weight=q_tok_weight,
+        # Compute scores with multi-granularity interaction
+        if self.granularity_level == "multi":
+            intra_scores, inter_scores = self.multi_granularity_interaction(
+                q_cls=q_cls_projected,
+                q_phrase=q_phrase_projected,
+                q_tok=q_tok_projected,
+                d_cls=d_cls_projected,
+                d_phrase=d_phrase_projected,
+                d_tok=d_tok_projected,
+                q_tok_mask=q_tok_mask,
+                q_phrase_mask=q_phrase_mask,
+                d_tok_mask=doc_tok_mask,
+                d_phrase_mask=doc_phrase_mask,
+                q_scatter_indices=q_scatter_indices,
+                doc_scatter_indices=doc_scatter_indices,
                 q_scale_factor=q_tok_scale_factor,
-                q_mask=q_tok_mask,
-                d_encoded=d_tok_projected,
-                d_weight_intra=d_tok_weight_intra,
-                d_weight_inter=d_tok_weight_inter,
-                d_mask=doc_tok_mask,
-                nway=nway,
-                ib_nhard=ib_nhard,
-                return_max_scores=is_use_fine_grained_loss,
-                return_entire_scores=is_analyze,
-            )
-        # Compute scores with phrase
-        if self.granularity_level in ["phrase", "multi"]:
-            (
-                phrase_intra_scores,
-                phrase_inter_scores,
-                phrase_intra_q_max_scores,
-                phrase_intra_qd_scores,
-            ) = self.compute_scores(
-                q_encoded=q_phrase_projected,
-                q_weight=q_phrase_weight,
-                q_scale_factor=q_phrase_scale_factor,
-                q_mask=q_phrase_mask,
-                d_encoded=d_phrase_projected,
-                d_weight_intra=d_phrase_weight_intra,
-                d_weight_inter=d_phrase_weight_inter,
-                d_mask=doc_phrase_mask,
-                nway=nway,
-                ib_nhard=ib_nhard,
-                return_max_scores=is_use_fine_grained_loss,
-                return_entire_scores=is_analyze,
             )
 
-        # Sum scores across different granularity
-        if self.granularity_level in ["token", "multi"]:
-            intra_scores = tok_intra_scores
-            inter_scores = tok_inter_scores
-        else:
-            intra_scores = 0
-            inter_scores = 0
-        if q_cls_projected is not None:
-            intra_scores = intra_scores + cls_intra_scores
-            inter_scores = inter_scores + cls_inter_scores
-        if q_phrase_projected is not None:
-            intra_scores = intra_scores + phrase_intra_scores
-            inter_scores = inter_scores + phrase_inter_scores
+        # # Compute scores with cls
+        # if self.granularity_level in ["sentence", "multi"]:
+        #     (
+        #         cls_intra_scores,
+        #         cls_inter_scores,
+        #         cls_intra_q_max_scores,
+        #         cls_intra_qd_scores,
+        #     ) = self.compute_scores(
+        #         q_encoded=q_cls_projected,
+        #         d_encoded=d_cls_projected,
+        #         q_weight=None,
+        #         q_scale_factor=q_cls_scale_factor,
+        #         q_mask=None,
+        #         d_weight_intra=None,
+        #         d_weight_inter=None,
+        #         d_mask=None,
+        #         nway=nway,
+        #         ib_nhard=ib_nhard,
+        #         return_max_scores=is_use_fine_grained_loss,
+        #         return_entire_scores=is_analyze,
+        #     )
+        # # Compute scores with token
+        # if self.granularity_level in ["token", "multi"]:
+        #     (
+        #         tok_intra_scores,
+        #         tok_inter_scores,
+        #         tok_intra_q_max_scores,
+        #         tok_intra_qd_scores,
+        #     ) = self.compute_scores(
+        #         q_encoded=q_tok_projected,
+        #         q_weight=q_tok_weight,
+        #         q_scale_factor=q_tok_scale_factor,
+        #         q_mask=q_tok_mask,
+        #         d_encoded=d_tok_projected,
+        #         d_weight_intra=d_tok_weight_intra,
+        #         d_weight_inter=d_tok_weight_inter,
+        #         d_mask=doc_tok_mask,
+        #         nway=nway,
+        #         ib_nhard=ib_nhard,
+        #         return_max_scores=is_use_fine_grained_loss,
+        #         return_entire_scores=is_analyze,
+        #     )
+        # # Compute scores with phrase
+        # if self.granularity_level in ["phrase", "multi"]:
+        #     (
+        #         phrase_intra_scores,
+        #         phrase_inter_scores,
+        #         phrase_intra_q_max_scores,
+        #         phrase_intra_qd_scores,
+        #     ) = self.compute_scores(
+        #         q_encoded=q_phrase_projected,
+        #         q_weight=q_phrase_weight,
+        #         q_scale_factor=q_phrase_scale_factor,
+        #         q_mask=q_phrase_mask,
+        #         d_encoded=d_phrase_projected,
+        #         d_weight_intra=d_phrase_weight_intra,
+        #         d_weight_inter=d_phrase_weight_inter,
+        #         d_mask=doc_phrase_mask,
+        #         nway=nway,
+        #         ib_nhard=ib_nhard,
+        #         return_max_scores=is_use_fine_grained_loss,
+        #         return_entire_scores=is_analyze,
+        #     )
+
+        # # Sum scores across different granularity
+        # if self.granularity_level in ["token", "multi"]:
+        #     intra_scores = tok_intra_scores
+        #     inter_scores = tok_inter_scores
+        # else:
+        #     intra_scores = 0
+        #     inter_scores = 0
+        # if q_cls_projected is not None:
+        #     intra_scores = intra_scores + cls_intra_scores
+        #     inter_scores = inter_scores + cls_inter_scores
+        # if q_phrase_projected is not None:
+        #     intra_scores = intra_scores + phrase_intra_scores
+        #     inter_scores = inter_scores + phrase_inter_scores
 
         # Compute loss
         device = intra_scores.device
@@ -523,10 +541,10 @@ class EAGLE(torch.nn.Module):
             # Mask
             return_dict["q_mask"] = q_tok_mask
             return_dict["d_mask"] = doc_tok_mask
-        if is_analyze:
-            return_dict["tok_intra_qd_scores"] = tok_intra_qd_scores
-            return_dict["q_tok_weight"] = q_tok_weight
-            return_dict["d_tok_weight_intra"] = d_tok_weight_intra
+        # if is_analyze:
+        #     return_dict["tok_intra_qd_scores"] = tok_intra_qd_scores
+        #     return_dict["q_tok_weight"] = q_tok_weight
+        #     return_dict["d_tok_weight_intra"] = d_tok_weight_intra
         # Append weights
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
@@ -937,3 +955,165 @@ class EAGLE(torch.nn.Module):
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
         num_valid_tokens = self.get_valid_num(mask)
         return self.q_maxlen / num_valid_tokens
+
+    def multi_granularity_interaction(
+        self,
+        q_cls: torch.Tensor,
+        q_phrase: torch.Tensor,
+        q_tok: torch.Tensor,
+        d_cls: torch.Tensor,
+        d_phrase: torch.Tensor,
+        d_tok: torch.Tensor,
+        q_tok_mask: torch.Tensor,
+        q_phrase_mask: torch.Tensor,
+        d_tok_mask: torch.Tensor,
+        d_phrase_mask: torch.Tensor,
+        q_scatter_indices: torch.Tensor,
+        doc_scatter_indices: torch.Tensor,
+        q_scale_factor: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        bsize, q_tok_len, q_dim = q_tok.shape
+        bsize, q_phrase_len, q_dim = q_phrase.shape
+        nway = d_tok.shape[0] // bsize
+        ib_nhard = nway // bsize
+
+        # Apply mask
+        q_tok = q_tok * (q_tok_mask == False)
+        d_tok = d_tok * (d_tok_mask == False)
+        q_phrase = q_phrase * (q_phrase_mask == False)
+        d_phrase = d_phrase * (d_phrase_mask == False)
+
+        intra_scores = self.compute_multi_grad_intra_scores(
+            q_cls=q_cls,
+            q_phrase=q_phrase,
+            q_tok=q_tok,
+            d_cls=d_cls,
+            d_phrase=d_phrase,
+            d_tok=d_tok,
+            q_scatter_indices=q_scatter_indices,
+            q_tok_mask=q_tok_mask,
+        )
+
+        # Compute inter scores
+        inter_scores = self.compute_multi_grad_inter_scores(
+            q_cls=q_cls,
+            q_phrase=q_phrase,
+            q_tok=q_tok,
+            d_cls=d_cls,
+            d_phrase=d_phrase,
+            d_tok=d_tok,
+            q_scatter_indices=q_scatter_indices,
+            q_tok_mask=q_tok_mask,
+        )
+
+        # Apply scale factor
+        if q_scale_factor is not None:
+            intra_scale_factors = q_scale_factor.repeat_interleave(nway)
+            intra_scores = intra_scores * intra_scale_factors
+            inter_scale_factors = q_scale_factor.repeat_interleave(
+                ib_nhard * (bsize - 1) + 1
+            )
+            inter_scores = inter_scores * inter_scale_factors
+
+        return intra_scores, inter_scores
+
+    def compute_multi_grad_intra_scores(
+        self,
+        q_cls: torch.Tensor,
+        q_phrase: torch.Tensor,
+        q_tok: torch.Tensor,
+        d_cls: torch.Tensor,
+        d_phrase: torch.Tensor,
+        d_tok: torch.Tensor,
+        q_scatter_indices: torch.Tensor,
+        q_tok_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        bsize, q_tok_len, q_dim = q_tok.shape
+        bsize, q_phrase_len, q_dim = q_phrase.shape
+        nway = d_tok.shape[0] // bsize
+
+        # Concatenate the different granularity
+        q_all = torch.cat([q_cls, q_phrase, q_tok], dim=1)
+        d_all = torch.cat([d_cls, d_phrase, d_tok], dim=1)
+
+        q_all = q_all.repeat_interleave(nway, dim=0)
+        q_scatter_indices = q_scatter_indices.repeat_interleave(nway, dim=0)
+        q_tok_mask = q_tok_mask.repeat_interleave(nway, dim=0)
+
+        ## Compute intra scores
+        element_wise_scores = d_all @ q_all.transpose(-2, -1)
+        max_q_scores = element_wise_scores.max(dim=1).values
+        # Split back to each granularity
+        cls_intra_scores, phrase_intra_scores, tok_intra_scores = torch.split(
+            max_q_scores, [1, q_phrase_len, q_tok_len], dim=1
+        )
+        phrase_intra_scores_flatten = []
+        for b_idx in range(phrase_intra_scores.shape[0]):
+            phrase_intra_scores_flatten.append(
+                phrase_intra_scores[b_idx][q_scatter_indices[b_idx]]
+            )
+        phrase_intra_scores_flatten = torch.stack(phrase_intra_scores_flatten)
+        cls_intra_scores = cls_intra_scores.repeat(1, q_tok_len)
+        cls_intra_scores = cls_intra_scores * (q_tok_mask == False).squeeze(-1)
+        # Concatenate the scores
+        intra_scores = torch.stack(
+            [cls_intra_scores, phrase_intra_scores_flatten, tok_intra_scores], dim=1
+        )
+        # Find the max along dim=1
+        intra_scores = intra_scores.max(dim=1).values
+        intra_scores = intra_scores.sum(dim=1)
+        return intra_scores
+
+    def compute_multi_grad_inter_scores(
+        self,
+        q_cls: torch.Tensor,
+        q_phrase: torch.Tensor,
+        q_tok: torch.Tensor,
+        d_cls: torch.Tensor,
+        d_phrase: torch.Tensor,
+        d_tok: torch.Tensor,
+        q_scatter_indices: torch.Tensor,
+        q_tok_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        bsize, q_tok_len, q_dim = q_tok.shape
+        bsize, q_phrase_len, q_dim = q_phrase.shape
+        nway = d_tok.shape[0] // bsize
+        ib_nhard = nway // bsize
+        repeat_num = ib_nhard * (bsize - 1) + 1
+
+        # Concatenate the different granularity
+        q_all = torch.cat([q_cls, q_phrase, q_tok], dim=1)
+        d_all = torch.cat([d_cls, d_phrase, d_tok], dim=1)
+
+        # Select the indices
+        q_all = q_all.repeat_interleave(repeat_num, dim=0)
+        q_scatter_indices = q_scatter_indices.repeat_interleave(repeat_num, dim=0)
+        q_tok_mask = q_tok_mask.repeat_interleave(repeat_num, dim=0)
+        d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
+            bsize, nway, ib_nhard, return_as_tensor=True, device=d_all.device
+        )
+        d_all = d_all[d_indices_tensor]
+
+        ## Compute inter scores
+        element_wise_scores = d_all @ q_all.transpose(-2, -1)
+        max_q_scores = element_wise_scores.max(dim=1).values
+        # Split back to each granularity
+        cls_inter_scores, phrase_inter_scores, tok_inter_scores = torch.split(
+            max_q_scores, [1, q_phrase_len, q_tok_len], dim=1
+        )
+        phrase_inter_scores_flatten = []
+        for b_idx in range(phrase_inter_scores.shape[0]):
+            phrase_inter_scores_flatten.append(
+                phrase_inter_scores[b_idx][q_scatter_indices[b_idx]]
+            )
+        phrase_inter_scores_flatten = torch.stack(phrase_inter_scores_flatten)
+        cls_inter_scores = cls_inter_scores.repeat(1, q_tok_len)
+        cls_inter_scores = cls_inter_scores * (q_tok_mask == False).squeeze(-1)
+        # Concatenate the scores
+        inter_scores = torch.stack(
+            [cls_inter_scores, phrase_inter_scores_flatten, tok_inter_scores], dim=1
+        )
+        # Find the max along dim=1
+        inter_scores = inter_scores.max(dim=1).values
+        inter_scores = inter_scores.sum(dim=1)
+        return inter_scores
