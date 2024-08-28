@@ -37,6 +37,19 @@ class EAGLE(BaseModel):
         self.intra_loss_coeff = cfg.intra_loss_coeff
         self.inter_loss_coeff = cfg.inter_loss_coeff
         self.sim_type = cfg.sim_type
+        self.use_attn_for_phrase_encoding = True
+
+        # Layers to encode the query into phrase level
+        if self.use_attn_for_phrase_encoding:
+            self.attn_for_phrase_embedding = torch.nn.MultiheadAttention(
+                embed_dim=self.llm.config.hidden_size,
+                num_heads=8,
+                batch_first=True,
+            )
+            self.phrase_projection_layer = None
+        else:
+            self.attn_for_phrase_embedding = None
+            self.phrase_projection_layer = torch.nn.Linear(cfg.out_dim, cfg.out_dim)
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
@@ -44,9 +57,6 @@ class EAGLE(BaseModel):
             cfg.out_dim,
             bias=True,
         )
-        self.cls_projection_layer = torch.nn.Linear(cfg.out_dim, cfg.out_dim)
-
-        self.phrase_projection_layer = torch.nn.Linear(cfg.out_dim, cfg.out_dim)
 
         # Pooling for phrase level embeddings
         self.reduce_strategy = cfg.reduce_strategy
@@ -130,9 +140,11 @@ class EAGLE(BaseModel):
         self,
         q_tok_ids: torch.Tensor,
         q_tok_att_mask: torch.Tensor,
-        q_scatter_indices: torch.Tensor,
+        q_phrase_scatter_indices: torch.Tensor,
+        q_sentence_scatter_indices: torch.Tensor,
         q_tok_mask: torch.Tensor,
         q_phrase_mask: torch.Tensor,
+        q_sent_mask: torch.Tensor,
         doc_tok_ids: torch.Tensor,
         doc_tok_att_mask: torch.Tensor,
         doc_scatter_indices: torch.Tensor,
@@ -151,15 +163,17 @@ class EAGLE(BaseModel):
         assert (
             q_tok_ids.shape[0] == bsize
         ), f"Batch size is not consistent: {q_tok_ids.shape[0]} vs {bsize}"
+
         # Encode
         (
             q_encoded,
-            q_cls_projected,
+            q_sent_projected,
             q_tok_projected,
             q_phrase_projected,
+            q_sent_weight,
             q_tok_weight,
             q_phrase_weight,
-            q_cls_scale_factor,
+            q_sent_scale_factor,
             q_tok_scale_factor,
             q_phrase_scale_factor,
         ) = self.encode_q_text(
@@ -167,7 +181,8 @@ class EAGLE(BaseModel):
             att_mask=q_tok_att_mask,
             tok_mask=q_tok_mask,
             phrase_mask=q_phrase_mask,
-            scatter_indices=q_scatter_indices,
+            sent_mask=q_sent_mask,
+            phrase_scatter_indices=q_phrase_scatter_indices,
         )
         (
             d_cls_projected,
@@ -188,7 +203,7 @@ class EAGLE(BaseModel):
         )
 
         intra_scores, inter_scores = self.multi_granularity_interaction(
-            q_cls=q_cls_projected,
+            q_sent=q_sent_projected,
             q_phrase=q_phrase_projected,
             q_tok=q_tok_projected,
             d_cls=d_cls_projected,
@@ -308,7 +323,7 @@ class EAGLE(BaseModel):
         self,
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
-        scatter_indices: torch.Tensor = None,
+        phrase_scatter_indices: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # LLM encoding
         encoded_tok_vectors = self.llm(
@@ -318,17 +333,25 @@ class EAGLE(BaseModel):
         # Perform projection for token
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
-        # Embedding to coarse level
-        encoded_phrase_vectors = get_vectors_from_ranges(
-            tensors=projected_tok_vectors,
-            scatter_indices=scatter_indices,
-            reduce=self.reduce_strategy,
-        )
+        # Encode phrase-level embeddings
+        if self.use_attn_for_phrase_encoding:
+            # TODO: Make different phrases into a batch
+            # TODO: Add positional encoding
+            encoded_phrase_vectors = None
+        else:
+            encoded_phrase_vectors = get_vectors_from_ranges(
+                tensors=projected_tok_vectors,
+                scatter_indices=phrase_scatter_indices,
+                reduce=self.reduce_strategy,
+            )
+            projected_phrase_vectors = self.phrase_projection_layer(
+                encoded_phrase_vectors
+            )
 
-        projected_phrase_vectors = self.phrase_projection_layer(encoded_phrase_vectors)
-
-        # Perform projection for cls and phrase
-        projected_cls_vectors = self.cls_projection_layer(projected_tok_vectors[:, 0:1])
+        # Get sentence-level embeddings
+        # TODO: Extract cls and sep tokens for sentence embeddings
+        # TODO: remove cls and sep tokens from token embeddings
+        projected_cls_vectors = None
 
         return (
             encoded_tok_vectors,
@@ -342,8 +365,9 @@ class EAGLE(BaseModel):
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
         tok_mask: torch.Tensor,
-        phrase_mask: Optional[torch.Tensor] = None,
-        scatter_indices: Optional[torch.Tensor] = None,
+        phrase_mask: torch.Tensor = None,
+        sent_mask: torch.Tensor = None,
+        phrase_scatter_indices: Optional[torch.Tensor] = None,
     ) -> Tuple[
         torch.Tensor,
         Optional[torch.Tensor],
@@ -357,36 +381,37 @@ class EAGLE(BaseModel):
     ]:
         (
             encoded_tok_vectors,
-            projected_cls_vectors,
+            projected_sent_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
-        ) = self.encode_text(tok_ids, att_mask, scatter_indices)
+        ) = self.encode_text(tok_ids, att_mask, phrase_scatter_indices)
         dtype = projected_tok_vectors.dtype
 
-        # Mask
-        # if not self.is_only_phrase_score:
-        #     projected_tok_vectors.masked_fill_(tok_mask, 0)
-        # if projected_phrase_vectors is not None:
-        #     projected_tok_vectors.masked_fill_(phrase_mask, 0)
+        # Mask paddings
+        projected_tok_vectors.masked_fill_(tok_mask, 0)
+        projected_phrase_vectors.masked_fill_(phrase_mask, 0)
+        projected_sent_vectors.masked_fill_(sent_mask, 0)
 
         # Weights
         tok_weights = None
         phrase_weights = None
+        sentence_weights = None
         if self.is_use_q_weight:
             tok_weights = self.q_weight_layer(projected_tok_vectors)
             if projected_phrase_vectors is not None:
                 phrase_weights = get_vectors_from_ranges(
                     tensors=tok_weights,
-                    scatter_indices=scatter_indices,
+                    scatter_indices=phrase_scatter_indices,
                     reduce=self.reduce_strategy,
                 )
+            # TODO: Extract sentence weights
 
         # Compute normalization scale for each query
         token_scale_factor = self.get_scale_factor(mask=tok_mask)
 
-        cls_scale_factor = None
+        sentence_scale_factor = None
         if projected_cls_vectors is not None:
-            cls_scale_factor = torch.full(
+            sentence_scale_factor = torch.full(
                 size=(projected_cls_vectors.shape[:-1]),
                 fill_value=self.q_maxlen,
                 dtype=projected_cls_vectors.dtype,
@@ -421,9 +446,10 @@ class EAGLE(BaseModel):
             projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
+            sentence_weights,
             tok_weights,
             phrase_weights,
-            cls_scale_factor,
+            sentence_scale_factor,
             token_scale_factor,
             phrase_scale_factor,
         )
