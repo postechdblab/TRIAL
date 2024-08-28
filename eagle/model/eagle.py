@@ -3,41 +3,32 @@ from typing import *
 
 import torch
 from omegaconf import DictConfig
-from transformers import AutoModel
 
+from eagle.model.base_model import BaseModel
 from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
 from eagle.model.objective import (
-    compute_fine_grained_loss,
     compute_loss,
     doc_indices_for_ib_loss,
     get_target_scale_tensor,
 )
-from eagle.model.utils import (
-    get_vectors_from_ranges,
-    get_weight_layer,
-    modify_grad,
-)
+from eagle.model.utils import get_vectors_from_ranges, get_weight_layer
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import Tokenizers
-from eagle.utils import add_config, handle_old_ckpt
 
 logger = logging.getLogger("EAGLE")
 
 
-class EAGLE(torch.nn.Module):
+class EAGLE(BaseModel):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizers) -> None:
-        super().__init__()
-        self.cfg = cfg
+        super().__init__(cfg=cfg, tokenizers=tokenizers)
         self.q_special_tok_ids = tokenizers.q_tokenizer.special_toks_ids
         self.d_special_tok_ids = tokenizers.d_tokenizer.special_toks_ids
         self.punct_tok_ids = tokenizers.q_tokenizer.punctuations
         self.q_maxlen = tokenizers.q_tokenizer.cfg.max_len
-        # Configs
-        self.nway = cfg.nway
+
         # Ideas
         self.is_use_q_weight = cfg.is_use_q_weight
         self.is_use_d_weight = cfg.is_use_d_weight
-        self.is_d_independent = cfg.is_d_independent
         self.w_regularize_strategy = cfg.w_regularize_strategy
         self.q_weight_strategy = cfg.q_weight_strategy
         self.d_weight_strategy = cfg.d_weight_strategy
@@ -45,41 +36,17 @@ class EAGLE(torch.nn.Module):
         self.d_weight_coeff = cfg.d_weight_coeff
         self.intra_loss_coeff = cfg.intra_loss_coeff
         self.inter_loss_coeff = cfg.inter_loss_coeff
-        self.fine_grained_loss_coeff = handle_old_ckpt(cfg, "fine_grained_loss_coeff")
-        self.is_use_dynamic_granularity_coeff = handle_old_ckpt(
-            cfg, "is_use_dynamic_granularity_coeff"
-        )
-        self.granularity_level = handle_old_ckpt(cfg, "granularity_level")
-        # Backbone model (The attribute name should be llm to be compatible with the optimizer in LightningModule)
-        self.llm = self.__create_backbone_model(
-            name=cfg.backbone_name, vocab_num=tokenizers.vocab_num
-        )
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
             self.llm.config.hidden_size,
             cfg.out_dim,
-            bias=self.granularity_level == "multi",
+            bias=True,
         )
-        self.cls_projection_layer = (
-            torch.nn.Linear(cfg.out_dim, cfg.out_dim)
-            if self.granularity_level in ["sentence", "multi"]
-            else None
-        )
+        self.cls_projection_layer = torch.nn.Linear(cfg.out_dim, cfg.out_dim)
 
-        self.phrase_projection_layer = (
-            torch.nn.Linear(cfg.out_dim, cfg.out_dim)
-            if self.granularity_level in ["word", "phrase", "multi"]
-            else None
-        )
+        self.phrase_projection_layer = torch.nn.Linear(cfg.out_dim, cfg.out_dim)
 
-        self.score_granularity_coeff_layer = (
-            torch.nn.Sequential(
-                torch.nn.Linear(cfg.out_dim, 3), torch.nn.Softmax(dim=1)
-            )
-            if self.is_use_dynamic_granularity_coeff
-            else None
-        )
         # Pooling for phrase level embeddings
         self.reduce_strategy = cfg.reduce_strategy
 
@@ -103,50 +70,9 @@ class EAGLE(torch.nn.Module):
         self.regularization = self.__create_regularization_func(
             strategy=cfg.w_regularize_strategy
         )
-        self.__load_checkpoint()
 
-    def __load_checkpoint(self) -> None:
-        if self.cfg.ckpt_path:
-            logger.info(f"Loading model checkpoint from {self.cfg.ckpt_path}")
-            loaded_params = torch.load(self.cfg.ckpt_path, map_location="cpu")[
-                "state_dict"
-            ]
-            # Remove "model." from the keys
-            renamed_params = {}
-            prefix_to_remove = "model."
-            for k, v in loaded_params.items():
-                assert k.startswith(
-                    prefix_to_remove
-                ), f"Cannot find {prefix_to_remove} in {k}"
-                renamed_params[k[len(prefix_to_remove) :]] = v
-            # Replace the parameters
-            found_params = []
-            for name, param in self.named_parameters():
-                # Check the name exists in the loaded params
-                assert (
-                    name in renamed_params
-                ), f"Cannot find {name} in the loaded params"
-                # Check the dtype, shape, and device
-                assert (
-                    param.dtype == renamed_params[name].dtype
-                ), f"Type mismatch: {name} {param.dtype} vs {renamed_params[name].dtype}"
-                assert (
-                    param.shape == renamed_params[name].shape
-                ), f"Shape mismatch: {name} {param.shape} vs {renamed_params[name].shape}"
-                assert (
-                    param.device == renamed_params[name].device
-                ), f"Device mismatch: {name} {param.device} vs {renamed_params[name].device}"
-                param.data = renamed_params[name]
-                found_params.append(name)
-            not_found_params = set(renamed_params.keys()) - set(found_params)
-            assert (
-                len(not_found_params) == 0
-            ), f"Cannot find {not_found_params} in the model"
-            logger.info(
-                f"Updated {len(found_params)} parameters instances from the checkpoint"
-            )
-            add_config(self.cfg, key="ckpt_path", value=None)
-        return None
+        # TODO: Move the post processing to the base class
+        self.load_checkpoint()
 
     @property
     def q_skiplist(self) -> List[int]:
@@ -156,29 +82,6 @@ class EAGLE(torch.nn.Module):
     def d_skiplist(self) -> List[int]:
         return self.d_special_tok_ids
         # return self.d_special_tok_ids + self.punct_tok_ids
-
-    @property
-    def is_use_multi_granularity(self) -> bool:
-        return self.granularity_level == "multi"
-
-    def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:
-        # Load pretrained backbone model
-        model = AutoModel.from_pretrained(
-            name,
-            device_map=torch.device("cpu"),
-        )
-
-        # Resize the token embeddings
-        model.resize_token_embeddings(vocab_num)
-
-        # Remove redundant layers
-        if "bert-" in name:
-            model.pooler = None
-        if "t5" in name:
-            model.decoder = None
-            model = model.encoder
-
-        return model
 
     def __create_cross_att_layer(self) -> torch.nn.Module:
         if self.is_use_d_weight:
@@ -222,34 +125,6 @@ class EAGLE(torch.nn.Module):
             return l2_regularization
         raise ValueError(f"Unsupported regularization strategy: {strategy}")
 
-    def eval(self, *args, **kwargs) -> None:
-        for att_name in dir(self):
-            att = getattr(self, att_name)
-            if (
-                isinstance(att, torch.nn.Module)
-                or isinstance(att, torch.nn.ModuleList)
-                or isinstance(att, torch.nn.ModuleDict)
-                or isinstance(att, torch.nn.ParameterList)
-                or isinstance(att, torch.nn.ParameterDict)
-                or isinstance(att, torch.nn.Parameter)
-                or isinstance(att, torch.Tensor)
-            ):
-                att.eval(*args, **kwargs)
-
-    def train(self, *args, **kwargs) -> None:
-        for att_name in dir(self):
-            att = getattr(self, att_name)
-            if (
-                isinstance(att, torch.nn.Module)
-                or isinstance(att, torch.nn.ModuleList)
-                or isinstance(att, torch.nn.ModuleDict)
-                or isinstance(att, torch.nn.ParameterList)
-                or isinstance(att, torch.nn.ParameterDict)
-                or isinstance(att, torch.nn.Parameter)
-                or isinstance(att, torch.Tensor)
-            ):
-                att.train(*args, **kwargs)
-
     def forward(
         self,
         q_tok_ids: torch.Tensor,
@@ -274,7 +149,6 @@ class EAGLE(torch.nn.Module):
         bsize, nway, dim = doc_tok_ids.shape
         ib_nhard = nway // bsize
         is_eval = labels is not None
-        is_use_fine_grained_loss = fine_grained_label is not None
         assert (
             q_tok_ids.shape[0] == bsize
         ), f"Batch size is not consistent: {q_tok_ids.shape[0]} vs {bsize}"
@@ -313,118 +187,22 @@ class EAGLE(torch.nn.Module):
             nway=nway,
             is_eval=is_eval,
         )
-        dtype = q_tok_projected.dtype
 
-        # Compute coefficient for each granularity
-        if self.is_use_dynamic_granularity_coeff:
-            coeff = self.score_granularity_coeff_layer(q_encoded[:, 0]).unsqueeze(1)
-            # coeff = coeff.to(dtype)
-            cls_coeff, tok_coeff, phrase_coeff = (
-                coeff[:, :, 0],
-                coeff[:, :, 1],
-                coeff[:, :, 2],
-            )
-            # Apply coefficient by changing the scale factor
-            q_cls_scale_factor = q_cls_scale_factor * cls_coeff
-            q_tok_scale_factor = q_tok_scale_factor * tok_coeff
-            q_phrase_scale_factor = q_phrase_scale_factor * phrase_coeff
-        else:
-            cls_coeff = tok_coeff = phrase_coeff = None
-        # Compute scores with multi-granularity interaction
-        if self.granularity_level == "multi":
-            intra_scores, inter_scores = self.multi_granularity_interaction(
-                q_cls=q_cls_projected,
-                q_phrase=q_phrase_projected,
-                q_tok=q_tok_projected,
-                d_cls=d_cls_projected,
-                d_phrase=d_phrase_projected,
-                d_tok=d_tok_projected,
-                q_tok_mask=q_tok_mask,
-                q_phrase_mask=q_phrase_mask,
-                d_tok_mask=doc_tok_mask,
-                d_phrase_mask=doc_phrase_mask,
-                q_scatter_indices=q_scatter_indices,
-                doc_scatter_indices=doc_scatter_indices,
-                q_scale_factor=q_tok_scale_factor,
-            )
-
-        # # Compute scores with cls
-        # if self.granularity_level in ["sentence", "multi"]:
-        #     (
-        #         cls_intra_scores,
-        #         cls_inter_scores,
-        #         cls_intra_q_max_scores,
-        #         cls_intra_qd_scores,
-        #     ) = self.compute_scores(
-        #         q_encoded=q_cls_projected,
-        #         d_encoded=d_cls_projected,
-        #         q_weight=None,
-        #         q_scale_factor=q_cls_scale_factor,
-        #         q_mask=None,
-        #         d_weight_intra=None,
-        #         d_weight_inter=None,
-        #         d_mask=None,
-        #         nway=nway,
-        #         ib_nhard=ib_nhard,
-        #         return_max_scores=is_use_fine_grained_loss,
-        #         return_entire_scores=is_analyze,
-        #     )
-        # # Compute scores with token
-        # if self.granularity_level in ["token", "multi"]:
-        #     (
-        #         tok_intra_scores,
-        #         tok_inter_scores,
-        #         tok_intra_q_max_scores,
-        #         tok_intra_qd_scores,
-        #     ) = self.compute_scores(
-        #         q_encoded=q_tok_projected,
-        #         q_weight=q_tok_weight,
-        #         q_scale_factor=q_tok_scale_factor,
-        #         q_mask=q_tok_mask,
-        #         d_encoded=d_tok_projected,
-        #         d_weight_intra=d_tok_weight_intra,
-        #         d_weight_inter=d_tok_weight_inter,
-        #         d_mask=doc_tok_mask,
-        #         nway=nway,
-        #         ib_nhard=ib_nhard,
-        #         return_max_scores=is_use_fine_grained_loss,
-        #         return_entire_scores=is_analyze,
-        #     )
-        # # Compute scores with phrase
-        # if self.granularity_level in ["phrase", "multi"]:
-        #     (
-        #         phrase_intra_scores,
-        #         phrase_inter_scores,
-        #         phrase_intra_q_max_scores,
-        #         phrase_intra_qd_scores,
-        #     ) = self.compute_scores(
-        #         q_encoded=q_phrase_projected,
-        #         q_weight=q_phrase_weight,
-        #         q_scale_factor=q_phrase_scale_factor,
-        #         q_mask=q_phrase_mask,
-        #         d_encoded=d_phrase_projected,
-        #         d_weight_intra=d_phrase_weight_intra,
-        #         d_weight_inter=d_phrase_weight_inter,
-        #         d_mask=doc_phrase_mask,
-        #         nway=nway,
-        #         ib_nhard=ib_nhard,
-        #         return_max_scores=is_use_fine_grained_loss,
-        #         return_entire_scores=is_analyze,
-        #     )
-
-        # # Sum scores across different granularity
-        # if self.granularity_level in ["token", "multi"]:
-        #     intra_scores = tok_intra_scores
-        #     inter_scores = tok_inter_scores
-        # else:
-        #     intra_scores = 0
-        #     inter_scores = 0
-        # if q_cls_projected is not None:
-        #     intra_scores = intra_scores + cls_intra_scores
-        #     inter_scores = inter_scores + cls_inter_scores
-        # if q_phrase_projected is not None:
-        #     intra_scores = intra_scores + phrase_intra_scores
-        #     inter_scores = inter_scores + phrase_inter_scores
+        intra_scores, inter_scores = self.multi_granularity_interaction(
+            q_cls=q_cls_projected,
+            q_phrase=q_phrase_projected,
+            q_tok=q_tok_projected,
+            d_cls=d_cls_projected,
+            d_phrase=d_phrase_projected,
+            d_tok=d_tok_projected,
+            q_tok_mask=q_tok_mask,
+            q_phrase_mask=q_phrase_mask,
+            d_tok_mask=doc_tok_mask,
+            d_phrase_mask=doc_phrase_mask,
+            q_scatter_indices=q_scatter_indices,
+            doc_scatter_indices=doc_scatter_indices,
+            q_scale_factor=q_tok_scale_factor,
+        )
 
         # Compute loss
         device = intra_scores.device
@@ -439,26 +217,6 @@ class EAGLE(torch.nn.Module):
             intra_loss_coeff=self.intra_loss_coeff,
             inter_loss_coeff=self.inter_loss_coeff,
         )
-
-        # Additional loss term
-        fine_grained_loss = 0
-        if is_use_fine_grained_loss:
-            tok_intra_q_max_scores = tok_intra_q_max_scores.view(bsize, nway, -1)[
-                :, 1:, :
-            ].reshape(bsize * (nway - 1), -1)
-            tok_intra_q_max_scores = tok_intra_q_max_scores[
-                fine_grained_label_mask
-            ]  # Filter those with no false negative?
-            # Create a new tensor to avoid preventing flow of the gradient in the original tensor
-            if tok_intra_q_max_scores.requires_grad:
-                tok_intra_q_max_scores = tok_intra_q_max_scores.clone().float()
-                # Do not flow the gradient to the false negative tokens (so that the score does not increase for the negative documents)
-                modify_grad(tok_intra_q_max_scores, (fine_grained_label != 0))
-            fine_grained_loss = compute_fine_grained_loss(
-                scores=tok_intra_q_max_scores, labels=fine_grained_label
-            )
-            # loss = loss + ((self.fine_grained_loss_coeff / bsize) * fine_grained_loss)
-            loss = loss + (self.fine_grained_loss_coeff * fine_grained_loss)
 
         # Compute weight regularization for query
         q_weight_reg_term = 0
@@ -482,13 +240,7 @@ class EAGLE(torch.nn.Module):
             "intra_loss": intra_loss,
             "inter_loss": inter_loss,
             "kl_loss": 0 if kl_loss is None else kl_loss,
-            "fine_grained_loss": fine_grained_loss,
         }
-
-        if self.is_use_dynamic_granularity_coeff:
-            return_dict["cls_coeff"] = cls_coeff.mean()
-            return_dict["tok_coeff"] = tok_coeff.mean()
-            return_dict["phrase_coeff"] = phrase_coeff.mean()
 
         # Analyze query weights
         q_weight_ratio = 0

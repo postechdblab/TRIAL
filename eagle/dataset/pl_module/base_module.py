@@ -19,7 +19,11 @@ from eagle.dataset.utils import (
     read_queries,
     save_compressed,
 )
-from eagle.dataset.wrapper import DatasetWrapperForCrossEncoder, DatasetWrapperForEAGLE
+from eagle.dataset.wrapper import (
+    DatasetWrapperForCrossEncoder,
+    DatasetWrapperForEAGLE,
+    DatasetWrapperForColBERT,
+)
 from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("DataModule")
@@ -86,6 +90,8 @@ class BaseDataModule(L.LightningDataModule):
             return DatasetWrapperForEAGLE
         elif self.cfg_global.model.name == "cross_encoder":
             return DatasetWrapperForCrossEncoder
+        elif self.cfg_global.model.name == "colbert":
+            return DatasetWrapperForColBERT
         raise ValueError(f"Invalid model name: {self.cfg_global.model.name}")
 
     @functools.cached_property
@@ -216,7 +222,7 @@ class BaseDataModule(L.LightningDataModule):
 
         # Load word and phrase ranges for query and document
         q_word_ranges = q_phrase_ranges = d_word_ranges = d_phrase_ranges = None
-        if self.cfg_global.model.granularity_level != "token":
+        if self.cfg_global.model.name == "eagle":
             logger.info(f"Loading word and phrase ranges...")
             # Load word ranges
             q_word_ranges = file_utils.read_pickle_file(self.q_word_range_path)
@@ -239,8 +245,6 @@ class BaseDataModule(L.LightningDataModule):
                 q_phrase_ranges=q_phrase_ranges,
                 d_word_ranges=d_word_ranges,
                 d_phrase_ranges=d_phrase_ranges,
-                granularity_level=self.cfg_global.model.granularity_level,
-                is_use_fine_grained_loss=self.cfg_global.model.is_use_fine_grained_loss,
             )
 
         # Create DatasetWrapper
@@ -254,6 +258,7 @@ class BaseDataModule(L.LightningDataModule):
                 query_mapping=self.query_mapping,
                 q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
                 d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
+                model_name=self.cfg_global.model.name,
                 **add_kwargs,
             )
 
@@ -265,6 +270,7 @@ class BaseDataModule(L.LightningDataModule):
             query_mapping=self.query_mapping,
             q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
             d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
+            model_name=self.cfg_global.model.name,
             **add_kwargs,
         )
 

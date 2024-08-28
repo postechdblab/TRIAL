@@ -7,8 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.utils import (add_doc_ranges_and_mask,
-                                 add_query_ranges_and_mask, collate_ranges,
-                                 is_token_included)
+                                 add_query_ranges_and_mask, collate_ranges)
 from eagle.dataset.wrapper import BaseDatasetWrapper
 
 logger = logging.getLogger("DatasetWrapper")
@@ -29,8 +28,7 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         cache_nway: int = None,
         q_skip_ids: List[int] = None,
         d_skip_ids: List[int] = None,
-        granularity_level: Optional[str] = None,
-        is_use_fine_grained_loss: Optional[bool] = False,
+        model_name: str = None,
     ):
         super(DatasetWrapperForEAGLE, self).__init__(dataset=dataset, 
                                                      indices=indices, 
@@ -46,15 +44,14 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         self.d_phrase_ranges = d_phrase_ranges
         self.query_mapping = query_mapping
         self.corpus_mapping = corpus_mapping
-        self.granularity_level = granularity_level
-        self.is_use_fine_grained_loss = is_use_fine_grained_loss
+        self.model_name = model_name
         # Check if variables are valid
         assert (
             "neg_doc_ids" not in self.dataset[0] 
             or len(self.dataset[0]["neg_doc_ids"]) == 0
             or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
         ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
-        assert self.granularity_level in ["token", "word", "phrase", "multi"]
+        assert self.model_name == "eagle", f"model_name={model_name} is not supported"
         if q_word_ranges is not None:
             assert len(self.q_word_ranges) == len(
                 self.query_mapping
@@ -95,22 +92,10 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         pindices = pindices[: self.nway]
 
         # Extract ranges
-        q_word_ranges: List[Tuple] = []
-        q_phrase_ranges: List[Tuple] = []
-        d_word_ranges: List[List[Tuple]] = [[] for _ in range(len(pindices))]
-        d_phrase_ranges: List[List[Tuple]] = [[] for _ in range(len(pindices))]
-        if self.granularity_level == "token" or self.granularity_level == "sentence":
-            q_word_ranges = [(i, i + 1) for i in range(len(data["q_tok_ids"]))]
-            if "doc_tok_ids" in data:
-                d_word_ranges = [
-                    [(i, i + 1) for i in range(len(item))] for item in data["doc_tok_ids"]
-                ]
-        elif self.granularity_level == "word":
-            q_word_ranges = self.q_word_ranges[qidx]
-            d_word_ranges = [self.d_word_ranges[i] for i in pindices]
-        elif self.granularity_level == "phrase" or self.granularity_level == "multi":
-            q_phrase_ranges = self.q_phrase_ranges[qidx]
-            d_phrase_ranges = [self.d_phrase_ranges[i] for i in pindices]
+        q_word_ranges: List[Tuple] = self.q_word_ranges[qidx]
+        q_phrase_ranges: List[Tuple] = self.q_phrase_ranges[qidx]
+        d_word_ranges: List[List[Tuple]] = [self.d_word_ranges[i] for i in pindices]
+        d_phrase_ranges: List[List[Tuple]] = [self.d_phrase_ranges[i] for i in pindices]
 
         # Add ranges and token mask
         data = add_query_ranges_and_mask(
@@ -118,7 +103,7 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
             word_ranges=q_word_ranges,
             phrase_ranges=q_phrase_ranges,
             skip_ids=self.q_skip_ids,
-            use_coarse_emb=self.granularity_level not in ["token", "sentence"],
+            use_coarse_emb=True,
         )
         if "doc_tok_ids" in data:
             data = add_doc_ranges_and_mask(
@@ -126,18 +111,10 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
                 word_ranges=d_word_ranges,
                 phrase_ranges=d_phrase_ranges,
                 skip_ids=self.d_skip_ids,
-                use_coarse_emb=self.granularity_level  not in ["token", "sentence"],
+                use_coarse_emb=True,
             )
         # Add index for positive document
         data["pos_doc_idxs"] = [self.corpus_mapping[i] for i in data["pos_doc_ids"]]
-
-        # Add fine-grained label
-        if self.is_use_fine_grained_loss:
-            target = data["q_tok_ids"]
-            data["fine_grained_label"] = [
-                is_token_included(src=item, target=target)
-                for item in data["doc_tok_ids"][1:]
-            ]
 
         return data
 
@@ -203,19 +180,6 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
                     [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
                 )
                 padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
-            elif key == "fine_grained_label":
-                values = []
-                for dic in input_dics:
-                    for item in dic[key]:
-                        values.append(torch.tensor(item, dtype=torch.bool, device="cpu"))
-                padded_values = pad_sequence(values, batch_first=True).float()
-                summed_padded_values = padded_values.sum(dim=1, keepdim=True)
-                mask_padded_values = (summed_padded_values > 0).squeeze()
-                padded_values = (
-                    padded_values[mask_padded_values]
-                    / summed_padded_values[mask_padded_values]
-                )
-                new_dict["fine_grained_label_mask"] = mask_padded_values
             elif key in ["q_id", "pos_doc_idxs"]:
                 padded_values = [dic[key] for dic in input_dics]
             elif key in ["pos_doc_ids", "neg_doc_ids"]:
