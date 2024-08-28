@@ -13,7 +13,8 @@ from omegaconf import DictConfig
 
 from eagle.dataset.utils import extract_word_range_with_multi_tokens, read_compressed
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.phrase.extraction2 import PhraseExtractor2
+
+# from eagle.phrase.extraction2 import PhraseExtractor2
 from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
@@ -112,10 +113,9 @@ def extract(
         tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
     ):
         ids = [str(item["_id"]) for item in chunk]
-        texts = [item["text"] for item in chunk]
+        texts = [f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(item["text"]) for item in chunk]
         tok_ids = [tokenized_data[_id] for _id in ids]
-        # if prefix == "query":
-        # texts = [unidecode_text(t) for t in texts]
+        
         if index_type == "word":
             # Convert to token text
             toks_list = [

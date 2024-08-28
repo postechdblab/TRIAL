@@ -20,14 +20,11 @@ def tokenize_and_cache_corpus(
         num_sent_per_doc = [len(item) for item in list(corpus.values())]
         # Back to list of lists
         items = {}
-        start_idx = 0
         for idx, key in enumerate(corpus.keys()):
-            end_idx = start_idx + num_sent_per_doc[idx]
-            items[key] = tokenized_items["input_ids"][start_idx:end_idx]
-            start_idx = end_idx
-        assert start_idx == len(
-            tokenized_items["input_ids"]
-        ), f"{start_idx} != {len(tokenized_items['input_ids'])}"
+            items[key] = tokenized_items["input_ids"][idx]
+        # assert start_idx == len(
+        #     tokenized_items["input_ids"]
+        # ), f"{start_idx} != {len(tokenized_items['input_ids'])}"
     else:
         raise ValueError("Corpus values must be either a string or a list of strings.")
 
