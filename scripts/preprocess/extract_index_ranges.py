@@ -222,7 +222,7 @@ def filter(output_dir_path: str, index_type: str, prefix: str) -> None:
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
-def main(cfg) -> None:
+def main(cfg: DictConfig) -> None:
     """
     Args:
         - op: merge, filter, extract
