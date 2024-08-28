@@ -36,6 +36,7 @@ class EAGLE(BaseModel):
         self.d_weight_coeff = cfg.d_weight_coeff
         self.intra_loss_coeff = cfg.intra_loss_coeff
         self.inter_loss_coeff = cfg.inter_loss_coeff
+        self.sim_type = cfg.sim_type
 
         # Projection layers
         self.tok_projection_layer = torch.nn.Linear(
@@ -137,8 +138,6 @@ class EAGLE(BaseModel):
         doc_scatter_indices: torch.Tensor,
         doc_tok_mask: torch.Tensor,
         doc_phrase_mask: torch.Tensor,
-        fine_grained_label: Optional[torch.Tensor] = None,
-        fine_grained_label_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         distillation_scores: Optional[torch.Tensor] = None,
         is_inference: Optional[bool] = False,
@@ -195,6 +194,13 @@ class EAGLE(BaseModel):
             d_cls=d_cls_projected,
             d_phrase=d_phrase_projected,
             d_tok=d_tok_projected,
+            q_tok_weight=q_tok_weight,
+            d_tok_weight_inter=d_tok_weight_inter,
+            d_tok_weight_intra=d_tok_weight_intra,
+            d_phrase_weight_inter=d_phrase_weight_inter,
+            d_phrase_weight_intra=d_phrase_weight_intra,
+            d_sen_weight_inter=d_sen_weight_inter,
+            d_sen_weight_intra=d_sen_weight_intra,
             q_tok_mask=q_tok_mask,
             q_phrase_mask=q_phrase_mask,
             d_tok_mask=doc_tok_mask,
@@ -293,10 +299,6 @@ class EAGLE(BaseModel):
             # Mask
             return_dict["q_mask"] = q_tok_mask
             return_dict["d_mask"] = doc_tok_mask
-        # if is_analyze:
-        #     return_dict["tok_intra_qd_scores"] = tok_intra_qd_scores
-        #     return_dict["q_tok_weight"] = q_tok_weight
-        #     return_dict["d_tok_weight_intra"] = d_tok_weight_intra
         # Append weights
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
@@ -316,25 +318,17 @@ class EAGLE(BaseModel):
         # Perform projection for token
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
-        projected_phrase_vectors = None
-        if self.granularity_level in ["word", "phrase", "multi"]:
-            # Embedding to coarse level
-            encoded_phrase_vectors = get_vectors_from_ranges(
-                tensors=projected_tok_vectors,
-                scatter_indices=scatter_indices,
-                reduce=self.reduce_strategy,
-            )
+        # Embedding to coarse level
+        encoded_phrase_vectors = get_vectors_from_ranges(
+            tensors=projected_tok_vectors,
+            scatter_indices=scatter_indices,
+            reduce=self.reduce_strategy,
+        )
 
-            projected_phrase_vectors = self.phrase_projection_layer(
-                encoded_phrase_vectors
-            )
+        projected_phrase_vectors = self.phrase_projection_layer(encoded_phrase_vectors)
 
-        projected_cls_vectors = None
-        if self.granularity_level in ["sentence", "multi"]:
-            # Perform projection for cls and phrase
-            projected_cls_vectors = self.cls_projection_layer(
-                projected_tok_vectors[:, 0:1]
-            )
+        # Perform projection for cls and phrase
+        projected_cls_vectors = self.cls_projection_layer(projected_tok_vectors[:, 0:1])
 
         return (
             encoded_tok_vectors,
@@ -404,12 +398,11 @@ class EAGLE(BaseModel):
             phrase_scale_factor = self.get_scale_factor(mask=phrase_mask)
 
         # Normalize
-        if self.granularity_level in ["token", "multi"]:
-            projected_tok_vectors = torch.nn.functional.normalize(
-                projected_tok_vectors, p=2, dim=2
-            )
-            if projected_tok_vectors.dtype != dtype:
-                projected_tok_vectors = projected_tok_vectors.to(dtype)
+        projected_tok_vectors = torch.nn.functional.normalize(
+            projected_tok_vectors, p=2, dim=2
+        )
+        if projected_tok_vectors.dtype != dtype:
+            projected_tok_vectors = projected_tok_vectors.to(dtype)
         if projected_cls_vectors is not None:
             projected_cls_vectors = torch.nn.functional.normalize(
                 projected_cls_vectors, p=2, dim=2
@@ -499,6 +492,7 @@ class EAGLE(BaseModel):
                     scatter_indices=scatter_indices,
                     reduce=self.reduce_strategy,
                 )
+
             # Further encode with q_vectors for inter-example weights
             if not is_eval:
                 repeat_n = nhard * (bsize - 1) + 1
@@ -540,12 +534,11 @@ class EAGLE(BaseModel):
                     )
 
         # Normalize
-        if self.granularity_level in ["token", "multi"]:
-            projected_tok_vectors = torch.nn.functional.normalize(
-                projected_tok_vectors, p=2, dim=2
-            )
-            if projected_tok_vectors.dtype != dtype:
-                projected_tok_vectors = projected_tok_vectors.to(dtype)
+        projected_tok_vectors = torch.nn.functional.normalize(
+            projected_tok_vectors, p=2, dim=2
+        )
+        if projected_tok_vectors.dtype != dtype:
+            projected_tok_vectors = projected_tok_vectors.to(dtype)
         if projected_cls_vectors is not None:
             projected_cls_vectors = torch.nn.functional.normalize(
                 projected_cls_vectors, p=2, dim=2
@@ -559,6 +552,10 @@ class EAGLE(BaseModel):
             if projected_phrase_vectors.dtype != dtype:
                 projected_phrase_vectors = projected_phrase_vectors.to(dtype)
 
+        # TODO:
+        sent_weights_intra = None
+        sent_weights_inter = None
+
         return (
             projected_cls_vectors,
             projected_tok_vectors,
@@ -567,130 +564,8 @@ class EAGLE(BaseModel):
             tok_weights_inter,
             phrase_weights_intra,
             phrase_weights_inter,
-        )
-
-    def compute_scores(
-        self,
-        q_encoded: torch.Tensor,
-        d_encoded: torch.Tensor,
-        q_weight: Optional[torch.Tensor],
-        q_scale_factor: Optional[torch.Tensor],
-        q_mask: Optional[torch.Tensor],
-        d_mask: Optional[torch.Tensor],
-        d_weight_intra: Optional[torch.Tensor],
-        d_weight_inter: Optional[torch.Tensor],
-        nway: int,
-        ib_nhard: int,
-        return_max_scores: bool = False,
-        return_entire_scores: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        bsize = q_encoded.shape[0]
-        # Apply weights
-        if q_weight is not None:
-            q_encoded = q_encoded * q_weight
-
-        # Perform Maxsim
-        intra_scores, intra_q_max_scores, intra_qd_scores, _ = (
-            self.compute_intra_scores(
-                q_encoded,
-                q_mask=q_mask,
-                d_encoded=d_encoded,
-                d_weight=d_weight_intra,
-                d_mask=d_mask,
-                nway=nway,
-                return_max_scores=return_max_scores,
-                return_entire_scores=return_entire_scores,
-            )
-        )
-
-        # For optimizing the memory usage
-        inter_scores, inter_q_max_scores, inter_qd_scores, _ = (
-            self.compute_inter_scores(
-                q_encoded,
-                q_mask=q_mask,
-                d_encoded=d_encoded,
-                d_weight=d_weight_inter,
-                d_mask=d_mask,
-                nway=nway,
-                ib_nhard=ib_nhard,
-                return_max_scores=return_max_scores,
-                return_entire_scores=return_entire_scores,
-            )
-        )
-
-        # Apply scale factor
-        if q_scale_factor is not None:
-            intra_scale_factors = q_scale_factor.repeat_interleave(nway)
-            intra_scores = intra_scores * intra_scale_factors
-            inter_scale_factors = q_scale_factor.repeat_interleave(
-                ib_nhard * (bsize - 1) + 1
-            )
-            inter_scores = inter_scores * inter_scale_factors
-
-        return intra_scores, inter_scores, intra_q_max_scores, intra_qd_scores
-
-    def compute_intra_scores(
-        self,
-        q_encoded: torch.Tensor,
-        q_mask: torch.Tensor,
-        d_encoded: torch.Tensor,
-        d_weight: torch.Tensor,
-        d_mask: Optional[torch.Tensor],
-        nway: int,
-        return_max_scores: bool = False,
-        return_entire_scores: bool = False,
-    ) -> torch.Tensor:
-        # Perform Maxsim
-        if d_weight is not None:
-            d_encoded = d_encoded * d_weight
-        q_encoded = q_encoded.repeat_interleave(nway, dim=0)
-        if q_mask is not None:
-            q_mask = q_mask.repeat_interleave(nway, dim=0)
-        return compute_sum_maxsim(
-            q_encoded=q_encoded,
-            k_encoded=d_encoded,
-            q_mask=q_mask,
-            k_mask=d_mask,
-            return_max_scores=return_max_scores,
-            return_element_wise_scores=return_entire_scores,
-        )
-
-    def compute_inter_scores(
-        self,
-        q_encoded: torch.Tensor,
-        q_mask: torch.Tensor,
-        d_encoded: torch.Tensor,
-        d_weight: torch.Tensor,
-        d_mask: Optional[torch.Tensor],
-        nway: int,
-        ib_nhard: int,
-        return_max_scores: bool = False,
-        return_entire_scores: bool = False,
-    ) -> torch.Tensor:
-        # Compute the scores for the ib_loss
-        bsize = q_encoded.shape[0]
-        repeat_num = ib_nhard * (bsize - 1) + 1
-        q_encoded = q_encoded.repeat_interleave(repeat_num, dim=0)
-        if q_mask is not None:
-            q_mask = q_mask.repeat_interleave(repeat_num, dim=0)
-        # Get the indices
-        d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
-            bsize, nway, ib_nhard, return_as_tensor=True, device=d_encoded.device
-        )
-        d_encoded = d_encoded[d_indices_tensor]
-        if d_mask is not None:
-            d_mask = d_mask[d_indices_tensor]
-        # Apply weights if exists
-        if d_weight is not None:
-            d_encoded = d_encoded * d_weight
-        # Compute the scores
-        return compute_sum_maxsim(
-            q_encoded=q_encoded,
-            k_encoded=d_encoded,
-            q_mask=q_mask,
-            k_mask=d_mask,
-            return_max_scores=return_max_scores,
-            return_element_wise_scores=return_entire_scores,
+            sent_weights_intra,
+            sent_weights_inter,
         )
 
     def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
@@ -716,6 +591,9 @@ class EAGLE(BaseModel):
         d_cls: torch.Tensor,
         d_phrase: torch.Tensor,
         d_tok: torch.Tensor,
+        q_tok_weight: torch.Tensor,
+        d_tok_weight_intra: torch.Tensor,
+        d_tok_weight_inter: torch.Tensor,
         q_tok_mask: torch.Tensor,
         q_phrase_mask: torch.Tensor,
         d_tok_mask: torch.Tensor,
@@ -735,6 +613,32 @@ class EAGLE(BaseModel):
         q_phrase = q_phrase * (q_phrase_mask == False)
         d_phrase = d_phrase * (d_phrase_mask == False)
 
+        # Compute intra scores
+        d_vecs = torch.cat([d_cls, d_phrase, d_tok], dim=1)
+        d_weights = torch.cat([d_tok_weight_intra, d_phrase_weight], dim=1)
+        if self.sim_type == "outer_agg":
+            # Repeat the query vectors
+            q_vec = q_tok.repeat_interleave(nway, dim=0)
+            q_mask = q_tok_mask.repeat_interleave(nway, dim=0)
+            q_weight = q_tok_weight.repeat_interleave(nway, dim=0)
+            q_scatter_indices = q_scatter_indices.repeat_interleave(nway, dim=0)
+
+            sim_scores = self.compute_outer_sim(
+                q_toks_vec=q_vec,
+                q_mask=q_mask,
+                q_weight=q_weight,
+                q_scatter_indices=q_scatter_indices,
+                d_vecs=d_vecs,
+                d_weights=d_tok_weight_intra,
+            )
+        elif self.sim_type == "inner_agg":
+            sim_scores = self.compute_inner_sim(
+                q_phrases_vec=q_phrase, q_mask=q_phrase_mask, d_vecs=d_vecs
+            )
+        else:
+            raise ValueError(f"Unsupported similarity type: {self.sim_type}")
+
+        # Compute inter scores
         intra_scores = self.compute_multi_grad_intra_scores(
             q_cls=q_cls,
             q_phrase=q_phrase,
@@ -785,7 +689,7 @@ class EAGLE(BaseModel):
         nway = d_tok.shape[0] // bsize
 
         # Concatenate the different granularity
-        q_all = torch.cat([q_cls, q_phrase, q_tok], dim=1)
+        q_vectors = q_tok
         d_all = torch.cat([d_cls, d_phrase, d_tok], dim=1)
 
         q_all = q_all.repeat_interleave(nway, dim=0)
@@ -869,3 +773,18 @@ class EAGLE(BaseModel):
         inter_scores = inter_scores.max(dim=1).values
         inter_scores = inter_scores.sum(dim=1)
         return inter_scores
+
+    def compute_outer_sim(
+        self,
+        q_vecs: torch.Tensor,
+        q_mask: torch.Tensor,
+        q_weight: torch.Tensor,
+        q_scatter_indices: torch.Tensor,
+        d_vecs: torch.Tensor,
+    ) -> torch.Tensor:
+        stop = 1
+
+    def compute_inner_sim(
+        self, q_phrases_vec: torch.Tensor, q_mask: torch.Tensor, d_vecs: torch.Tensor
+    ) -> torch.Tensor:
+        stop = 1
