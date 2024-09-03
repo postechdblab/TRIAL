@@ -1,7 +1,6 @@
 from typing import *
 
-import benepar
-import spacy
+import torch
 import tqdm
 
 from eagle.phrase.constituency import ConstituencyParser, Phrase
@@ -10,6 +9,8 @@ from eagle.phrase.utils import (
     get_range_of_tokens_in_char_level,
 )
 from eagle.tokenizer import Tokenizer
+
+HAS_SPECIAL_TOKENS = True
 
 
 class PhraseExtractor2:
@@ -21,44 +22,39 @@ class PhraseExtractor2:
         self,
         texts: List[str],
         max_tok_len: Optional[int] = None,
-        tokenized_result: Dict[str, List[int]] = None,
+        tok_ids: Optional[torch.Tensor] = None,
         show_progress: bool = False,
     ) -> List[List[Tuple[int]]]:
-        HAS_SPECIAL_TOKENS = True
         # Parse the text with spacy
         all_phrases: List[List[Phrase]] = self.constituency_parser(
             texts, show_progress=show_progress
         )
 
         # Tokenize
-        if tokenized_result is None:
+        if tok_ids is None:
             tokenized_result = self.tokenizer(texts, show_progress=show_progress)
-        input_ids = tokenized_result["input_ids"]
+            tok_ids = tokenized_result["input_ids"]
         if HAS_SPECIAL_TOKENS:
-            input_ids = [ids[2:-1] for ids in input_ids]
+            tok_ids = [ids[2:-1] for ids in tok_ids]
         input_tokens = [
-            self.tokenizer.tokenizer.convert_ids_to_tokens(ids) for ids in input_ids
+            self.tokenizer.tokenizer.convert_ids_to_tokens(ids) for ids in tok_ids
         ]
 
         # Find the character indices for the tokens
         all_char_indices: List[List[Tuple[int, int]]] = []
-        for b_size in tqdm.tqdm(range(len(input_ids)), disable=not show_progress):
+        for b_size in tqdm.tqdm(range(len(tok_ids)), disable=not show_progress):
             # try:
             tmp_indices = get_range_of_tokens_in_char_level(
                 [tok.lower() for tok in input_tokens[b_size]],
                 texts[b_size].lower(),
             )
-            # except:
-            #     print(f"Passing {b_size}-th item. Mismatch with tokenized results.")
-            #     tmp_indices = []
             all_char_indices.append(tmp_indices)
 
         # Extract phrase indices
         all_phrase_indices_in_char: List[List[Tuple[int, int]]] = []
         for b_idx in range(len(texts)):
-            phrases = all_phrases[b_idx]
             # Get phrase indices
-            all_phrase_indices_in_char.append([p.idx_range for p in phrases])
+            all_phrase_indices_in_char.append([p.idx_range for p in all_phrases[b_idx]])
 
         # Convert the char-level indices into token-level indices
         all_phrase_indices_in_tok = []

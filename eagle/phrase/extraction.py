@@ -1,10 +1,11 @@
 from typing import *
 
 import hydra
+import torch
 
 from eagle.phrase.noun import SpacyModel, Text
 from eagle.phrase.utils import get_phrase_indices
-from eagle.tokenizer import Tokenizer, QTokenizer
+from eagle.tokenizer import QTokenizer, Tokenizer
 
 
 class PhraseExtractor:
@@ -16,21 +17,20 @@ class PhraseExtractor:
         self,
         texts: List[str],
         max_tok_len: Optional[int] = None,
+        tok_ids: Optional[torch.Tensor] = None,
         tokenized_result: Dict[str, List[int]] = None,
     ) -> List[List[Tuple[int]]]:
         # Parse the text with spacy
         parsed_texts: List[Text] = self.spacy_model.simple_forward(texts)
 
         # Tokenize
-        if tokenized_result is None:
+        if tok_ids is None:
             tokenized_result = self.tokenizer(texts)
-        input_ids = tokenized_result["input_ids"]
-        attention_mask = tokenized_result["attention_mask"]
+            tok_ids = tokenized_result["input_ids"]
 
         # Extract phrase by token indices
         q_phrases = get_phrase_indices(
-            input_ids,
-            attention_mask,
+            tok_ids,
             self.tokenizer.tokenizer,
             texts,
             parsed_texts,

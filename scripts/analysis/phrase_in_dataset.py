@@ -141,11 +141,11 @@ def main(
     input_ids, attention_mask = q_tokenizer.tensorize(queries, bsize=len(queries))[0]
     q_phrases = get_phrase_indices(
         input_ids,
-        attention_mask,
         q_tokenizer.tok,
         queries,
         parsed_texts,
         bsize=len(queries),
+        tok_mask=attention_mask,
         all_noun_only=True,
     )[0]
     count_phrase_stats(q_phrases, explain=True)

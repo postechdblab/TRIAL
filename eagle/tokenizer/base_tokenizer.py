@@ -93,68 +93,53 @@ class Tokenizer:
         return self.tokenize_batch(texts=[text], **kwargs)
 
     def tokenize_batch(
-        self, texts: List[str], padding=False, return_tensors: str = None
+        self,
+        texts: List[str],
+        padding=False,
+        return_tensors: str = None,
+        truncation=True,
     ) -> torch.Tensor:
         texts: List[str] = list(map(self._preprocess_text, texts))
         batch_size = 100000
 
         # TODO: Need this?
         if len(texts) > batch_size and False:
-            if True:
-                chunks = list_utils.divide_into_chunks(texts, 32)
-                multiprocessor = concurrent_utils.MultiProcessor(num_workers=32)
-                logger.info("Tokenizing texts in parallel")
-                for i in range(32):
-                    multiprocessor.run(
-                        pickleable_func,
-                        copy.deepcopy(self.tokenizer),
-                        chunks[i],
-                        padding=padding,
-                        truncation=True,
-                        max_length=self.cfg.max_len,
-                        return_tensors=return_tensors,
-                    )
-                multiprocessor.join()
-                results = multiprocessor.results
-                input_ids = []
-                attention_mask = []
-                for result in results:
-                    input_ids.extend(result["input_ids"])
-                    attention_mask.extend(result["attention_mask"])
+            chunks = list_utils.divide_into_chunks(texts, 32)
+            multiprocessor = concurrent_utils.MultiProcessor(num_workers=32)
+            logger.info("Tokenizing texts in parallel")
+            for i in range(32):
+                multiprocessor.run(
+                    pickleable_func,
+                    copy.deepcopy(self.tokenizer),
+                    chunks[i],
+                    padding=padding,
+                    truncation=truncation,
+                    max_length=self.cfg.max_len if truncation else None,
+                    return_tensors=return_tensors,
+                )
+            multiprocessor.join()
+            results = multiprocessor.results
+            input_ids = []
+            attention_mask = []
+            for result in results:
+                input_ids.extend(result["input_ids"])
+                attention_mask.extend(result["attention_mask"])
 
-                # Padd sequences
-                if padding:
-                    input_ids = pad_sequence(input_ids, batch_first=True)
-                    attention_mask = pad_sequence(attention_mask, batch_first=True)
+            # Padd sequences
+            if padding:
+                input_ids = pad_sequence(input_ids, batch_first=True)
+                attention_mask = pad_sequence(attention_mask, batch_first=True)
 
-                tokenized_texts = {
-                    "input_ids": input_ids,
-                    "attention_mask": attention_mask,
-                }
-            elif False:
-                logger.info(f"Tokenizing {len(texts)} texts in batches of {batch_size}")
-                input_ids = []
-                attention_mask = []
-                for i in tqdm.tqdm(range(0, len(texts), batch_size)):
-                    tmp = self.tokenizer(
-                        texts[i : i + batch_size],
-                        padding=padding,
-                        truncation=True,
-                        max_length=self.cfg.max_len,
-                        return_tensors=return_tensors,
-                    )
-                    input_ids.extend(tmp["input_ids"])
-                    attention_mask.extend(tmp["attention_mask"])
-                tokenized_texts = {
-                    "input_ids": input_ids,
-                    "attention_mask": attention_mask,
-                }
+            tokenized_texts = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+            }
         else:
             tokenized_texts = self.tokenizer(
                 texts,
                 padding=padding,
-                truncation=True,
-                max_length=self.cfg.max_len,
+                truncation=truncation,
+                max_length=self.cfg.max_len if truncation else None,
                 return_tensors=return_tensors,
             )
         return tokenized_texts

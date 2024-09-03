@@ -274,16 +274,22 @@ def main(
         parsed_q: List[Text] = SpacyModel()([query])
         q_phrases_prop = get_phrase_indices(
             q_ids,
-            q_mask,
             q_tokenizer.tok,
             [query],
             parsed_q,
             bsize=1,
+            tok_mask=q_mask,
             prop_noun_only=True,
         )[0][0]
         q_prop_noun_indices = [i for s, e in q_phrases_prop for i in range(s, e)]
         q_phrases_noun = get_phrase_indices(
-            q_ids, q_mask, q_tokenizer.tok, [query], parsed_q, bsize=1, noun_only=True
+            q_ids,
+            q_tokenizer.tok,
+            [query],
+            parsed_q,
+            bsize=1,
+            tok_mask=q_mask,
+            noun_only=True,
         )[0][0]
         q_noun_indices = [i for s, e in q_phrases_noun for i in range(s, e)]
         q_stop_indices = []
@@ -337,11 +343,11 @@ def main(
         ]
         q_phrases = get_phrase_indices(
             input_ids,
-            attention_mask,
             q_tokenizer.tok,
             [query],
             parsed_texts,
             bsize=len([query]),
+            tok_mask=attention_mask,
             all_noun_only=True,
         )[0][0]
         #

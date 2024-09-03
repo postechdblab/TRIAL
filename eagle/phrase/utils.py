@@ -306,11 +306,11 @@ def get_phrase_indices_by_toks(
 
 def get_phrase_indices(
     tok_ids: torch.Tensor,
-    masks: torch.Tensor,
     tokenizer,
     input_texts: List[str],
     parsed_texts: List[Text],
     bsize: int,
+    tok_masks: torch.Tensor = None,
     has_special_tokens: bool = True,
     max_token_len: int = 0,
     all_noun_only: bool = False,
@@ -326,9 +326,13 @@ def get_phrase_indices(
     """
 
     if type(tok_ids) == torch.Tensor:
-        tok_ids_ = [
-            tok_ids[b_size][masks[b_size] == 1] for b_size in range(len(tok_ids))
-        ]
+        if tok_masks is None:
+            tok_ids_ = [tok_ids[b_size] for b_size in range(len(tok_ids))]
+        else:
+            tok_ids_ = [
+                tok_ids[b_size][tok_masks[b_size] == 1]
+                for b_size in range(len(tok_ids))
+            ]
     else:
         tok_ids_ = tok_ids
     input_toks: List[List[str]] = list(map(tokenizer.convert_ids_to_tokens, tok_ids_))

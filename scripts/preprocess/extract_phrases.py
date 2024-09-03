@@ -7,23 +7,23 @@ import hkkang_utils.file as file_utils
 import hkkang_utils.list as list_utils
 import hkkang_utils.slack as slack_utils
 import hydra
-import torch
 import tqdm
 from omegaconf import DictConfig
 
-from eagle.dataset.utils import extract_word_range_with_multi_tokens, read_compressed
-from eagle.phrase.extraction import PhraseExtractor
-
-# from eagle.phrase.extraction2 import PhraseExtractor2
+from eagle.dataset.utils import read_compressed
+from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
 from eagle.tokenizer import Tokenizers
+
+# from eagle.phrase.extraction import PhraseExtractor
+
 
 logger = logging.getLogger("PhraseExtraction")
 
 CHUNK_SIZE = 1000
 
 
-def get_file_name(prefix: str, index_type: str) -> str:
-    return f"{index_type}_indices.{prefix}.pkl"
+def get_file_name(prefix: str) -> str:
+    return f"phrase_indices.{prefix}.pkl"
 
 
 def filter_file_names(
@@ -60,7 +60,6 @@ def extract(
     dataset_name: str,
     split_i: int,
     total: int,
-    index_type: str,
     prefix: str,
 ) -> None:
     logger.info(f"I: {split_i}, Total: {total}")
@@ -79,6 +78,7 @@ def extract(
         model_name=cfg.model.backbone_name,
     )
     tokenizer = tokenizers.q_tokenizer if prefix == "query" else tokenizers.d_tokenizer
+    SEP_TOKEN = tokenizer.tokenizer.special_tokens_map["sep_token"]
     extractor = PhraseExtractor(tokenizer=tokenizer)
 
     # Load tokenized text
@@ -89,7 +89,7 @@ def extract(
     tokenized_data = read_compressed(tokenized_path)
 
     # Get the file path
-    file_name = get_file_name(prefix=prefix, index_type=index_type)
+    file_name = get_file_name(prefix=prefix)
     if split_i == 0 and total == 1:
         is_split = False
     else:
@@ -113,29 +113,43 @@ def extract(
         tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
     ):
         ids = [str(item["_id"]) for item in chunk]
+        # TODO: First, perform phrase extraction for all sentences and then combine into query/document
+        # TODO: Separate the extractor logic: 1) extract phrase indices by character 2) convert to token-level indices
+
+        sents = []
+        sent_lens = []
+        tok_ids_in_sent = []
+        SEP_TOKEN = tokenizer.tokenizer.special_tokens_map["sep_token"]
+        SEP_TOKEN_ID = tokenizer.tokenizer.vocab[SEP_TOKEN]
+        for sent in chunk:
+            _id = str(sent["_id"])
+            sents.extend(sent["text"])
+            sent_lens.append(len(sent["text"]))
+            tok_ids = tokenized_data[_id]
+            # Split the token ids into sentences. sep_token is used to separate sentences
+            tmp_tok_ids = []
+            tmp_tok_ids_in_sent = []
+            for tok_id in tok_ids:
+                if tok_id == SEP_TOKEN_ID:
+                    tmp_tok_ids_in_sent.append(tmp_tok_ids)
+                    tmp_tok_ids = []
+                else:
+                    tmp_tok_ids.append(tok_id)
+            # Append the last sentence
+            if len(tmp_tok_ids):
+                tmp_tok_ids_in_sent.append(tmp_tok_ids)
+            tok_ids_in_sent.extend(tmp_tok_ids_in_sent)
+            assert len(sent["text"]) == len(tmp_tok_ids_in_sent), f"Length of text: {len(sent['text'])} != Length of tok_ids_in_sent: {len(tmp_tok_ids_in_sent)}"
+        assert len(sents) == len(tok_ids_in_sent), f"Length of sents: {len(sents)} != Length of tok_ids_in_sent: {len(tok_ids_in_sent)}"
+
         texts = [f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(item["text"]) for item in chunk]
         tok_ids = [tokenized_data[_id] for _id in ids]
-        
-        if index_type == "word":
-            # Convert to token text
-            toks_list = [
-                tokenizer.tokenizer.convert_ids_to_tokens(tok_ids)
-                for tok_ids in tok_ids
-            ]
-            results = [extract_word_range_with_multi_tokens(toks) for toks in toks_list]
-        else:
-            attention_mask = [
-                torch.ones(len(tok_ids[i]), dtype=torch.bool)
-                for i in range(len(tok_ids))
-            ]
-            results = extractor(
-                texts,
-                max_tok_len=tokenizer.cfg.max_len,
-                tokenized_result={
-                    "input_ids": tok_ids,
-                    "attention_mask": attention_mask,
-                },
-            )
+
+        results = extractor(
+            texts,
+            max_tok_len=tokenizer.cfg.max_len,
+            tok_ids=tok_ids,
+        )
         all_results[ci] = results
 
     # Convert format
@@ -149,10 +163,10 @@ def extract(
 
 
 def merge(
-    dataset_path: str, output_dir_path: str, total: int, index_type: str, prefix: str
+    dataset_path: str, output_dir_path: str, total: int, prefix: str
 ) -> None:
     output_file_path = os.path.join(
-        output_dir_path, get_file_name(prefix=prefix, index_type=index_type)
+        output_dir_path, get_file_name(prefix=prefix)
     )
     # List all the files in the directory
     file_names = sorted(os.listdir(output_dir_path))
@@ -188,12 +202,6 @@ def merge(
     assert len(all_values) == len(
         dataset
     ), f"Length of all_values: {len(all_values)} != Length of dataset: {len(dataset)}"
-    # empty_indices = [i for i, values in enumerate(all_values) if len(values) == 0]
-
-    # if empty_indices:
-    #     raise ValueError(
-    #         f"Found {len(empty_indices)} empty indices. Please run extract operation first."
-    #     )
 
     # Save the dictionary
     logger.info(
@@ -202,32 +210,12 @@ def merge(
     file_utils.write_pickle_file(all_values, output_file_path)
     return None
 
-
-def filter(output_dir_path: str, index_type: str, prefix: str) -> None:
-    output_file_path = os.path.join(
-        output_dir_path, get_file_name(prefix=prefix, index_type=index_type)
-    )
-    logger.info(f"Loading the phrase indices from {output_file_path}")
-    data = file_utils.read_pickle_file(output_file_path)
-    for i in tqdm.tqdm(range(len(data))):
-        datum = data[i]
-        data[i] = [value for value in datum if value[1] - value[0] > 1]
-    logger.info(f"Writing the filtered phrase indices to {output_file_path}")
-    file_name = get_file_name(prefix=prefix, index_type=index_type).replace(
-        "indices", "filtered_indices"
-    )
-    filtered_output_file_path = os.path.join(output_dir_path, file_name)
-    file_utils.write_pickle_file(data, filtered_output_file_path)
-    return None
-
-
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:
     """
     Args:
         - op: merge, filter, extract
         - target_data: query, document
-        - index_type: word, phrase
         - i (optional): split index
         - total: total number of splits
     """
@@ -249,12 +237,7 @@ def main(cfg: DictConfig) -> None:
             dataset_path=dataset_path,
             output_dir_path=output_dir_path,
             total=cfg.total,
-            index_type=cfg.index_type,
             prefix=prefix,
-        )
-    elif cfg.op == "filter":
-        filter(
-            output_dir_path=output_dir_path, index_type=cfg.index_type, prefix=prefix
         )
     elif cfg.op == "extract":
         extract(
@@ -262,7 +245,6 @@ def main(cfg: DictConfig) -> None:
             dataset_name=cfg.dataset.name,
             split_i=cfg.i,
             total=cfg.total,
-            index_type=cfg.index_type,
             prefix=prefix,
         )
     else:
