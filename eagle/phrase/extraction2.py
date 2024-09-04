@@ -10,31 +10,80 @@ from eagle.phrase.utils import (
 )
 from eagle.tokenizer import Tokenizer
 
-HAS_SPECIAL_TOKENS = True
-
 
 class PhraseExtractor2:
-    def __init__(self, tokenizer: Tokenizer) -> None:
+    def __init__(
+        self, tokenizer: Tokenizer, consider_special_tokens: Optional[bool] = True
+    ) -> None:
         self.tokenizer = tokenizer
         self.constituency_parser = ConstituencyParser()
+        self.consider_special_tokens = consider_special_tokens
 
     def __call__(
         self,
         texts: List[str],
         max_tok_len: Optional[int] = None,
-        tok_ids: Optional[torch.Tensor] = None,
+        tok_ids: Optional[List[List[int]]] = None,
+        to_char_indices: bool = False,
+        to_token_indices: bool = False,
         show_progress: bool = False,
     ) -> List[List[Tuple[int]]]:
         # Parse the text with spacy
-        all_phrases: List[List[Phrase]] = self.constituency_parser(
+        phrases: List[List[Phrase]] = self.constituency_parser(
             texts, show_progress=show_progress
         )
 
+        if to_char_indices:
+            results = self.convert_phrase_to_char_indices(
+                texts=texts,
+                phrases=phrases,
+                max_tok_len=max_tok_len,
+                show_progress=show_progress,
+            )
+        elif to_token_indices:
+            results = self.convert_phrase_to_token_indices(
+                texts=texts,
+                phrases=phrases,
+                tok_ids=tok_ids,
+                max_tok_len=max_tok_len,
+                show_progress=show_progress,
+            )
+        else:
+            results = phrases
+
+        return results
+
+    @property
+    def offset(self) -> int:
+        return 2 if self.consider_special_tokens else 0
+
+    @property
+    def padding(self) -> int:
+        return 1 if self.consider_special_tokens else 0
+
+    def convert_phrase_to_char_indices(
+        self,
+        texts: List[str],
+        phrases: List[List[Phrase]],
+        max_tok_len: Optional[int] = None,
+        show_progress: bool = False,
+    ) -> None:
+
+        raise NotImplementedError("TODO: Implement this method")
+
+    def convert_phrase_to_token_indices(
+        self,
+        texts: List[str],
+        phrases: List[List[Phrase]],
+        tok_ids: List[List[int]],
+        max_tok_len: Optional[int] = None,
+        show_progress: bool = False,
+    ) -> None:
         # Tokenize
         if tok_ids is None:
             tokenized_result = self.tokenizer(texts, show_progress=show_progress)
             tok_ids = tokenized_result["input_ids"]
-        if HAS_SPECIAL_TOKENS:
+        if self.consider_special_tokens:
             tok_ids = [ids[2:-1] for ids in tok_ids]
         input_tokens = [
             self.tokenizer.tokenizer.convert_ids_to_tokens(ids) for ids in tok_ids
@@ -54,7 +103,7 @@ class PhraseExtractor2:
         all_phrase_indices_in_char: List[List[Tuple[int, int]]] = []
         for b_idx in range(len(texts)):
             # Get phrase indices
-            all_phrase_indices_in_char.append([p.idx_range for p in all_phrases[b_idx]])
+            all_phrase_indices_in_char.append([p.idx_range for p in phrases[b_idx]])
 
         # Convert the char-level indices into token-level indices
         all_phrase_indices_in_tok = []
@@ -62,8 +111,8 @@ class PhraseExtractor2:
             phrase_indices_in_tok = get_range_of_phrases_in_token_level(
                 all_char_indices[b_idx],
                 all_phrase_indices_in_char[b_idx],
-                offset=2 if HAS_SPECIAL_TOKENS else 0,
-                padding=1 if HAS_SPECIAL_TOKENS else 0,
+                offset=self.offset,
+                padding=self.padding,
                 max_token_len=max_tok_len,
             )
             all_phrase_indices_in_tok.append(phrase_indices_in_tok)

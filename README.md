@@ -12,7 +12,19 @@ python scripts/preprocess/split_text_to_sentences.py +target_data=query dataset.
 python scripts/preprocess/split_text_to_sentences.py +target_data=document dataset.name=beir-msmarco
 ```
 
-## 2. Extract Phrases
+
+## 2. Tokenize sentences
+Tokenization is done for both queries and documents. The tokenized data is saved in the same directory as the original data.
+```bash
+python scripts/preprocess/tokenize_data.py \
++total=1 \
++i=0 \
++op=tokenize \
+dataset.name=beir-msmarco
+```
+
+
+## 3. Extract Phrases
 
 ### Example: Extract phrase indices from query in msmarco dataset
 ```bash

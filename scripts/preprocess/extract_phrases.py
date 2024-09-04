@@ -3,6 +3,7 @@ import math
 import os
 from typing import *
 
+import hkkang_utils.concurrent as concurrent_utils
 import hkkang_utils.file as file_utils
 import hkkang_utils.list as list_utils
 import hkkang_utils.slack as slack_utils
@@ -13,9 +14,6 @@ from omegaconf import DictConfig
 from eagle.dataset.utils import read_compressed
 from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
 from eagle.tokenizer import Tokenizers
-
-# from eagle.phrase.extraction import PhraseExtractor
-
 
 logger = logging.getLogger("PhraseExtraction")
 
@@ -63,6 +61,9 @@ def extract(
     prefix: str,
 ) -> None:
     logger.info(f"I: {split_i}, Total: {total}")
+    partial_processor = concurrent_utils.PartialProcessor(
+        total_proc_n=total, current_proc_n=split_i
+    )
     dir_path = os.path.join("/root/EAGLE/data/", dataset_name)
     if prefix == "query":
         filename = "queries.jsonl"
@@ -103,52 +104,45 @@ def extract(
     logger.info(f"Loaded {len(dataset)} text.")
 
     # Divide the dataset into chunks and extract phrases
-    chunks: List = list_utils.divide_into_chunks(dataset, num_chunks=total)
-    target_chunk = chunks[split_i]
-    logger.info(f"Target chunk size: {len(target_chunk)}")
-    mini_chunks: List = list_utils.chunks(target_chunk, CHUNK_SIZE)
+    dataset_chunk: List = partial_processor.get_partial_data(dataset)
+    tokenized_data_chunk: List = partial_processor.get_partial_data(tokenized_data)
 
+    logger.info(f"Target chunk size: {len(dataset_chunk)}")
+    mini_dataset_chunks: Generator = list_utils.chunks(dataset_chunk, CHUNK_SIZE)
+    mini_tokenized_data_chunks: List = list_utils.chunks(
+        tokenized_data_chunk, CHUNK_SIZE
+    )
+
+    logger.info(f"Begin to extract phrases from {len(dataset_chunk)} texts")
     all_results: Dict[int, List[List[Tuple[int]]]] = {}
-    for ci, chunk in enumerate(
-        tqdm.tqdm(mini_chunks, total=math.ceil(len(target_chunk) / CHUNK_SIZE))
+    for ci, (d_chunk, t_chunk) in enumerate(
+        tqdm.tqdm(
+            zip(mini_dataset_chunks, mini_tokenized_data_chunks, strict=True),
+            total=math.ceil(len(dataset_chunk) / CHUNK_SIZE),
+        )
     ):
-        ids = [str(item["_id"]) for item in chunk]
         # TODO: First, perform phrase extraction for all sentences and then combine into query/document
         # TODO: Separate the extractor logic: 1) extract phrase indices by character 2) convert to token-level indices
 
         sents = []
         sent_lens = []
         tok_ids_in_sent = []
-        SEP_TOKEN = tokenizer.tokenizer.special_tokens_map["sep_token"]
-        SEP_TOKEN_ID = tokenizer.tokenizer.vocab[SEP_TOKEN]
-        for sent in chunk:
-            _id = str(sent["_id"])
+        for sent, sents_tok_ids in zip(d_chunk, t_chunk, strict=True):
             sents.extend(sent["text"])
             sent_lens.append(len(sent["text"]))
-            tok_ids = tokenized_data[_id]
+            tok_ids_in_sent.extend(sents_tok_ids)
             # Split the token ids into sentences. sep_token is used to separate sentences
-            tmp_tok_ids = []
-            tmp_tok_ids_in_sent = []
-            for tok_id in tok_ids:
-                if tok_id == SEP_TOKEN_ID:
-                    tmp_tok_ids_in_sent.append(tmp_tok_ids)
-                    tmp_tok_ids = []
-                else:
-                    tmp_tok_ids.append(tok_id)
-            # Append the last sentence
-            if len(tmp_tok_ids):
-                tmp_tok_ids_in_sent.append(tmp_tok_ids)
-            tok_ids_in_sent.extend(tmp_tok_ids_in_sent)
-            assert len(sent["text"]) == len(tmp_tok_ids_in_sent), f"Length of text: {len(sent['text'])} != Length of tok_ids_in_sent: {len(tmp_tok_ids_in_sent)}"
-        assert len(sents) == len(tok_ids_in_sent), f"Length of sents: {len(sents)} != Length of tok_ids_in_sent: {len(tok_ids_in_sent)}"
-
-        texts = [f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(item["text"]) for item in chunk]
-        tok_ids = [tokenized_data[_id] for _id in ids]
+            assert len(sent["text"]) == len(
+                sents_tok_ids
+            ), f"Length of text: {len(sent['text'])} != Length of tok_ids_in_sent: {len(sents_tok_ids)}"
+        assert len(sents) == len(
+            tok_ids_in_sent
+        ), f"Length of sents: {len(sents)} != Length of tok_ids_in_sent: {len(tok_ids_in_sent)}"
 
         results = extractor(
-            texts,
-            max_tok_len=tokenizer.cfg.max_len,
-            tok_ids=tok_ids,
+            texts=sents,
+            tok_ids=tok_ids_in_sent,
+            to_token_indices=True,
         )
         all_results[ci] = results
 
@@ -159,15 +153,12 @@ def extract(
             all_results_tmp.extend(all_results[key])
         all_results = all_results_tmp
 
+    logger.info(f"Saving the results to {output_file_path}")
     file_utils.write_pickle_file(all_results, output_file_path)
 
 
-def merge(
-    dataset_path: str, output_dir_path: str, total: int, prefix: str
-) -> None:
-    output_file_path = os.path.join(
-        output_dir_path, get_file_name(prefix=prefix)
-    )
+def merge(dataset_path: str, output_dir_path: str, total: int, prefix: str) -> None:
+    output_file_path = os.path.join(output_dir_path, get_file_name(prefix=prefix))
     # List all the files in the directory
     file_names = sorted(os.listdir(output_dir_path))
     file_names = filter_file_names(file_names, total, prefix=prefix)
@@ -209,6 +200,7 @@ def merge(
     )
     file_utils.write_pickle_file(all_values, output_file_path)
     return None
+
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:

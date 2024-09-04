@@ -1,6 +1,5 @@
 import functools
 import logging
-import math
 import os
 from typing import *
 
@@ -9,7 +8,6 @@ import hkkang_utils.file as file_utils
 import hkkang_utils.list as list_utils
 import hkkang_utils.slack as slack_utils
 import hydra
-import torch
 import tqdm
 from omegaconf import DictConfig
 
@@ -21,8 +19,77 @@ logger = logging.getLogger("TokenizeData")
 CHUNK_SIZE = 1000
 
 
-def merge() -> None:
-    pass
+def merge_wrapper(cfg: DictConfig, total_proc_num: int) -> None:
+    tokenizers = Tokenizers(
+        q_cfg=cfg.tokenizers.query,
+        d_cfg=cfg.tokenizers.document,
+        model_name=cfg.model.backbone_name,
+    )
+    # Merge tokenized query
+    logger.info(f"Merging tokenized query...")
+    merge(
+        cfg=cfg,
+        file_name=cfg.dataset.query_file,
+        tokenizer_name=tokenizers.q_tokenizer.name,
+        total_proc_num=total_proc_num,
+    )
+    logger.info(f"Merging tokenized document...")
+    merge(
+        cfg=cfg,
+        file_name=cfg.dataset.corpus_file,
+        tokenizer_name=tokenizers.d_tokenizer.name,
+        total_proc_num=total_proc_num,
+    )
+    return None
+
+
+def merge(
+    cfg: DictConfig, file_name: str, tokenizer_name: str, total_proc_num: int
+) -> None:
+    assert (
+        total_proc_num > 1
+    ), f"total_proc_num must be greater than 1, but got {total_proc_num}"
+
+    # Get path
+    all_tokenized_data = []
+    for i in range(total_proc_num):
+        tokenized_dataset_path = os.path.join(
+            cfg.dataset.dir_path,
+            cfg.dataset.name,
+            f"{file_name}.{cfg.model.backbone_name}-tok.{i}.cache",
+        )
+        if not os.path.exists(tokenized_dataset_path):
+            raise FileNotFoundError(f"{tokenized_dataset_path} does not exist!")
+        # Read the tokenized dataset
+        logger.info(f"Reading tokenized dataset from {tokenized_dataset_path}")
+        tokenized_dataset = read_compressed(tokenized_dataset_path)
+        all_tokenized_data.append(tokenized_dataset)
+    partial_processor = concurrent_utils.PartialProcessor(total_proc_n=total_proc_num)
+
+    # Merge the tokenized dataset
+    logger.info(f"Merging {len(all_tokenized_data)} tokenized chunks...")
+    all_tokenized_data = partial_processor.merge(all_tokenized_data)
+
+    # Save the merged tokenized dataset
+    merged_tokenized_dataset_path = os.path.join(
+        cfg.dataset.dir_path,
+        cfg.dataset.name,
+        f"{file_name}.{tokenizer_name}-tok.cache",
+    )
+    logger.info(f"Saving merged tokenized dataset to {merged_tokenized_dataset_path}")
+    save_compressed(merged_tokenized_dataset_path, all_tokenized_data)
+
+    # Remove the splitted tokenized dataset
+    logger.info(f"Removing {total_proc_num} splitted tokenized chunks...")
+    for i in range(total_proc_num):
+        tokenized_dataset_path = os.path.join(
+            cfg.dataset.dir_path,
+            cfg.dataset.name,
+            f"{file_name}.{tokenizer_name}-tok.{i}.cache",
+        )
+        os.remove(tokenized_dataset_path)
+
+    return all_tokenized_data
 
 
 def tokenize_wrapper(
@@ -118,9 +185,9 @@ def main(cfg: DictConfig) -> None:
     """
     # Get output directory
     if cfg.op == "merge":
-        merge(
+        merge_wrapper(
             cfg=cfg,
-            total=cfg.total,
+            total_proc_num=cfg.total,
         )
     elif cfg.op == "tokenize":
         tokenize_wrapper(
