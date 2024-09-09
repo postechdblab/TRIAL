@@ -222,19 +222,6 @@ def main(cfg: DictConfig) -> None:
         - i (optional): split index
         - total: total number of splits
     """
-    if cfg.target_data == "query":
-        prefix = "query"
-        dataset_path = cfg.dataset.query_file
-    elif cfg.target_data == "document":
-        prefix = "doc"
-        dataset_path = cfg.dataset.corpus_file
-    else:
-        raise ValueError(f"Invalid type: {cfg.type}")
-
-    # Get output directory
-    output_dir_path = os.path.join("/root/EAGLE/data/", cfg.dataset.name)
-    dataset_path = os.path.join(output_dir_path, dataset_path)
-
     if cfg.op == "merge":
         merge_wrapper(
             cfg=cfg,
