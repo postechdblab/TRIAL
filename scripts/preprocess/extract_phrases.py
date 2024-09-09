@@ -13,49 +13,78 @@ from omegaconf import DictConfig
 
 from eagle.dataset.utils import read_compressed
 from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
-from eagle.tokenizer import Tokenizers
+from eagle.tokenizer import Tokenizer, Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
 
 CHUNK_SIZE = 1000
 
 
-def get_file_name(prefix: str) -> str:
-    return f"phrase_indices.{prefix}.pkl"
+def get_output_file_name(
+    prefix: str, total_process_num: int, process_idx: int = None
+) -> str:
+    return (
+        f"phrase_indices.{prefix}.pkl.{process_idx}"
+        if total_process_num > 1
+        else f"phrase_indices.{prefix}.pkl"
+    )
 
 
-def filter_file_names(
-    file_names: List[str], total: int, prefix: str = None
-) -> List[str]:
-    file_names = [f for f in file_names if ".pkl." in f]
-    filtered_files = []
-    for file in file_names:
-        try:
-            num = int(file.split(".")[-1])
-            if num >= total:
-                continue
-        except:
-            continue
-        if prefix is not None and prefix in file:
-            filtered_files.append(file)
-    assert (
-        len(filtered_files) == total
-    ), f"Total number of files is {len(filtered_files)} but expected {total}"
-    return filtered_files
+def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> str:
+    return os.path.join(dir_path, f"{filename}.{tokenizer.model_name}-tok.cache")
 
 
-def analyze(text: str, tokenizer, phrase_indices_by_token: List[Tuple[int]]) -> None:
-    print("Text:", text)
-    tokens = tokenizer.tokenize(text)["input_ids"][0]
-    tokens = tokenizer.tokenizer.convert_ids_to_tokens(tokens)
-    print("Nouns:", [tokens[s:e] for s, e in phrase_indices_by_token])
-    input("Is OK?")
+def extract_wrapper(
+    cfg: DictConfig, total_proc_num: int, current_proc_idx: int
+) -> None:
+    # Extract phrase indices for query
+    logger.info("Extracting phrase indices for query...")
+    # Prepare tokenizers
+    tokenizers = Tokenizers(
+        q_cfg=cfg.tokenizers.query,
+        d_cfg=cfg.tokenizers.document,
+        model_name=cfg.model.backbone_name,
+    )
+    # Get dataset path
+    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
+    dataset_path = os.path.join(dir_path, cfg.dataset.query_file)
+    tokenized_path = get_tokenized_path(
+        tokenizer=tokenizers.q_tokenizer,
+        dir_path=dir_path,
+        filename=cfg.dataset.query_file,
+    )
+    extract_phrase_indices(
+        cfg=cfg,
+        dataset_path=dataset_path,
+        tokenized_path=tokenized_path,
+        split_i=current_proc_idx,
+        total=total_proc_num,
+        prefix="query",
+    )
+
+    logger.info("Extracting phrase indices for document...")
+    dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
+    tokenized_path = get_tokenized_path(
+        tokenizer=tokenizers.d_tokenizer,
+        dir_path=dir_path,
+        filename=cfg.dataset.corpus_file,
+    )
+    extract_phrase_indices(
+        cfg=cfg,
+        dataset_path=dataset_path,
+        tokenized_path=tokenized_path,
+        split_i=current_proc_idx,
+        total=total_proc_num,
+        prefix="doc",
+    )
+
     return None
 
 
-def extract(
+def extract_phrase_indices(
     cfg: DictConfig,
-    dataset_name: str,
+    dataset_path: str,
+    tokenized_path: str,
     split_i: int,
     total: int,
     prefix: str,
@@ -64,14 +93,6 @@ def extract(
     partial_processor = concurrent_utils.PartialProcessor(
         total_proc_n=total, current_proc_n=split_i
     )
-    dir_path = os.path.join("/root/EAGLE/data/", dataset_name)
-    if prefix == "query":
-        filename = "queries.jsonl"
-    elif prefix == "doc":
-        filename = "corpus.jsonl"
-    else:
-        raise ValueError(f"Invalid prefix: {prefix}")
-    dataset_path = os.path.join(dir_path, filename)
 
     tokenizers = Tokenizers(
         q_cfg=cfg.tokenizers.query,
@@ -79,24 +100,17 @@ def extract(
         model_name=cfg.model.backbone_name,
     )
     tokenizer = tokenizers.q_tokenizer if prefix == "query" else tokenizers.d_tokenizer
-    SEP_TOKEN = tokenizer.tokenizer.special_tokens_map["sep_token"]
     extractor = PhraseExtractor(tokenizer=tokenizer)
 
     # Load tokenized text
-    tokenized_path = os.path.join(
-        dir_path, f"{filename}.{tokenizers.model_name}-tok.cache"
-    )
     logger.info(f"Loading the tokenizered data from {tokenized_path}")
     tokenized_data = read_compressed(tokenized_path)
 
     # Get the file path
-    file_name = get_file_name(prefix=prefix)
-    if split_i == 0 and total == 1:
-        is_split = False
-    else:
-        is_split = True
-        file_name = f"{file_name}.{split_i}"
-    output_file_path = os.path.join(dir_path, file_name)
+    file_name = get_output_file_name(
+        prefix=prefix, total_process_num=total, process_idx=split_i
+    )
+    output_file_path = os.path.join(cfg.dataset.dir_path, file_name)
 
     # Load the corpus
     logger.info(f"Loading the text data from {dataset_path}")
@@ -121,9 +135,7 @@ def extract(
             total=math.ceil(len(dataset_chunk) / CHUNK_SIZE),
         )
     ):
-        # TODO: First, perform phrase extraction for all sentences and then combine into query/document
-        # TODO: Separate the extractor logic: 1) extract phrase indices by character 2) convert to token-level indices
-
+        # Get all sentences in the text
         sents = []
         sent_lens = []
         tok_ids_in_sent = []
@@ -139,11 +151,13 @@ def extract(
             tok_ids_in_sent
         ), f"Length of sents: {len(sents)} != Length of tok_ids_in_sent: {len(tok_ids_in_sent)}"
 
+        # Extract phrases
         results = extractor(
             texts=sents,
             tok_ids=tok_ids_in_sent,
             to_token_indices=True,
         )
+
         all_results[ci] = results
 
     # Convert format
@@ -157,48 +171,46 @@ def extract(
     file_utils.write_pickle_file(all_results, output_file_path)
 
 
-def merge(dataset_path: str, output_dir_path: str, total: int, prefix: str) -> None:
-    output_file_path = os.path.join(output_dir_path, get_file_name(prefix=prefix))
-    # List all the files in the directory
-    file_names = sorted(os.listdir(output_dir_path))
-    file_names = filter_file_names(file_names, total, prefix=prefix)
-    all_dict: Dict = {}
-    logger.info(f"Reading total number of cache shards: {len(file_names)}")
-    for file_name in tqdm.tqdm(file_names):
-        shard_num = int(file_name.split(".")[-1])
-        file_path = os.path.join(output_dir_path, file_name)
-        cached_dict = file_utils.read_pickle_file(file_path)
-        # Aggregate into a single list
-        all_values: List[List[Tuple[int, int]]] = []
+def merge_wrapper(cfg: DictConfig, total_proc_num: int) -> None:
+    # Merge the splitted query data
+    logger.info("Merging the splitted query data...")
+    merge(cfg=cfg, prefix="query", total_process_num=total_proc_num)
 
-        max_key = max(cached_dict.keys())
-        for i in range(max_key + 1):
-            if i in cached_dict:
-                all_values.extend(cached_dict[i])
-            else:
-                all_values.extend([] for _ in range(CHUNK_SIZE))
-        # Add to the dictionary
-        all_dict[shard_num] = all_values
+    logger.info("Merging the splitted document data...")
+    merge(cfg=cfg, prefix="doc", total_process_num=total_proc_num)
 
-    # Load corpus
-    logger.info(f"Loading the dataset from {dataset_path}")
-    dataset: List = file_utils.read_jsonl_file(dataset_path)
+    return None
 
-    # Flatten list
-    all_values: List[List[Tuple[int, int]]] = []
-    for i in range(total):
-        all_values.extend(all_dict[i])
 
-    # Perform further processing for empty values
-    assert len(all_values) == len(
-        dataset
-    ), f"Length of all_values: {len(all_values)} != Length of dataset: {len(dataset)}"
+def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
+    # Get all the splitted file paths
+    file_names = [
+        get_output_file_name(
+            prefix=prefix, total_process_num=total_process_num, process_idx=process_idx
+        )
+        for process_idx in range(total_process_num)
+    ]
+    # Read in all the splitted data
+    all_data = []
+    for file_name in file_names:
+        file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
+        data = file_utils.read_pickle_file(file_path)
+        all_data.extend(data)
 
-    # Save the dictionary
-    logger.info(
-        f"Saving the dictionary of length {len(all_values)} to {output_file_path}"
+    # Save the merged data
+    output_file_path = os.path.join(
+        cfg.dataset.dir_path,
+        cfg.dataset.name,
+        get_output_file_name(prefix=prefix, total_process_num=0, process_idx=0),
     )
-    file_utils.write_pickle_file(all_values, output_file_path)
+    logger.info(f"Saving the merged data to {output_file_path}")
+    file_utils.write_jsonl_file(all_data, output_file_path)
+
+    # Clean up the splitted files
+    logger.info(f"Removing the {len(file_names)} splitted files...")
+    for file_name in file_names:
+        file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
+        os.remove(file_path)
     return None
 
 
@@ -207,7 +219,6 @@ def main(cfg: DictConfig) -> None:
     """
     Args:
         - op: merge, filter, extract
-        - target_data: query, document
         - i (optional): split index
         - total: total number of splits
     """
@@ -225,19 +236,15 @@ def main(cfg: DictConfig) -> None:
     dataset_path = os.path.join(output_dir_path, dataset_path)
 
     if cfg.op == "merge":
-        merge(
-            dataset_path=dataset_path,
-            output_dir_path=output_dir_path,
-            total=cfg.total,
-            prefix=prefix,
+        merge_wrapper(
+            cfg=cfg,
+            total_proc_num=cfg.total,
         )
     elif cfg.op == "extract":
-        extract(
+        extract_wrapper(
             cfg=cfg,
-            dataset_name=cfg.dataset.name,
-            split_i=cfg.i,
-            total=cfg.total,
-            prefix=prefix,
+            total_proc_num=cfg.total,
+            current_proc_idx=cfg.i,
         )
     else:
         raise ValueError(f"Invalid operation: {cfg.op}")
