@@ -24,7 +24,7 @@ def get_output_file_name(
     prefix: str, total_process_num: int, process_idx: int = None
 ) -> str:
     return (
-        f"phrase_indices.{prefix}.pkl.{process_idx}"
+        f"phrase_indices.{prefix}.pkl.{process_idx}_{total_process_num}"
         if total_process_num > 1
         else f"phrase_indices.{prefix}.pkl"
     )
@@ -121,6 +121,10 @@ def extract_phrase_indices(
     dataset_chunk: List = partial_processor.get_partial_data(dataset)
     tokenized_data_chunk: List = partial_processor.get_partial_data(tokenized_data)
 
+    # Free up memory by deleting the loaded data except the chunks
+    del dataset
+    del tokenized_data
+
     logger.info(f"Target chunk size: {len(dataset_chunk)}")
     mini_dataset_chunks: Generator = list_utils.chunks(dataset_chunk, CHUNK_SIZE)
     mini_tokenized_data_chunks: List = list_utils.chunks(
@@ -207,7 +211,7 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
         get_output_file_name(prefix=prefix, total_process_num=0, process_idx=0),
     )
     logger.info(f"Saving the merged data to {output_file_path}")
-    file_utils.write_jsonl_file(all_data, output_file_path)
+    file_utils.write_pickle_file(all_data, output_file_path)
 
     # Clean up the splitted files
     logger.info(f"Removing the {len(file_names)} splitted files...")
