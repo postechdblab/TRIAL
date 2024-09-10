@@ -110,7 +110,7 @@ def extract_phrase_indices(
     file_name = get_output_file_name(
         prefix=prefix, total_process_num=total, process_idx=split_i
     )
-    output_file_path = os.path.join(cfg.dataset.dir_path, file_name)
+    output_file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
 
     # Load the corpus
     logger.info(f"Loading the text data from {dataset_path}")
@@ -129,6 +129,7 @@ def extract_phrase_indices(
 
     logger.info(f"Begin to extract phrases from {len(dataset_chunk)} texts")
     all_results: Dict[int, List[List[Tuple[int]]]] = {}
+    all_results = []
     for ci, (d_chunk, t_chunk) in enumerate(
         tqdm.tqdm(
             zip(mini_dataset_chunks, mini_tokenized_data_chunks, strict=True),
@@ -158,16 +159,18 @@ def extract_phrase_indices(
             to_token_indices=True,
         )
 
-        all_results[ci] = results
+        # Back to the original text by combining the sentences
+        sent_idx = 0
+        for sent_len in sent_lens:
+            sent_results = results[sent_idx : sent_idx + sent_len]
+            all_results.append(sent_results)
+            sent_idx += sent_len
 
-    # Convert format
-    if not is_split:
-        all_results_tmp = []
-        for key in sorted(all_results.keys()):
-            all_results_tmp.extend(all_results[key])
-        all_results = all_results_tmp
+        assert sent_idx == len(
+            results
+        ), f"sent_idx: {sent_idx} != len(results): {len(results)}"
 
-    logger.info(f"Saving the results to {output_file_path}")
+    logger.info(f"Saving the {len(all_results)} results to {output_file_path}")
     file_utils.write_pickle_file(all_results, output_file_path)
 
 

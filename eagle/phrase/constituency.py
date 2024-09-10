@@ -5,7 +5,6 @@ from typing import *
 
 import benepar
 import hkkang_utils.data as data_utils
-import hkkang_utils.list as list_utils
 import hkkang_utils.pattern as pattern_utils
 import spacy
 import tqdm
@@ -49,17 +48,18 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
 
             subprocess.run(["python", "-m", "spacy", "download", model_name])
             self.model = spacy.load(model_name)
-        self.model.add_pipe("benepar", config={"model": "benepar_en3"})
+        self.model.add_pipe(
+            "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
+        )
 
     def __call__(
         self,
         texts: List[str],
         show_progress: bool = False,
-        batch_size: int = 1000,
+        batch_size: int = 10000,
     ) -> List[List[Phrase]]:
         # Parse the texts in batches
         parsed_results: List = []
-        import time
 
         for doc_batch in tqdm.tqdm(
             self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
