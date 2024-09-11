@@ -2,9 +2,13 @@
 
 # Define the total variable
 begin=0
-end=48
-total=48
-num_devices=5  # Number of available devices (0 to 4)
+end=47
+total=96
+num_devices=5  # Number of available devices (0 to num_devices-1)
+
+# Print the command being executed
+echo "Running: python scripts/preprocess/extract_phrases.py +total=$total +op=split_file"
+python scripts/preprocess/extract_phrases.py +total=$total +op=split_file
 
 # Loop from 0 to total-1
 for i in $(seq $begin $end); do
@@ -16,6 +20,9 @@ for i in $(seq $begin $end); do
 
     # Run the command with the assigned device and store the output in a text file
     CUDA_VISIBLE_DEVICES=$device python scripts/preprocess/extract_phrases.py +total=$total +i=$i +op=extract > output_$i.txt 2>&1 &
+    
+    # sleep for 10 seconds to avoid overloading the system
+    sleep 10
 done
 
 # Wait for all background processes to complete

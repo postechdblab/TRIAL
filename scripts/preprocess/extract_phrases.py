@@ -20,6 +20,12 @@ logger = logging.getLogger("PhraseExtraction")
 CHUNK_SIZE = 1000
 
 
+def get_partial_data_name(
+    dir_path: str, file_name: str, total_proc_num: int, i: int
+) -> str:
+    return os.path.join(dir_path, f"{file_name}.{i}_{total_proc_num}")
+
+
 def get_output_file_name(
     prefix: str, total_process_num: int, process_idx: int = None
 ) -> str:
@@ -32,6 +38,66 @@ def get_output_file_name(
 
 def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> str:
     return os.path.join(dir_path, f"{filename}.{tokenizer.model_name}-tok.cache")
+
+
+def split_file(cfg: DictConfig, total_proc_num: int) -> None:
+    # Split the corpus file into multiple files
+    logger.info(f"Splitting the corpus file into {total_proc_num} files...")
+
+    # Prepare tokenizers
+    tokenizers = Tokenizers(
+        q_cfg=cfg.tokenizers.query,
+        d_cfg=cfg.tokenizers.document,
+        model_name=cfg.model.backbone_name,
+    )
+
+    # Load the corpus
+    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
+    dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
+    dataset: List = file_utils.read_json_file(dataset_path, auto_detect_extension=True)
+    logger.info(f"Loaded {len(dataset)} text.")
+
+    # Load the tokenized dataset
+    tokenized_path = get_tokenized_path(
+        tokenizer=tokenizers.d_tokenizer,
+        dir_path=dir_path,
+        filename=cfg.dataset.corpus_file,
+    )
+    tokenized_dataset = read_compressed(tokenized_path)
+
+    # Split the corpus
+    partial_processor = concurrent_utils.PartialProcessor(total_proc_n=total_proc_num)
+    dataset_chunks: Generator = partial_processor.divide_into_chunks(dataset)
+
+    # Split the tokenized dataset
+    tokenized_dataset_chunks: Generator = partial_processor.divide_into_chunks(
+        tokenized_dataset
+    )
+
+    # Save the splitted files
+    for i, (chunk, tokenized_chunk) in enumerate(
+        zip(dataset_chunks, tokenized_dataset_chunks, strict=True)
+    ):
+        # Get the file names
+        file_path = get_partial_data_name(
+            dir_path=dir_path,
+            file_name=cfg.dataset.corpus_file,
+            total_proc_num=total_proc_num,
+            i=i,
+        )
+        tokenized_file_path = get_partial_data_name(
+            dir_path="",
+            file_name=tokenized_path,
+            total_proc_num=total_proc_num,
+            i=i,
+        )
+
+        # Write the chunk to the file
+        logger.info(f"Saving the {len(chunk)} texts to {file_path}")
+        file_utils.write_pickle_file(chunk, file_path)
+        file_utils.write_pickle_file(tokenized_chunk, tokenized_file_path)
+
+    return None
 
 
 def extract_wrapper(
@@ -69,13 +135,20 @@ def extract_wrapper(
         dir_path=dir_path,
         filename=cfg.dataset.corpus_file,
     )
+    tokenized_file_path = get_partial_data_name(
+        dir_path="",
+        file_name=tokenized_path,
+        total_proc_num=total_proc_num,
+        i=current_proc_idx,
+    )
     extract_phrase_indices(
         cfg=cfg,
         dataset_path=dataset_path,
-        tokenized_path=tokenized_path,
+        tokenized_path=tokenized_file_path,
         split_i=current_proc_idx,
         total=total_proc_num,
         prefix="doc",
+        is_splited=True,
     )
 
     return None
@@ -88,6 +161,7 @@ def extract_phrase_indices(
     split_i: int,
     total: int,
     prefix: str,
+    is_splited: bool = False,
 ) -> None:
     logger.info(f"I: {split_i}, Total: {total}")
     partial_processor = concurrent_utils.PartialProcessor(
@@ -104,26 +178,37 @@ def extract_phrase_indices(
 
     # Load tokenized text
     logger.info(f"Loading the tokenizered data from {tokenized_path}")
-    tokenized_data = read_compressed(tokenized_path)
+    if is_splited:
+        tokenized_data_chunk = file_utils.read_pickle_file(tokenized_path)
+    else:
+        tokenized_data = read_compressed(tokenized_path)
+        tokenized_data_chunk: List = partial_processor.get_partial_data(tokenized_data)
 
-    # Get the file path
-    file_name = get_output_file_name(
-        prefix=prefix, total_process_num=total, process_idx=split_i
-    )
-    output_file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
+        # Free up memory by deleting the loaded data except the chunks
+        del tokenized_data
 
     # Load the corpus
     logger.info(f"Loading the text data from {dataset_path}")
-    dataset: List = file_utils.read_json_file(dataset_path, auto_detect_extension=True)
-    logger.info(f"Loaded {len(dataset)} text.")
+    if is_splited:
+        data_file_name = dataset_path.split("/")[-1]
+        dataset_chunk_path = get_partial_data_name(
+            dir_path=dataset_path.split("/")[:-1],
+            file_name=data_file_name,
+            total_proc_num=total,
+            i=split_i,
+        )
+        dataset_chunk = file_utils.read_pickle_file(dataset_chunk_path)
+    else:
+        dataset: List = file_utils.read_json_file(
+            dataset_path, auto_detect_extension=True
+        )
+        logger.info(f"Loaded {len(dataset)} text.")
 
-    # Divide the dataset into chunks and extract phrases
-    dataset_chunk: List = partial_processor.get_partial_data(dataset)
-    tokenized_data_chunk: List = partial_processor.get_partial_data(tokenized_data)
+        # Divide the dataset into chunks and extract phrases
+        dataset_chunk: List = partial_processor.get_partial_data(dataset)
 
-    # Free up memory by deleting the loaded data except the chunks
-    del dataset
-    del tokenized_data
+        # Free up memory by deleting the loaded data except the chunks
+        del dataset
 
     logger.info(f"Target chunk size: {len(dataset_chunk)}")
     mini_dataset_chunks: Generator = list_utils.chunks(dataset_chunk, CHUNK_SIZE)
@@ -174,6 +259,13 @@ def extract_phrase_indices(
             results
         ), f"sent_idx: {sent_idx} != len(results): {len(results)}"
 
+    # Get the output file path
+    output_file_name = get_output_file_name(
+        prefix=prefix, total_process_num=total, process_idx=split_i
+    )
+    output_file_path = os.path.join(
+        cfg.dataset.dir_path, cfg.dataset.name, output_file_name
+    )
     logger.info(f"Saving the {len(all_results)} results to {output_file_path}")
     file_utils.write_pickle_file(all_results, output_file_path)
 
@@ -225,11 +317,16 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
 def main(cfg: DictConfig) -> None:
     """
     Args:
-        - op: merge, filter, extract
+        - op: split_file, extract, merge
         - i (optional): split index
         - total: total number of splits
     """
-    if cfg.op == "merge":
+    if cfg.op == "split_file":
+        split_file(
+            cfg,
+            total_proc_num=cfg.total,
+        )
+    elif cfg.op == "merge":
         merge_wrapper(
             cfg=cfg,
             total_proc_num=cfg.total,
