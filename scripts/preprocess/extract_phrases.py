@@ -91,11 +91,22 @@ def split_file(cfg: DictConfig, total_proc_num: int) -> None:
             total_proc_num=total_proc_num,
             i=i,
         )
+        # Check if file already exists and write the data if not
+        if os.path.exists(file_path):
+            logger.info(f"File {file_path} already exists. Skip.")
+        else:
+            logger.info(f"Saving the {len(chunk)} texts to {file_path}")
+            file_utils.write_pickle_file(chunk, file_path)
 
-        # Write the chunk to the file
-        logger.info(f"Saving the {len(chunk)} texts to {file_path}")
-        file_utils.write_pickle_file(chunk, file_path)
-        file_utils.write_pickle_file(tokenized_chunk, tokenized_file_path)
+        # Check if file already exists and write the tokenized data if not
+        if os.path.exists(tokenized_file_path):
+            logger.info(f"File {tokenized_file_path} already exists. Skip.")
+        else:
+            # Write the chunk to the file
+            logger.info(
+                f"Saving the {len(tokenized_chunk)} tokenized texts to {tokenized_file_path}"
+            )
+            file_utils.write_pickle_file(tokenized_chunk, tokenized_file_path)
 
     return None
 
