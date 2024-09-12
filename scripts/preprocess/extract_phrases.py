@@ -192,7 +192,7 @@ def extract_phrase_indices(
     if is_splited:
         data_file_name = dataset_path.split("/")[-1]
         dataset_chunk_path = get_partial_data_name(
-            dir_path=dataset_path.split("/")[:-1],
+            dir_path="/".join(dataset_path.split("/")[:-1]),
             file_name=data_file_name,
             total_proc_num=total,
             i=split_i,
