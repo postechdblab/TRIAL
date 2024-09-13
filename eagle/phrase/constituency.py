@@ -48,9 +48,17 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
 
             subprocess.run(["python", "-m", "spacy", "download", model_name])
             self.model = spacy.load(model_name)
-        self.model.add_pipe(
-            "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
-        )
+        try:
+            self.model.add_pipe(
+                "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
+            )
+        except:
+            import nltk
+
+            benepar.download("benepar_en3")
+            self.model.add_pipe(
+                "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
+            )
 
     def __call__(
         self,
