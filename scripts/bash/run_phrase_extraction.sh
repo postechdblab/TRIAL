@@ -20,9 +20,6 @@ for i in $(seq $begin $end); do
 
     # Run the command with the assigned device and store the output in a text file
     CUDA_VISIBLE_DEVICES=$device python scripts/preprocess/extract_phrases.py +total=$total +i=$i +op=extract > output_$i.txt 2>&1 &
-    
-    # sleep for 10 seconds to avoid overloading the system
-    sleep 10
 done
 
 # Wait for all background processes to complete
