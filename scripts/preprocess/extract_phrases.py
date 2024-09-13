@@ -365,7 +365,7 @@ def main(cfg: DictConfig) -> None:
         - indices (optional): indices to extract
         - total: total number of splits
     """
-    if cfg.op == "split_file":
+    if cfg.op == "split":
         split_and_save_file(
             cfg,
             total_proc_num=cfg.total,
