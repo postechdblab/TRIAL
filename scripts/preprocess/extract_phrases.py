@@ -22,6 +22,10 @@ CHUNK_SIZE = 1000
 SPLIT_DIR_NAME = "splitted"
 
 
+def remove_file_name_from_path(path: str) -> str:
+    return os.path.join("/", *[item for item in path.split("/")[:-1] if item])
+
+
 def get_partial_data_name(
     dir_path: str, file_name: str, total_proc_num: int, i: int
 ) -> str:
@@ -57,7 +61,9 @@ def split_and_save_file(
     indices_to_save = []
     for i in range(start_idx, end_idx):
         file_path = get_partial_data_name(
-            dir_path=os.path.join(cfg.dataset.dir_path, SPLIT_DIR_NAME),
+            dir_path=os.path.join(
+                cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME
+            ),
             file_name=cfg.dataset.corpus_file,
             total_proc_num=total_proc_num,
             i=i,
@@ -238,7 +244,9 @@ def extract_phrase_indices(
     if is_splited:
         data_file_name = dataset_path.split("/")[-1]
         dataset_chunk_path = get_partial_data_name(
-            dir_path=os.path.join(*dataset_path.split("/")[:-1], SPLIT_DIR_NAME),
+            dir_path=os.path.join(
+                remove_file_name_from_path(dataset_path), SPLIT_DIR_NAME
+            ),
             file_name=data_file_name,
             total_proc_num=total,
             i=split_i,
