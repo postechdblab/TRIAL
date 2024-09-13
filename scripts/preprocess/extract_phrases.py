@@ -19,6 +19,8 @@ logger = logging.getLogger("PhraseExtraction")
 
 CHUNK_SIZE = 1000
 
+SPLIT_DIR_NAME = "splitted"
+
 
 def get_partial_data_name(
     dir_path: str, file_name: str, total_proc_num: int, i: int
@@ -43,7 +45,6 @@ def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> st
 def split_and_save_file(
     cfg: DictConfig, total_proc_num: int, start_idx: int = 0, end_idx: int = None
 ) -> None:
-    SPLIT_DIR_NAME = "splitted"
     # Split the corpus file into multiple files
     logger.info(f"Splitting the corpus file into {total_proc_num} files...")
 
@@ -67,6 +68,8 @@ def split_and_save_file(
     if len(indices_to_save) == 0:
         logger.info(f"All files are already splitted and saved. Skip.")
         return None
+    else:
+        logger.info(f"Files to save: {indices_to_save}")
 
     # Prepare tokenizers
     tokenizers = Tokenizers(
@@ -175,7 +178,7 @@ def extract_wrapper(
     dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
     tokenized_path = get_tokenized_path(
         tokenizer=tokenizers.d_tokenizer,
-        dir_path=dir_path,
+        dir_path=os.path.join(dir_path, SPLIT_DIR_NAME),
         filename=cfg.dataset.corpus_file,
     )
     tokenized_file_path = get_partial_data_name(
@@ -235,7 +238,7 @@ def extract_phrase_indices(
     if is_splited:
         data_file_name = dataset_path.split("/")[-1]
         dataset_chunk_path = get_partial_data_name(
-            dir_path="/".join(dataset_path.split("/")[:-1]),
+            dir_path=os.path.join(*dataset_path.split("/")[:-1], SPLIT_DIR_NAME),
             file_name=data_file_name,
             total_proc_num=total,
             i=split_i,
@@ -307,7 +310,7 @@ def extract_phrase_indices(
         prefix=prefix, total_process_num=total, process_idx=split_i
     )
     output_file_path = os.path.join(
-        cfg.dataset.dir_path, cfg.dataset.name, output_file_name
+        cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME, output_file_name
     )
     logger.info(f"Saving the {len(all_results)} results to {output_file_path}")
     file_utils.write_pickle_file(all_results, output_file_path)
