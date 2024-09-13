@@ -40,9 +40,33 @@ def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> st
     return os.path.join(dir_path, f"{filename}.{tokenizer.model_name}-tok.cache")
 
 
-def split_file(cfg: DictConfig, total_proc_num: int) -> None:
+def split_and_save_file(
+    cfg: DictConfig, total_proc_num: int, start_idx: int = 0, end_idx: int = None
+) -> None:
+    SPLIT_DIR_NAME = "splitted"
     # Split the corpus file into multiple files
     logger.info(f"Splitting the corpus file into {total_proc_num} files...")
+
+    if end_idx == None:
+        logger.info(f"End index is not provided. Set it to {total_proc_num}")
+        end_idx = total_proc_num
+
+    # Check if there are already splitted files saved in the directory
+    # Get those which are not saved yet
+    indices_to_save = []
+    for i in range(start_idx, end_idx):
+        file_path = get_partial_data_name(
+            dir_path=os.path.join(cfg.dataset.dir_path, SPLIT_DIR_NAME),
+            file_name=cfg.dataset.corpus_file,
+            total_proc_num=total_proc_num,
+            i=i,
+        )
+        if not os.path.exists(file_path):
+            indices_to_save.append(i)
+
+    if len(indices_to_save) == 0:
+        logger.info(f"All files are already splitted and saved. Skip.")
+        return None
 
     # Prepare tokenizers
     tokenizers = Tokenizers(
@@ -74,20 +98,28 @@ def split_file(cfg: DictConfig, total_proc_num: int) -> None:
         tokenized_dataset
     )
 
+    save_dir = os.path.join(dir_path, SPLIT_DIR_NAME)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     # Save the splitted files
     for i, (chunk, tokenized_chunk) in enumerate(
         zip(dataset_chunks, tokenized_dataset_chunks, strict=True)
     ):
+        # Skip if the file is already saved
+        if i not in indices_to_save:
+            continue
+
         # Get the file names
         file_path = get_partial_data_name(
-            dir_path=dir_path,
+            dir_path=save_dir,
             file_name=cfg.dataset.corpus_file,
             total_proc_num=total_proc_num,
             i=i,
         )
         tokenized_file_path = get_partial_data_name(
-            dir_path="",
-            file_name=tokenized_path,
+            dir_path=save_dir,
+            file_name=tokenized_path.split("/")[-1],
             total_proc_num=total_proc_num,
             i=i,
         )
@@ -330,12 +362,15 @@ def main(cfg: DictConfig) -> None:
     Args:
         - op: split_file, extract, merge
         - i (optional): split index
+        - indices (optional): indices to extract
         - total: total number of splits
     """
     if cfg.op == "split_file":
-        split_file(
+        split_and_save_file(
             cfg,
             total_proc_num=cfg.total,
+            start_idx=cfg.indices[0] if cfg.indices else 0,
+            end_idx=cfg.indices[1] if cfg.indices else None,
         )
     elif cfg.op == "merge":
         merge_wrapper(
