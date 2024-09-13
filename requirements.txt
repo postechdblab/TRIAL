@@ -4,7 +4,7 @@ spacy[cuda12x]
 spacy-transformers
 tqdm
 transformers
-torch==2.4.0
+torch==2.4.1
 lightning
 bitsandbytes
 hkkang_utils
