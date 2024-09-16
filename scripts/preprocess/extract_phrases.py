@@ -59,7 +59,7 @@ def split_and_save_file(
     # Check if there are already splitted files saved in the directory
     # Get those which are not saved yet
     indices_to_save = []
-    for i in range(start_idx, end_idx):
+    for i in range(start_idx, end_idx + 1):
         file_path = get_partial_data_name(
             dir_path=os.path.join(
                 cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME
