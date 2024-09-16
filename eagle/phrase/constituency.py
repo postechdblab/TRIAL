@@ -9,7 +9,30 @@ import hkkang_utils.pattern as pattern_utils
 import spacy
 import tqdm
 
+MAX_TOKEN_LENGTH = 512
+
 logger = logging.getLogger("Constituency")
+# nlp = spacy.load(
+#     "en_core_web_sm",
+#     disable=["tagger", "parser", "ner", "lemmatizer", "attribute_ruler"],
+# )
+nlp = spacy.blank("en")
+nlp.add_pipe("sentencizer")
+
+
+@spacy.language.Language.component("limit_token_length")
+# Create a custom component to filter out long tokens
+def limit_token_length(doc, model=None) -> None:
+    # Create a list of filtered tokens and their sentence starts
+    if len(doc) >= MAX_TOKEN_LENGTH:
+        # Create new Doc object with filtered tokens
+        # last_token_idx = MAX_TOKEN_LENGTH - 1
+        last_token_idx = len(doc) - 1
+        last_char_idx = doc[last_token_idx].idx + len(doc[last_token_idx].text)
+        filtered_text = doc.text[:last_char_idx]
+        # Create a new Doc object by performing tokenization again
+        doc = nlp(filtered_text)
+    return doc
 
 
 @data_utils.dataclass
@@ -48,6 +71,7 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
 
             subprocess.run(["python", "-m", "spacy", "download", model_name])
             self.model = spacy.load(model_name)
+        self.model.add_pipe("limit_token_length")
         try:
             self.model.add_pipe(
                 "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}

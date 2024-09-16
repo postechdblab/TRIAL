@@ -171,14 +171,14 @@ def extract_wrapper(
         dir_path=dir_path,
         filename=cfg.dataset.query_file,
     )
-    extract_phrase_indices(
-        cfg=cfg,
-        dataset_path=dataset_path,
-        tokenized_path=tokenized_path,
-        split_i=current_proc_idx,
-        total=total_proc_num,
-        prefix="query",
-    )
+    # extract_phrase_indices(
+    #     cfg=cfg,
+    #     dataset_path=dataset_path,
+    #     tokenized_path=tokenized_path,
+    #     split_i=current_proc_idx,
+    #     total=total_proc_num,
+    #     prefix="query",
+    # )
 
     logger.info("Extracting phrase indices for document...")
     dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
@@ -336,6 +336,7 @@ def merge_wrapper(cfg: DictConfig, total_proc_num: int) -> None:
 
 
 def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
+    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME)
     # Get all the splitted file paths
     file_names = [
         get_output_file_name(
@@ -346,7 +347,7 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
     # Read in all the splitted data
     all_data = []
     for file_name in file_names:
-        file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
+        file_path = os.path.join(dir_path, file_name)
         data = file_utils.read_pickle_file(file_path)
         all_data.extend(data)
 
@@ -362,7 +363,7 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
     # Clean up the splitted files
     logger.info(f"Removing the {len(file_names)} splitted files...")
     for file_name in file_names:
-        file_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, file_name)
+        file_path = os.path.join(dir_path, file_name)
         os.remove(file_path)
     return None
 
