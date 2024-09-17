@@ -8,6 +8,10 @@ import hkkang_utils.data as data_utils
 import hkkang_utils.pattern as pattern_utils
 import spacy
 import tqdm
+from transformers import BertTokenizer
+
+# Initialize the BERT tokenizer
+bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
 MAX_TOKEN_LENGTH = 512
 
@@ -22,16 +26,23 @@ nlp.add_pipe("sentencizer")
 
 @spacy.language.Language.component("limit_token_length")
 # Create a custom component to filter out long tokens
-def limit_token_length(doc, model=None) -> None:
-    # Create a list of filtered tokens and their sentence starts
-    if len(doc) >= MAX_TOKEN_LENGTH:
-        # Create new Doc object with filtered tokens
-        last_token_idx = MAX_TOKEN_LENGTH - 1
-        # last_token_idx = len(doc) - 1
-        last_char_idx = doc[last_token_idx].idx + len(doc[last_token_idx].text)
-        filtered_text = doc.text[:last_char_idx]
-        # Create a new Doc object by performing tokenization again
-        doc = nlp(filtered_text)
+def limit_token_length(doc) -> None:
+    # Check if the tokenized length exceeds the MAX_TOKEN_LENGTH
+    if len(doc) > MAX_TOKEN_LENGTH - 50:
+
+        # Tokenize the text using BERT tokenizer
+        bert_tokens = bert_tokenizer.tokenize(doc.text)
+
+        # Truncate the text using BERT token length
+        truncated_text = bert_tokenizer.convert_tokens_to_string(
+            bert_tokens[:MAX_TOKEN_LENGTH]
+        )
+
+        # Create a new Doc object with the truncated text
+        truncated_doc = nlp(truncated_text)
+        return truncated_doc
+
+    # Return the original doc if within limits
     return doc
 
 
