@@ -26,8 +26,8 @@ def limit_token_length(doc, model=None) -> None:
     # Create a list of filtered tokens and their sentence starts
     if len(doc) >= MAX_TOKEN_LENGTH:
         # Create new Doc object with filtered tokens
-        # last_token_idx = MAX_TOKEN_LENGTH - 1
-        last_token_idx = len(doc) - 1
+        last_token_idx = MAX_TOKEN_LENGTH - 1
+        # last_token_idx = len(doc) - 1
         last_char_idx = doc[last_token_idx].idx + len(doc[last_token_idx].text)
         filtered_text = doc.text[:last_char_idx]
         # Create a new Doc object by performing tokenization again
