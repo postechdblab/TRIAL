@@ -153,14 +153,14 @@ def extract_wrapper(
         dir_path=dir_path,
         filename=cfg.dataset.query_file,
     )
-    # extract_phrase_indices(
-    #     cfg=cfg,
-    #     dataset_path=dataset_path,
-    #     tokenized_path=tokenized_path,
-    #     split_i=current_proc_idx,
-    #     total=total_proc_num,
-    #     prefix="query",
-    # )
+    extract_phrase_indices(
+        cfg=cfg,
+        dataset_path=dataset_path,
+        tokenized_path=tokenized_path,
+        split_i=current_proc_idx,
+        total=total_proc_num,
+        prefix="query",
+    )
 
     logger.info("Extracting phrase indices for document...")
     dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
