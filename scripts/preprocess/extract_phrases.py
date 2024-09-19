@@ -13,37 +13,19 @@ from omegaconf import DictConfig
 
 from eagle.dataset.utils import read_compressed
 from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
-from eagle.tokenizer import Tokenizer, Tokenizers
+from eagle.phrase.utils import (
+    get_output_file_name,
+    get_partial_data_name,
+    get_tokenized_path,
+    remove_file_name_from_path,
+)
+from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
 
 CHUNK_SIZE = 1000
 
 SPLIT_DIR_NAME = "splitted"
-
-
-def remove_file_name_from_path(path: str) -> str:
-    return os.path.join("/", *[item for item in path.split("/")[:-1] if item])
-
-
-def get_partial_data_name(
-    dir_path: str, file_name: str, total_proc_num: int, i: int
-) -> str:
-    return os.path.join(dir_path, f"{file_name}.{i}_{total_proc_num}")
-
-
-def get_output_file_name(
-    prefix: str, total_process_num: int, process_idx: int = None
-) -> str:
-    return (
-        f"phrase_indices.{prefix}.pkl.{process_idx}_{total_process_num}"
-        if total_process_num > 1
-        else f"phrase_indices.{prefix}.pkl"
-    )
-
-
-def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> str:
-    return os.path.join(dir_path, f"{filename}.{tokenizer.model_name}-tok.cache")
 
 
 def split_and_save_file(

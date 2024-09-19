@@ -2,13 +2,13 @@
 
 # Define the total variable
 begin=0
-end=47
-total=96
-num_devices=5  # Number of available devices (0 to num_devices-1)
+end=35
+total=144
+num_devices=8  # Number of available devices (0 to num_devices-1)
 
 # Print the command being executed
-echo "Running: python scripts/preprocess/extract_phrases.py +total=$total +op=split_file"
-python scripts/preprocess/extract_phrases.py +total=$total +op=split_file
+echo "Running: python scripts/preprocess/extract_phrases.py +total=$total +op=split_file +indices=[$begin,$end]"
+python scripts/preprocess/extract_phrases.py +total=$total +op=split_file +indices=[$begin,$end]
 
 # Loop from 0 to total-1
 for i in $(seq $begin $end); do

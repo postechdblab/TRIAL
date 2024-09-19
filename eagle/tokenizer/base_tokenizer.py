@@ -90,7 +90,7 @@ class Tokenizer:
         return self.cfg.special_tok + " " + text
 
     def tokenize(self, text: str, **kwargs) -> torch.Tensor:
-        return self.tokenize_batch(texts=[text], **kwargs)
+        return self.tokenize_batch(texts=[text], **kwargs)[0]
 
     def tokenize_batch(
         self,

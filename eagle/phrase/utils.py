@@ -1,10 +1,34 @@
-import functools
+import os
 import string
 from typing import *
 
 import torch
 
-from eagle.phrase.noun import SpacyModel
+from eagle.tokenizer import Tokenizer
+
+
+def remove_file_name_from_path(path: str) -> str:
+    return os.path.join("/", *[item for item in path.split("/")[:-1] if item])
+
+
+def get_partial_data_name(
+    dir_path: str, file_name: str, total_proc_num: int, i: int
+) -> str:
+    return os.path.join(dir_path, f"{file_name}.{i}_{total_proc_num}")
+
+
+def get_output_file_name(
+    prefix: str, total_process_num: int, process_idx: int = None
+) -> str:
+    return (
+        f"phrase_indices.{prefix}.pkl.{process_idx}_{total_process_num}"
+        if total_process_num > 1
+        else f"phrase_indices.{prefix}.pkl"
+    )
+
+
+def get_tokenized_path(tokenizer: Tokenizer, dir_path: str, filename: str) -> str:
+    return os.path.join(dir_path, f"{filename}.{tokenizer.model_name}-tok.cache")
 
 
 def _split_into_batches2(items: List[Any], bsize: int) -> List[List[Any]]:
@@ -352,47 +376,6 @@ def get_phrase_indices(
 
     phrase_indices_batches = _split_into_batches2(phrase_indices, bsize)
     return phrase_indices_batches
-
-
-# def get_phrase_indices(
-#     self,
-#     texts: List[str],
-#     tok_ids: torch.Tensor,
-#     masks: torch.Tensor,
-#     full_length_search: bool = False,
-#     is_query: bool = True,
-#     noun_only: bool = False,
-#     prop_noun_only: bool = False,
-# ) -> List[List[List[Tuple]]]:
-#     if is_query:
-#         max_len = self.query_tokenizer.query_maxlen
-#         tensorize = functools.partial(
-#             self.query_tokenizer.tensorize, full_length_search=full_length_search
-#         )
-#     else:
-#         max_len = self.doc_tokenizer.doc_maxlen
-#         tensorize = self.doc_tokenizer.tensorize
-#     if (tok_ids is None) or (masks is None):
-#         batches = tensorize(texts, bsize=256)
-#         # Handle outputs
-#         if not is_query:
-#             batches = batches[0]
-#         tok_ids, masks = zip(*batches)
-#         tok_ids = torch.cat(tok_ids, dim=0)
-#         masks = torch.cat(masks, dim=0)
-#     # Parse the texts and get the phrase indices
-#     parsed_texts = SpacyModel()(texts, max_token_num=max_len)
-#     phrase_indices = get_phrase_indices_(
-#         tok_ids,
-#         masks,
-#         self.query_tokenizer.tok,
-#         texts,
-#         parsed_texts,
-#         bsize=len(texts),
-#         noun_only=noun_only,
-#         prop_noun_only=prop_noun_only,
-#     )
-#     return phrase_indices
 
 
 def get_phrase_start_indices_batch(

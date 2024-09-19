@@ -1,6 +1,4 @@
-import functools
 import logging
-import string
 from typing import *
 
 import benepar
@@ -8,34 +6,31 @@ import hkkang_utils.data as data_utils
 import hkkang_utils.pattern as pattern_utils
 import spacy
 import tqdm
-from transformers import BertTokenizer
+from transformers import T5TokenizerFast
 
 # Initialize the BERT tokenizer
-bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+t5_tokenizer = T5TokenizerFast.from_pretrained("t5-base")
 
 MAX_TOKEN_LENGTH = 512
+MIN_SPACY_TOKEN_LENGTH_TO_CHECK = 200
 
 logger = logging.getLogger("Constituency")
-# nlp = spacy.load(
-#     "en_core_web_sm",
-#     disable=["tagger", "parser", "ner", "lemmatizer", "attribute_ruler"],
-# )
 nlp = spacy.blank("en")
 nlp.add_pipe("sentencizer")
 
 
-@spacy.language.Language.component("limit_token_length")
+@spacy.language.Language.component("truncate_exceeding_tokens")
 # Create a custom component to filter out long tokens
-def limit_token_length(doc) -> None:
+def truncate_exceeding_tokens(doc) -> None:
     # Check if the tokenized length exceeds the MAX_TOKEN_LENGTH
-    if len(doc) > MAX_TOKEN_LENGTH - 50:
+    if len(doc) > MIN_SPACY_TOKEN_LENGTH_TO_CHECK:
 
         # Tokenize the text using BERT tokenizer
-        bert_tokens = bert_tokenizer.tokenize(doc.text)
+        t5_tokens = t5_tokenizer.tokenize(doc.text)
 
         # Truncate the text using BERT token length
-        truncated_text = bert_tokenizer.convert_tokens_to_string(
-            bert_tokens[:MAX_TOKEN_LENGTH]
+        truncated_text = t5_tokenizer.convert_tokens_to_string(
+            t5_tokens[: MAX_TOKEN_LENGTH - 3]
         )
 
         # Create a new Doc object with the truncated text
@@ -64,36 +59,9 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
     def __init__(self, gpu_id: int = 0) -> None:
         if gpu_id != -1:
             spacy.require_gpu(gpu_id=gpu_id)
-        model_name = "en_core_web_sm"
-        try:
-            self.model = spacy.load(
-                model_name,
-                disable=[
-                    "tok2vec",
-                    "tagger",
-                    # "parser",
-                    "attribute_ruler",
-                    "lemmatizer",
-                    "ner",
-                ],
-            )
-        except:
-            import subprocess
-
-            subprocess.run(["python", "-m", "spacy", "download", model_name])
-            self.model = spacy.load(model_name)
-        self.model.add_pipe("limit_token_length")
-        try:
-            self.model.add_pipe(
-                "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
-            )
-        except:
-            import nltk
-
-            benepar.download("benepar_en3")
-            self.model.add_pipe(
-                "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
-            )
+        self.load_spacy_safely(model_name="en_core_web_lg")
+        self.model.add_pipe("truncate_exceeding_tokens")
+        self.add_pipe_benepar_safely()
 
     def __call__(
         self,
@@ -104,8 +72,10 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         # Parse the texts in batches
         parsed_results: List = []
 
-        for doc_batch in tqdm.tqdm(
-            self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
+        for i, doc_batch in enumerate(
+            tqdm.tqdm(
+                self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
+            )
         ):
             parsed_results.append(doc_batch)
         # Enumerate the results
@@ -118,6 +88,42 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
                 doc_phrases.extend(phrases_in_sent)
             all_doc_phrases.append(doc_phrases)
         return all_doc_phrases
+
+    def add_pipe_benepar_safely(self) -> None:
+        try:
+            self._add_benepar()
+        except:
+            import nltk
+
+            benepar.download("benepar_en3")
+            self._add_benepar()
+
+    def _add_benepar(self) -> None:
+        self.model.add_pipe(
+            "benepar", config={"model": "benepar_en3", "subbatch_max_tokens": 5000}
+        )
+
+    def load_spacy_safely(self, model_name: str) -> spacy.language.Language:
+        try:
+            model = self._load_parser_only_spacy(model_name=model_name)
+        except:
+            import subprocess
+
+            subprocess.run(["python", "-m", "spacy", "download", model_name])
+            model = self._load_parser_only_spacy(model_name=model_name)
+        self.model = model
+
+    def _load_parser_only_spacy(self, model_name: str) -> spacy.language.Language:
+        return spacy.load(
+            model_name,
+            disable=[
+                "tok2vec",
+                "tagger",
+                "attribute_ruler",
+                "lemmatizer",
+                "ner",
+            ],
+        )
 
     def traverse(self, tree: spacy.tokens.span.Span) -> Tuple[List, bool]:
         """Perform post-order traversal of the constituency tree.
