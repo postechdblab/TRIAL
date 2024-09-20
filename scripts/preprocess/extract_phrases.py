@@ -14,6 +14,7 @@ from omegaconf import DictConfig
 from eagle.dataset.utils import read_compressed
 from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
 from eagle.phrase.utils import (
+    SPLIT_DIR_NAME,
     get_output_file_name,
     get_partial_data_name,
     get_tokenized_path,
@@ -24,8 +25,6 @@ from eagle.tokenizer import Tokenizers
 logger = logging.getLogger("PhraseExtraction")
 
 CHUNK_SIZE = 1000
-
-SPLIT_DIR_NAME = "splitted"
 
 
 def split_and_save_file(

@@ -7,6 +7,9 @@ import torch
 from eagle.tokenizer import Tokenizer
 
 
+SPLIT_DIR_NAME = "splitted"
+
+
 def remove_file_name_from_path(path: str) -> str:
     return os.path.join("/", *[item for item in path.split("/")[:-1] if item])
 
@@ -14,7 +17,11 @@ def remove_file_name_from_path(path: str) -> str:
 def get_partial_data_name(
     dir_path: str, file_name: str, total_proc_num: int, i: int
 ) -> str:
-    return os.path.join(dir_path, f"{file_name}.{i}_{total_proc_num}")
+    if total_proc_num > 1:
+        path = os.path.join(dir_path, f"{file_name}.{i}_{total_proc_num}")
+    else:
+        path = os.path.join(dir_path, file_name)
+    return path
 
 
 def get_output_file_name(
