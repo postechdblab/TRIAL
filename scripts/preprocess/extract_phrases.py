@@ -326,6 +326,16 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
         )
         for process_idx in range(total_process_num)
     ]
+    # Check if there are any missing files
+    missing_files = []
+    for file_name in file_names:
+        file_path = os.path.join(dir_path, file_name)
+        if not os.path.exists(file_path):
+            missing_files.append(file_name)
+    if len(missing_files):
+        logger.warning(f"There are {len(missing_files)} missing files: {missing_files}")
+        exit(-1)
+
     # Read in all the splitted data
     all_data = []
     for file_name in file_names:
