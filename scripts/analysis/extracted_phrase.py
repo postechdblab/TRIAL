@@ -46,7 +46,7 @@ def examine(
         for sent_idx, (tokenized_toks, phrase_range) in enumerate(
             zip(tokenized_toks_in_sentences, phrase_ranges)
         ):
-            logger.info(f"Doc idx: {doc_idx} Sentence idx: {sent_idx}")
+            logger.info(f"Data idx: {doc_idx} Sentence idx: {sent_idx}")
             logger.info(f"Text: {sentences[sent_idx]}")
             # Print the extracted phrases
             for phraes_idx, (phrase_start, phrase_end) in enumerate(phrase_range):

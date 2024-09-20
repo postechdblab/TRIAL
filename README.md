@@ -26,12 +26,24 @@ dataset.name=beir-msmarco
 
 ## 3. Extract Phrases
 
-### Example: Extract phrase indices from query in msmarco dataset
+### Extract phrase range
+
+3.1. Set correct values for the variables in the script
 ```bash
-python scripts/preprocess/extract_phrases.py \
-+target_data=query \
-+total=1 \
-+i=0 \
-+op=extract \
-dataset.name=beir-msmarco \
+begin=0
+end=31
+total=166
+num_devices=8
+```
+
+3.2. Run the bash script to extract phrases. 
+
+This will start multiple processes and create multiple files containing the phrase ranges
+```bash
+bash scripts/bash/run_phrase_extraction.sh
+```
+
+### Merge the splitted files into one
+```bash
+python scripts/preprocess/extract_phrase.py +op=merge +total=${total} 
 ```
