@@ -23,12 +23,42 @@ logger = logging.getLogger("TokenizeData")
 CHUNK_SIZE = 1000
 
 
-def split_and_save_file(
+def split_and_save_wrapper(
     cfg: DictConfig, total_proc_num: int, start_idx: int = 0, end_idx: int = None
 ) -> None:
+    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
+
+    logger.info(f"Split and save files for query")
+    split_and_save_file(
+        dir_path=dir_path,
+        file_name=cfg.dataset.query_file,
+        total_proc_num=total_proc_num,
+        start_idx=start_idx,
+        end_idx=end_idx,
+    )
+
+    logger.info(f"Split and save files for document")
+    split_and_save_file(
+        dir_path=dir_path,
+        file_name=cfg.dataset.corpus_file,
+        total_proc_num=total_proc_num,
+        start_idx=start_idx,
+        end_idx=end_idx,
+    )
+    logger.info("Done!")
+
+
+def split_and_save_file(
+    dir_path: str,
+    file_name: str,
+    total_proc_num: int,
+    start_idx: int = 0,
+    end_idx: int = None,
+) -> None:
+    save_dir = os.path.join(dir_path, SPLIT_DIR_NAME)
+
     # Split the corpus file into multiple files
     logger.info(f"Splitting the corpus file into {total_proc_num} files...")
-
     if end_idx == None:
         logger.info(f"End index is not provided. Set it to {total_proc_num}")
         end_idx = total_proc_num
@@ -38,10 +68,8 @@ def split_and_save_file(
     indices_to_save = []
     for i in range(start_idx, end_idx + 1):
         file_path = get_partial_data_name(
-            dir_path=os.path.join(
-                cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME
-            ),
-            file_name=cfg.dataset.corpus_file,
+            dir_path=save_dir,
+            file_name=file_name,
             total_proc_num=total_proc_num,
             i=i,
         )
@@ -55,8 +83,7 @@ def split_and_save_file(
         logger.info(f"Files to save: {indices_to_save}")
 
     # Load the corpus
-    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
-    dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
+    dataset_path = os.path.join(dir_path, file_name)
     dataset: List = file_utils.read_json_file(dataset_path, auto_detect_extension=True)
     logger.info(f"Loaded {len(dataset)} text.")
 
@@ -64,7 +91,6 @@ def split_and_save_file(
     partial_processor = concurrent_utils.PartialProcessor(total_proc_n=total_proc_num)
     dataset_chunks: Generator = partial_processor.divide_into_chunks(dataset)
 
-    save_dir = os.path.join(dir_path, SPLIT_DIR_NAME)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -77,7 +103,7 @@ def split_and_save_file(
         # Get the file names
         file_path = get_partial_data_name(
             dir_path=save_dir,
-            file_name=cfg.dataset.corpus_file,
+            file_name=file_name,
             total_proc_num=total_proc_num,
             i=i,
         )
@@ -99,13 +125,13 @@ def merge_wrapper(cfg: DictConfig, total_proc_num: int) -> None:
         model_name=cfg.model.backbone_name,
     )
     # Merge tokenized query
-    # logger.info(f"Merging tokenized query...")
-    # merge(
-    #     cfg=cfg,
-    #     file_name=cfg.dataset.query_file,
-    #     tokenizer_name=tokenizers.q_tokenizer.model_name,
-    #     total_proc_num=total_proc_num,
-    # )
+    logger.info(f"Merging tokenized query...")
+    merge(
+        cfg=cfg,
+        file_name=cfg.dataset.query_file,
+        tokenizer_name=tokenizers.q_tokenizer.model_name,
+        total_proc_num=total_proc_num,
+    )
     logger.info(f"Merging tokenized document...")
     merge(
         cfg=cfg,
@@ -187,7 +213,6 @@ def tokenize_wrapper(
         current_proc_idx=current_proc_idx,
         file_name=cfg.dataset.query_file,
         tokenizer=tokenizers.q_tokenizer,
-        is_doc=False,
     )
 
     # Tokenize document
@@ -198,7 +223,6 @@ def tokenize_wrapper(
         current_proc_idx=current_proc_idx,
         file_name=cfg.dataset.corpus_file,
         tokenizer=tokenizers.d_tokenizer,
-        is_doc=True,
     )
     return None
 
@@ -209,8 +233,8 @@ def tokenize_and_save(
     current_proc_idx: int,
     file_name: str,
     tokenizer: Tokenizer,
-    is_doc: bool,
 ) -> None:
+    is_partial_data = total_proc_num > 1
     # Get partial processor
     partial_processor = concurrent_utils.PartialProcessor(
         total_proc_n=total_proc_num,
@@ -219,11 +243,11 @@ def tokenize_and_save(
 
     # Get dir path and file names
     dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
-    if is_doc and total_proc_num > 1:
+    if is_partial_data:
         dir_path = os.path.join(dir_path, SPLIT_DIR_NAME)
     output_file_name = f"{file_name}.{tokenizer.model_name}-tok.cache"
     # Get input and output dataset paths
-    if is_doc:
+    if is_partial_data:
         dataset_path = get_partial_data_name(
             dir_path=dir_path,
             file_name=file_name,
@@ -243,19 +267,23 @@ def tokenize_and_save(
     logger.info(f"Reading dataset from {dataset_path}")
 
     # Load dataset
-    if is_doc:
+    if is_partial_data:
         dataset = file_utils.read_pickle_file(dataset_path)
+        tok_ids: Dict = flat_and_tokenize(sub_dataset=dataset, tokenizer=tokenizer)
     else:
         dataset = file_utils.read_json_file(dataset_path, auto_detect_extension=True)
-
-    tok_ids: Dict = partial_processor(
-        data=dataset,
-        func=functools.partial(flat_and_tokenize, tokenizer=tokenizer),
-    )
+        tok_ids: Dict = partial_processor(
+            data=dataset,
+            func=functools.partial(flat_and_tokenize, tokenizer=tokenizer),
+        )
 
     # Save the tokenized query dataset
     logger.info(f"Saving {len(tok_ids)} tokenized data to {tokenized_output_path}")
-    file_utils.write_pickle_file(tok_ids, tokenized_output_path)
+    if is_partial_data:
+        file_utils.write_pickle_file(tok_ids, tokenized_output_path)
+    else:
+        save_compressed(tokenized_output_path, tok_ids)
+
     return None
 
 
@@ -314,11 +342,11 @@ def main(cfg: DictConfig) -> None:
             current_proc_idx=cfg.i,
         )
     elif cfg.op == "split_file":
-        split_and_save_file(
+        split_and_save_wrapper(
             cfg,
             total_proc_num=cfg.total,
-            start_idx=cfg.indices[0] if cfg.indices else 0,
-            end_idx=cfg.indices[1] if cfg.indices else None,
+            start_idx=cfg.indices[0] if "indices" in cfg and cfg.indices else 0,
+            end_idx=cfg.indices[1] if "indices" in cfg and cfg.indices else None,
         )
     else:
         raise ValueError(f"Invalid operation: {cfg.op}")
