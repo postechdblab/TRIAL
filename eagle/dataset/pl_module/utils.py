@@ -17,14 +17,10 @@ def tokenize_and_cache_corpus(
         tokenized_items = tokenizer.tokenize_batch(
             [f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(sublist) for sublist in list(corpus.values())]
         )
-        num_sent_per_doc = [len(item) for item in list(corpus.values())]
         # Back to list of lists
         items = {}
         for idx, key in enumerate(corpus.keys()):
             items[key] = tokenized_items["input_ids"][idx]
-        # assert start_idx == len(
-        #     tokenized_items["input_ids"]
-        # ), f"{start_idx} != {len(tokenized_items['input_ids'])}"
     else:
         raise ValueError("Corpus values must be either a string or a list of strings.")
 

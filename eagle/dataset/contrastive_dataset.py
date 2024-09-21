@@ -36,7 +36,11 @@ class ContrastiveDataset(BaseDataset):
         # Get token and attention mask
         q_tok_ids = self.tokenized_queries[qid]
         q_tok_att_mask = [True] * len(q_tok_ids)
-        d_tok_ids = [self.tokenized_corpus[pid] for pid in pos_doc_ids + neg_doc_ids]
+        # Get key type
+        key_type = type(list(self.tokenized_corpus.keys())[0])
+        d_tok_ids = [
+            self.tokenized_corpus[key_type(pid)] for pid in pos_doc_ids + neg_doc_ids
+        ]
         d_tok_att_mask = [[True] * len(item) for item in d_tok_ids]
 
         result = {

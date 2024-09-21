@@ -80,7 +80,6 @@ def is_token_included(src: set[int], target: List[int]) -> List[bool]:
 
 def add_query_ranges_and_mask(
     input_dict: Dict,
-    word_ranges: List[Tuple[int, int]],
     phrase_ranges: List[Tuple[int, int]],
     skip_ids: List[int],
     use_coarse_emb: bool,
@@ -101,7 +100,7 @@ def add_query_ranges_and_mask(
     if use_coarse_emb:
         # Create ranges
         q_ranges = fill_ranges(
-            combine_word_phrase_ranges(word_ranges, phrase_ranges),
+            phrase_ranges,
             max_len=len(input_dict["q_tok_ids"]),
         )
 

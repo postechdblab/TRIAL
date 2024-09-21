@@ -18,9 +18,7 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         self,
         dataset: BaseDataset,
         indices: Optional[List[int]] = None,
-        q_word_ranges: Optional[List[Tuple[int, int]]] = None,
         q_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
-        d_word_ranges: Optional[List[Tuple[int, int]]] = None,
         d_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
         corpus_mapping: Dict[int, int] = None,
         query_mapping: Dict[int, int] = None,
@@ -38,9 +36,7 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
                                                      d_skip_ids=d_skip_ids,
                                                      query_mapping=query_mapping,
                                                      corpus_mapping=corpus_mapping)
-        self.q_word_ranges = q_word_ranges
         self.q_phrase_ranges = q_phrase_ranges
-        self.d_word_ranges = d_word_ranges
         self.d_phrase_ranges = d_phrase_ranges
         self.query_mapping = query_mapping
         self.corpus_mapping = corpus_mapping
@@ -52,18 +48,10 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
             or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
         ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
         assert self.model_name == "eagle", f"model_name={model_name} is not supported"
-        if q_word_ranges is not None:
-            assert len(self.q_word_ranges) == len(
-                self.query_mapping
-            ), f"len(self.q_word_ranges)={len(self.q_word_ranges)}, len(self.dataset)={len(self.dataset)}"
         if self.q_phrase_ranges is not None:
             assert len(self.q_phrase_ranges) == len(
                 self.query_mapping
             ), f"len(self.query_mapping)={len(self.query_mapping)}, len(self.q_phrase_ranges)={len(self.q_phrase_ranges)}"
-        if d_word_ranges is not None:
-            assert len(self.d_word_ranges) == len(
-                self.corpus_mapping
-            ), f"len(self.d_word_ranges)={len(self.d_word_ranges)}, len(self.dataset)={len(self.dataset)}"
         if d_phrase_ranges is not None:
             assert len(self.d_phrase_ranges) == len(
                 self.corpus_mapping
@@ -92,15 +80,12 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         pindices = pindices[: self.nway]
 
         # Extract ranges
-        q_word_ranges: List[Tuple] = self.q_word_ranges[qidx]
         q_phrase_ranges: List[Tuple] = self.q_phrase_ranges[qidx]
-        d_word_ranges: List[List[Tuple]] = [self.d_word_ranges[i] for i in pindices]
         d_phrase_ranges: List[List[Tuple]] = [self.d_phrase_ranges[i] for i in pindices]
 
         # Add ranges and token mask
         data = add_query_ranges_and_mask(
             input_dict=data,
-            word_ranges=q_word_ranges,
             phrase_ranges=q_phrase_ranges,
             skip_ids=self.q_skip_ids,
             use_coarse_emb=True,
@@ -108,7 +93,6 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         if "doc_tok_ids" in data:
             data = add_doc_ranges_and_mask(
                 input_dict=data,
-                word_ranges=d_word_ranges,
                 phrase_ranges=d_phrase_ranges,
                 skip_ids=self.d_skip_ids,
                 use_coarse_emb=True,

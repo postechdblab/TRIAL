@@ -178,6 +178,7 @@ class BaseDataModule(L.LightningDataModule):
                 # Load full cache
                 tokenized_corpus = read_compressed(self.corpus_cache_path)
                 tokenized_queries = read_compressed(self.queries_cache_path)
+
                 # Sample 100 data
                 train_dataset: BaseDataset = self._load_train_data(
                     tokenized_queries=None, tokenized_corpus=None
@@ -194,12 +195,20 @@ class BaseDataModule(L.LightningDataModule):
 
                 debug_tokenized_corpus = {}
                 debug_tokenized_queries = {}
+
+                # Get data from tokenized queries
+                key_type = type(list(tokenized_queries.keys())[0])
                 for qid in qids:
-                    qid_str = str(qid)
-                    debug_tokenized_queries[qid_str] = tokenized_queries[qid_str]
+                    if key_type == str:
+                        qid = str(qid)
+                    debug_tokenized_queries[qid] = tokenized_queries[qid]
+
+                # Get data from tokenized corpus
+                key_type = type(list(tokenized_corpus.keys())[0])
                 for pid in pids:
-                    pid_str = str(pid)
-                    debug_tokenized_corpus[pid_str] = tokenized_corpus[pid_str]
+                    if key_type == str:
+                        pid = str(pid)
+                    debug_tokenized_corpus[pid] = tokenized_corpus[pid]
                 tokenized_corpus = debug_tokenized_corpus
                 tokenized_queries = debug_tokenized_queries
 
@@ -221,12 +230,9 @@ class BaseDataModule(L.LightningDataModule):
         )
 
         # Load word and phrase ranges for query and document
-        q_word_ranges = q_phrase_ranges = d_word_ranges = d_phrase_ranges = None
+        q_phrase_ranges = d_phrase_ranges = None
         if self.cfg_global.model.name == "eagle":
-            logger.info(f"Loading word and phrase ranges...")
-            # Load word ranges
-            q_word_ranges = file_utils.read_pickle_file(self.q_word_range_path)
-            d_word_ranges = file_utils.read_pickle_file(self.d_word_range_path)
+            logger.info(f"Loading phrase ranges...")
             # Load phrase ranges
             q_phrase_ranges = file_utils.read_pickle_file(self.q_phrase_range_path)
             d_phrase_ranges = file_utils.read_pickle_file(self.d_phrase_range_path)
@@ -241,9 +247,7 @@ class BaseDataModule(L.LightningDataModule):
         add_kwargs = {}
         if self.cfg_global.model.name == "eagle":
             add_kwargs = dict(
-                q_word_ranges=q_word_ranges,
                 q_phrase_ranges=q_phrase_ranges,
-                d_word_ranges=d_word_ranges,
                 d_phrase_ranges=d_phrase_ranges,
             )
 
