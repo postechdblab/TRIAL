@@ -83,7 +83,11 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         q_phrase_ranges: List[Tuple] = self.q_phrase_ranges[qidx]
         d_phrase_ranges: List[List[Tuple]] = [self.d_phrase_ranges[i] for i in pindices]
 
-        # TODO: Combine split sentences into one
+        # Modify the p ranges
+        q_phrase_ranges: List[Tuple] = combined_phrase_ranges_into_one_sentence(q_phrase_ranges)
+        d_phrase_ranges: List[List[Tuple]] = [combined_phrase_ranges_into_one_sentence(d_phrases) for d_phrases in d_phrase_ranges]
+
+        # Combine split sentences into one
         data = self.modify_data_to_combine_splitted_sentences(data)
 
         # Add ranges and token mask
@@ -100,6 +104,7 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
                 skip_ids=self.d_skip_ids,
                 use_coarse_emb=True,
             )
+
         # Add index for positive document
         data["pos_doc_idxs"] = [self.corpus_mapping[i] for i in data["pos_doc_ids"]]
 
@@ -195,17 +200,54 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         ## doc_tok_ids
         d_tok_ids:List[List[int]] = [combine_splitted_tok_ids(d) for d in data["doc_tok_ids"]]
 
-        # Combine masks
-        # TODO: Do we need this??
-        pass
+        # Replace the data
+        data["q_tok_ids"] = q_tok_ids
+        data["d_tok_ids"] = d_tok_ids
+
+        # Modify att_mask
+        # TODO: Need to check if this is correct
+        # raise NotImplementedError("Need to fix the below code.")
+        
+        # Create ones fill with q_tok_ids
+        data["q_tok_att_mask"] = torch.ones(q_tok_ids)
+        data["doc_tok_att_mask"] = torch.ones(d_tok_ids)
 
 
-def combined_q_ranges_into_one_sentence(phrase_ranges_list: List[List[Tuple[int, int]]]) -> None:
-    last_idx = 0
-    for p_ranges in phrase_ranges_list:
-        pass
+        # Create 
+
+        return data
+
+
+def combined_phrase_ranges_into_one_sentence(phrase_ranges_list: List[List[Tuple[int, int]]]) -> None:
+    # Figure out the number to add for each sentences
+    number_to_adds = [] 
+    for sent_idx, p_ranges in enumerate(phrase_ranges_list):    
+        if sent_idx == 0 :
+            number_to_adds.append(0)
+            continue
+        # Get the last number to have the cumulative number
+        base_number = number_to_adds[-1]
+        # Add the max value of the previous sentence
+        previous_token_cnt = phrase_ranges_list[sent_idx-1][-1][[-1]]
+        # Remove the first two special tokens if the previous sentence is not the first sentence
+        if sent_idx > 1:
+            previous_token_cnt - 2
+        number_to_adds.append(base_number + previous_token_cnt)
     
-    pass
+    # Modify the token ranges
+    for sent_idx, (number_to_add, p_ranges) in enumerate(zip(number_to_adds, phrase_ranges_list)):
+        # Create new p_ranges
+
+        # Remove the ranges for the first two tokens
+        if sent_idx != 0:
+            p_ranges = p_ranges[2:]
+        # Modify the token idx
+        p_ranges = [(s+number_to_add, e+number_to_add) for s, e in p_ranges]
+        
+        # update the data
+        phrase_ranges_list[sent_idx] =  p_ranges
+    
+    return phrase_ranges_list
 
 def combine_splitted_tok_ids(tok_ids_list: List[List[int]]) -> List[int]:
     # This needs to be changed when the tokenizer changes
