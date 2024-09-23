@@ -83,6 +83,9 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         q_phrase_ranges: List[Tuple] = self.q_phrase_ranges[qidx]
         d_phrase_ranges: List[List[Tuple]] = [self.d_phrase_ranges[i] for i in pindices]
 
+        # TODO: Combine split sentences into one
+        data = self.modify_data_to_combine_splitted_sentences(data)
+
         # Add ranges and token mask
         data = add_query_ranges_and_mask(
             input_dict=data,
@@ -180,3 +183,39 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
             new_dict[key] = padded_values
 
         return new_dict
+
+    def modify_data_to_combine_splitted_sentences(self, data: Dict) -> Dict:
+        # Check if the data is already combined. We are getting the shallow copy
+        if "is_combined" in data.keys():
+            return data
+
+        # Combine sentences
+        q_tok_ids: List[int] = combine_splitted_tok_ids(data["q_tok_ids"])
+
+        ## doc_tok_ids
+        d_tok_ids:List[List[int]] = [combine_splitted_tok_ids(d) for d in data["doc_tok_ids"]]
+
+        # Combine masks
+        # TODO: Do we need this??
+        pass
+
+
+def combined_q_ranges_into_one_sentence(phrase_ranges_list: List[List[Tuple[int, int]]]) -> None:
+    last_idx = 0
+    for p_ranges in phrase_ranges_list:
+        pass
+    
+    pass
+
+def combine_splitted_tok_ids(tok_ids_list: List[List[int]]) -> List[int]:
+    # This needs to be changed when the tokenizer changes
+    BEGIN_SPECIAL_TOK_NUM = 2
+    # Remove special tokens in front
+    tok_ids = [tok_ids[BEGIN_SPECIAL_TOK_NUM:] for tok_ids in tok_ids_list]
+    # Combine sentences
+    tok_ids = list_utils.do_flatten_list(tok_ids)
+    # Append special tokens at the beginning of the sentence only
+    tok_ids = tok_ids_list[0][:-BEGIN_SPECIAL_TOK_NUM] + tok_ids
+    
+    return tok_ids
+    
