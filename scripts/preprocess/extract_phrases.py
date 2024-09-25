@@ -252,8 +252,7 @@ def extract_phrase_indices(
     )
 
     logger.info(f"Begin to extract phrases from {len(dataset_chunk)} texts")
-    all_results: Dict[int, List[List[Tuple[int]]]] = {}
-    all_results = []
+    all_results: Dict[Union[int, str], List[List[Tuple[int]]]] = {}
     for ci, (d_chunk, t_chunk) in enumerate(
         tqdm.tqdm(
             zip(mini_dataset_chunks, mini_tokenized_data_chunks, strict=True),
@@ -285,9 +284,10 @@ def extract_phrase_indices(
 
         # Back to the original text by combining the sentences
         sent_idx = 0
-        for sent_len in sent_lens:
+        for datum, sent_len in zip(d_chunk, sent_lens, strict=True):
+            _id = datum["_id"]
             sent_results = results[sent_idx : sent_idx + sent_len]
-            all_results.append(sent_results)
+            all_results[_id] = sent_results
             sent_idx += sent_len
 
         assert sent_idx == len(
@@ -336,11 +336,15 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
         exit(-1)
 
     # Read in all the splitted data
-    all_data = []
+    all_data: Dict = {}
     for file_name in file_names:
         file_path = os.path.join(dir_path, file_name)
-        data = file_utils.read_pickle_file(file_path)
-        all_data.extend(data)
+        data: Dict = file_utils.read_pickle_file(file_path)
+        # Assert that there are no repeated keys and add it to the all_data
+        for new_key, new_datum in data.items():
+            if new_key in all_data:
+                raise ValueError(f"Repated key: {new_key}, data: {new_datum}")
+            all_data[new_key] = new_datum
 
     # Save the merged data
     output_file_path = os.path.join(

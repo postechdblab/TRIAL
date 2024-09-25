@@ -28,6 +28,8 @@ from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("DataModule")
 
+DEBUG_FILE_SUFFIX = ".debug"
+
 
 class BaseDataModule(L.LightningDataModule):
     def __init__(self, cfg: DictConfig, skip_train: bool = False):
@@ -57,14 +59,16 @@ class BaseDataModule(L.LightningDataModule):
         return self.corpus_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
+    def debug_corpus_cache_path(self) -> str:
+        return self.corpus_cache_path + DEBUG_FILE_SUFFIX
+
+    @property
     def queries_cache_path(self) -> str:
         return self.queries_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
-    def q_word_range_path(self) -> str:
-        return os.path.join(
-            self.cfg.dir_path, self.cfg.name, self.cfg.q_word_range_file
-        )
+    def debug_queries_cache_path(self) -> str:
+        return self.queries_cache_path + DEBUG_FILE_SUFFIX
 
     @property
     def q_phrase_range_path(self) -> str:
@@ -73,16 +77,18 @@ class BaseDataModule(L.LightningDataModule):
         )
 
     @property
-    def d_word_range_path(self) -> str:
-        return os.path.join(
-            self.cfg.dir_path, self.cfg.name, self.cfg.d_word_range_file
-        )
+    def debug_q_phrase_range_path(self) -> str:
+        return self.q_phrase_range_path + DEBUG_FILE_SUFFIX
 
     @property
     def d_phrase_range_path(self) -> str:
         return os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.d_phrase_range_file
         )
+
+    @property
+    def debug_d_phrase_range_path(self) -> str:
+        return self.d_phrase_range_path + DEBUG_FILE_SUFFIX
 
     @property
     def dataset_wrapper_cls(self) -> Type[BaseDataset]:
@@ -122,10 +128,26 @@ class BaseDataModule(L.LightningDataModule):
             save_compressed(cache_path, mapping)
         return mapping
 
+    def _load_debug_qids_and_pids(self) -> Tuple[List, List]:
+        # Sample 1000 data
+        train_dataset_sampled: BaseDataset = self._load_train_data(
+            tokenized_queries=None, tokenized_corpus=None
+        )
+        val_dataset_sampled: BaseDataset = self._load_val_data(
+            tokenized_queries=None, tokenized_corpus=None
+        )
+        # Filter with debug data
+        qids = set()
+        pids = set()
+        for datum in train_dataset_sampled.data + val_dataset_sampled.data:
+            qids.add(datum[0])
+            pids |= set(datum[1:])
+
+        return qids, pids
+
     def prepare_data(self) -> None:
         """
         Preprocess data for single process before spawning.
-        Create cache if not in debug mode.
         """
         # Create a tokenized cache for entire document corpus
         if not os.path.exists(self.corpus_cache_path):
@@ -155,6 +177,88 @@ class BaseDataModule(L.LightningDataModule):
             )
             save_compressed(self.queries_cache_path, q_items)
 
+        # Create cache for debugging
+        if self.is_debug:
+            # Load qids and pids to be used during debug
+            qids_for_debug = pids_for_debug = None
+            if any(
+                [
+                    not os.path.exists(self.debug_corpus_cache_path),
+                    not os.path.exists(self.debug_queries_cache_path),
+                    not os.path.exists(self.debug_q_phrase_range_path),
+                    not os.path.exists(self.debug_d_phrase_range_path),
+                ]
+            ):
+                logger.info(f"Loading qids and pids for debug...")
+                qids_for_debug, pids_for_debug = self._load_debug_qids_and_pids()
+
+            # Create debug cache for corpus and queries
+            if not os.path.exists(self.debug_corpus_cache_path) or not os.path.exists(
+                self.debug_queries_cache_path
+            ):
+                logger.info(f"Creating debug corpus and queries cache...")
+
+                # Load full cache
+                tokenized_corpus = read_compressed(self.corpus_cache_path)
+                tokenized_queries = read_compressed(self.queries_cache_path)
+
+                debug_tokenized_corpus = {}
+                debug_tokenized_queries = {}
+
+                # Get data from tokenized queries
+                key_type = type(list(tokenized_queries.keys())[0])
+                for qid in qids_for_debug:
+                    if key_type == str:
+                        qid = str(qid)
+                    debug_tokenized_queries[qid] = tokenized_queries[qid]
+
+                # Get data from tokenized corpus
+                key_type = type(list(tokenized_corpus.keys())[0])
+                for pid in pids_for_debug:
+                    if key_type == str:
+                        pid = str(pid)
+                    debug_tokenized_corpus[pid] = tokenized_corpus[pid]
+
+                # Save debug cache
+                save_compressed(self.debug_corpus_cache_path, debug_tokenized_corpus)
+                save_compressed(self.debug_queries_cache_path, debug_tokenized_queries)
+
+            if not os.path.exists(self.debug_q_phrase_range_path) or not os.path.exists(
+                self.debug_d_phrase_range_path
+            ):
+                logger.info(f"Creating debug phrase ranges...")
+
+                # Load the phrase ranges and filter with debug data
+                q_phrase_ranges: Dict[str, List[Tuple[int, int]]] = (
+                    file_utils.read_pickle_file(self.q_phrase_range_path)
+                )
+                d_phrase_ranges = file_utils.read_pickle_file(self.d_phrase_range_path)
+
+                # Figure out the key types
+                q_key_type = type(list(q_phrase_ranges.keys())[0])
+                d_key_type = type(list(d_phrase_ranges.keys())[0])
+
+                # Get the phrase ranges for the sampled data
+                q_phrase_ranges_sampled = [
+                    q_phrase_ranges[q_key_type(key)] for key in qids_for_debug
+                ]
+                d_phrase_ranges_sampled = [
+                    d_phrase_ranges[d_key_type(key)] for key in pids_for_debug
+                ]
+                del q_phrase_ranges
+                del d_phrase_ranges
+
+                # Save the debug phrase ranges
+                logger.info(
+                    f"Saving {len(q_phrase_ranges_sampled)} and {len(d_phrase_ranges_sampled)} sampled phrase ranges..."
+                )
+                file_utils.write_pickle_file(
+                    q_phrase_ranges_sampled, self.debug_q_phrase_range_path
+                )
+                file_utils.write_pickle_file(
+                    d_phrase_ranges_sampled, self.debug_d_phrase_range_path
+                )
+
         logger.info(f"Dataset preprocessed and saved!")
 
     def setup(self, stage: Optional[str] = None) -> None:
@@ -166,58 +270,15 @@ class BaseDataModule(L.LightningDataModule):
         logger.info(f"Loading tokenized corpus and queries...")
 
         if self.is_debug:
-            # Load debug cache
-            debug_corpus_cache_path = self.corpus_cache_path + ".debug"
-            debug_queries_cache_path = self.queries_cache_path + ".debug"
-            if os.path.exists(debug_corpus_cache_path) and os.path.exists(
-                debug_queries_cache_path
-            ):
-                tokenized_corpus = read_compressed(debug_corpus_cache_path)
-                tokenized_queries = read_compressed(debug_queries_cache_path)
-            else:
-                # Load full cache
-                tokenized_corpus = read_compressed(self.corpus_cache_path)
-                tokenized_queries = read_compressed(self.queries_cache_path)
-
-                # Sample 100 data
-                train_dataset: BaseDataset = self._load_train_data(
-                    tokenized_queries=None, tokenized_corpus=None
-                )
-                val_dataset: BaseDataset = self._load_val_data(
-                    tokenized_queries=None, tokenized_corpus=None
-                )
-                # Filter with debug data
-                qids = set()
-                pids = set()
-                for datum in train_dataset.data + val_dataset.data:
-                    qids.add(datum[0])
-                    pids |= set(datum[1:])
-
-                debug_tokenized_corpus = {}
-                debug_tokenized_queries = {}
-
-                # Get data from tokenized queries
-                key_type = type(list(tokenized_queries.keys())[0])
-                for qid in qids:
-                    if key_type == str:
-                        qid = str(qid)
-                    debug_tokenized_queries[qid] = tokenized_queries[qid]
-
-                # Get data from tokenized corpus
-                key_type = type(list(tokenized_corpus.keys())[0])
-                for pid in pids:
-                    if key_type == str:
-                        pid = str(pid)
-                    debug_tokenized_corpus[pid] = tokenized_corpus[pid]
-                tokenized_corpus = debug_tokenized_corpus
-                tokenized_queries = debug_tokenized_queries
-
-                # Save debug cache
-                save_compressed(debug_corpus_cache_path, tokenized_corpus)
-                save_compressed(debug_queries_cache_path, tokenized_queries)
+            tokenized_corpus_path = self.debug_corpus_cache_path
+            tokenized_queries_path = self.debug_queries_cache_path
         else:
-            tokenized_corpus = read_compressed(self.corpus_cache_path)
-            tokenized_queries = read_compressed(self.queries_cache_path)
+            tokenized_corpus_path = self.corpus_cache_path
+            tokenized_queries_path = self.queries_cache_path
+
+        # Load corpus and queries
+        tokenized_corpus = read_compressed(tokenized_corpus_path)
+        tokenized_queries = read_compressed(tokenized_queries_path)
 
         # Load train and val data
         train_dataset = []
@@ -233,9 +294,18 @@ class BaseDataModule(L.LightningDataModule):
         q_phrase_ranges = d_phrase_ranges = None
         if self.cfg_global.model.name == "eagle":
             logger.info(f"Loading phrase ranges...")
+            if self.is_debug:
+                q_phrase_range_path = self.debug_q_phrase_range_path
+                d_phrase_range_path = self.debug_d_phrase_range_path
+            else:
+                q_phrase_range_path = self.q_phrase_range_path
+                d_phrase_range_path = self.d_phrase_range_path
+
             # Load phrase ranges
-            q_phrase_ranges = file_utils.read_pickle_file(self.q_phrase_range_path)
-            d_phrase_ranges = file_utils.read_pickle_file(self.d_phrase_range_path)
+            q_phrase_ranges: List[List[Tuple[int, int]]] = file_utils.read_pickle_file(
+                q_phrase_range_path
+            )
+            d_phrase_ranges = file_utils.read_pickle_file(d_phrase_range_path)
 
         # Shuffle data to avoid qid repetition in the mini-batch
         indices = None

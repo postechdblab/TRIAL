@@ -207,16 +207,14 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         # Modify att_mask
         # TODO: Need to check if this is correct
         # raise NotImplementedError("Need to fix the below code.")
-        
+
         # Create ones fill with q_tok_ids
         data["q_tok_att_mask"] = torch.ones(q_tok_ids)
         data["doc_tok_att_mask"] = torch.ones(d_tok_ids)
 
-
-        # Create 
+        # Create attention mask
 
         return data
-
 
 def combined_phrase_ranges_into_one_sentence(phrase_ranges_list: List[List[Tuple[int, int]]]) -> None:
     # Figure out the number to add for each sentences

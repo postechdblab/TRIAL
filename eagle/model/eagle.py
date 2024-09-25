@@ -12,7 +12,6 @@ from eagle.model.objective import (
     get_target_scale_tensor,
 )
 from eagle.model.utils import get_vectors_from_ranges, get_weight_layer
-from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenizer import Tokenizers
 
 logger = logging.getLogger("EAGLE")
