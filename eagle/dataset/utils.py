@@ -96,7 +96,7 @@ def add_query_ranges_and_mask(
 
     # Create new q_tok_mask
     q_phrase_mask = None
-    q_scatter_indices = None
+    q_phrase_scatter_indices = None
     if use_coarse_emb:
         # Create ranges
         q_ranges = fill_ranges(
@@ -110,10 +110,10 @@ def add_query_ranges_and_mask(
         ).float()
 
         # Create scatter indices
-        q_scatter_indices = convert_range_for_scatter(q_ranges)
+        q_phrase_scatter_indices = convert_range_for_scatter(q_ranges)
     # Add extract data to the input_dict
     input_dict["q_phrase_mask"] = q_phrase_mask
-    input_dict["q_scatter_indices"] = q_scatter_indices
+    input_dict["q_phrase_scatter_indices"] = q_phrase_scatter_indices
 
     if return_ranges:
         return input_dict, q_ranges
@@ -122,7 +122,6 @@ def add_query_ranges_and_mask(
 
 def add_doc_ranges_and_mask(
     input_dict: Dict,
-    word_ranges: List[List[Tuple[int, int]]],
     phrase_ranges: List[List[Tuple[int, int]]],
     skip_ids: List[int],
     use_coarse_emb: bool,
@@ -140,30 +139,19 @@ def add_doc_ranges_and_mask(
     input_dict["doc_tok_mask"] = doc_tok_mask
     # Create doc_phrase_mask
     doc_phrase_mask = None
-    doc_scatter_indices = None
+    doc_phrase_scatter_indices = None
     if use_coarse_emb:
         # Create ranges
         doc_ranges = []
-        assert len(word_ranges) == len(
-            phrase_ranges
-        ), f"Word and phrase ranges are not consistent: {len(word_ranges)} vs {len(phrase_ranges)}"
-        for i, (d_word_range, d_phrase_range) in enumerate(
-            zip(word_ranges, phrase_ranges)
-        ):
+        for i, d_phrase_range in enumerate(phrase_ranges):
             max_len = len(input_dict["doc_tok_ids"][i])
-            d_word_range = [
-                (start, end) for start, end in d_word_range if end <= max_len
-            ]
             d_phrase_range = [
                 (start, end) for start, end in d_phrase_range if end <= max_len
             ]
-            doc_ranges.append(
-                fill_ranges(
-                    combine_word_phrase_ranges(d_word_range, d_phrase_range),
-                    max_len=max_len,
-                )
-            )
-        doc_scatter_indices = [convert_range_for_scatter(item) for item in doc_ranges]
+            doc_ranges.append(fill_ranges(d_phrase_range, max_len=max_len))
+        doc_phrase_scatter_indices = [
+            convert_range_for_scatter(item) for item in doc_ranges
+        ]
         new_doc_tok_mask = []
         for i, items in enumerate(doc_ranges):
             new_doc_tok_mask.append(
@@ -174,7 +162,7 @@ def add_doc_ranges_and_mask(
             )
         doc_phrase_mask = pad_sequence(new_doc_tok_mask, batch_first=True).float()
     # Append extract data to the input_dict
-    input_dict["doc_scatter_indices"] = doc_scatter_indices
+    input_dict["doc_phrase_scatter_indices"] = doc_phrase_scatter_indices
     input_dict["doc_phrase_mask"] = doc_phrase_mask
 
     if return_ranges:

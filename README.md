@@ -15,12 +15,24 @@ python scripts/preprocess/split_text_to_sentences.py +target_data=document datas
 
 ## 2. Tokenize sentences
 Tokenization is done for both queries and documents. The tokenized data is saved in the same directory as the original data.
+
+2.1. Set correct values for the variables in the script `scripts/bash/run_tokenization.sh`
 ```bash
-python scripts/preprocess/tokenize_data.py \
-+total=1 \
-+i=0 \
-+op=tokenize \
-dataset.name=beir-msmarco
+begin=0
+end=63
+total=64
+num_devices=2
+```
+
+2.2.
+```bash
+bash scripts/bash/run_tokenization.sh
+```
+
+2.3.
+Merge the results
+```bash
+python scripts/preprocess/tokenization.py +op=merge +total=${total} 
 ```
 
 

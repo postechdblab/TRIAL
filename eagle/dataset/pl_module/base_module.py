@@ -1,5 +1,4 @@
 import abc
-import functools
 import logging
 import os
 from typing import *
@@ -20,9 +19,9 @@ from eagle.dataset.utils import (
     save_compressed,
 )
 from eagle.dataset.wrapper import (
+    DatasetWrapperForColBERT,
     DatasetWrapperForCrossEncoder,
     DatasetWrapperForEAGLE,
-    DatasetWrapperForColBERT,
 )
 from eagle.tokenizer import Tokenizers
 
@@ -99,34 +98,6 @@ class BaseDataModule(L.LightningDataModule):
         elif self.cfg_global.model.name == "colbert":
             return DatasetWrapperForColBERT
         raise ValueError(f"Invalid model name: {self.cfg_global.model.name}")
-
-    @functools.cached_property
-    def corpus_mapping(self) -> Dict[str, int]:
-        """Map document keys to indices."""
-        path = self.corpus_path
-        assert path.endswith(".jsonl"), f"path={path}"
-        cache_path = path + ".mapping.cache"
-        if os.path.exists(cache_path):
-            mapping = read_compressed(cache_path)
-        else:
-            collection: Dict[str, str] = read_corpus(path)
-            mapping = {key: idx for idx, key in enumerate(collection.keys())}
-            save_compressed(cache_path, mapping)
-        return mapping
-
-    @functools.cached_property
-    def query_mapping(self) -> Dict[str, int]:
-        """Map query keys to indices."""
-        path = self.queries_path
-        assert path.endswith(".jsonl"), f"path={path}"
-        cache_path = path + ".mapping.cache"
-        if os.path.exists(cache_path):
-            mapping = read_compressed(cache_path)
-        else:
-            queries = file_utils.read_json_file(path, auto_detect_extension=True)
-            mapping = {str(item["_id"]): idx for idx, item in enumerate(queries)}
-            save_compressed(cache_path, mapping)
-        return mapping
 
     def _load_debug_qids_and_pids(self) -> Tuple[List, List]:
         # Sample 1000 data
@@ -239,12 +210,12 @@ class BaseDataModule(L.LightningDataModule):
                 d_key_type = type(list(d_phrase_ranges.keys())[0])
 
                 # Get the phrase ranges for the sampled data
-                q_phrase_ranges_sampled = [
-                    q_phrase_ranges[q_key_type(key)] for key in qids_for_debug
-                ]
-                d_phrase_ranges_sampled = [
-                    d_phrase_ranges[d_key_type(key)] for key in pids_for_debug
-                ]
+                q_phrase_ranges_sampled = {
+                    key: q_phrase_ranges[q_key_type(key)] for key in qids_for_debug
+                }
+                d_phrase_ranges_sampled = {
+                    key: d_phrase_ranges[d_key_type(key)] for key in pids_for_debug
+                }
                 del q_phrase_ranges
                 del d_phrase_ranges
 
@@ -328,8 +299,6 @@ class BaseDataModule(L.LightningDataModule):
                 indices=indices,
                 nway=self.cfg_global.training.nway,
                 cache_nway=self.cfg.cache_nway,
-                corpus_mapping=self.corpus_mapping,
-                query_mapping=self.query_mapping,
                 q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
                 d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
                 model_name=self.cfg_global.model.name,
@@ -340,8 +309,6 @@ class BaseDataModule(L.LightningDataModule):
             dataset=val_dataset,
             nway=self.cfg.val.override_nway,
             cache_nway=self.cfg.val.override_nway,
-            corpus_mapping=self.corpus_mapping,
-            query_mapping=self.query_mapping,
             q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
             d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
             model_name=self.cfg_global.model.name,

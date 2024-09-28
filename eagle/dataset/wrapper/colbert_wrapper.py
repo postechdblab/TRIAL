@@ -108,14 +108,14 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
             if input_dics[0][key] is None:
                 new_dict[key] = None
                 continue
-            if key == "q_scatter_indices":
+            if key == "q_phrase_scatter_indices":
                 padded_values = collate_ranges(
                     [
                         torch.tensor(dic[key], dtype=get_dtype(key), device="cpu")
                         for dic in input_dics
                     ]
                 )
-            elif key == "doc_scatter_indices":
+            elif key == "doc_phrase_scatter_indices":
                 padded_values = list_utils.do_flatten_list(
                     [input_dic[key] for input_dic in input_dics]
                 )

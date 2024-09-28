@@ -14,8 +14,6 @@ class BaseDatasetWrapper:
         indices: Optional[List[int]] = None,
         nway: int = None,
         cache_nway: int = None,
-        query_mapping: Dict[int, int] = None,
-        corpus_mapping: Dict[int, int] = None,
         q_skip_ids: List[int] = None,
         d_skip_ids: List[int] = None,
     ):
@@ -25,8 +23,6 @@ class BaseDatasetWrapper:
         self.cache_nway = cache_nway
         self.q_skip_ids = q_skip_ids
         self.d_skip_ids = d_skip_ids
-        self.query_mapping = query_mapping
-        self.corpus_mapping = corpus_mapping
         # Check if variables are valid
         assert len(self.dataset) == len(
             self.indices
