@@ -19,8 +19,6 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
         self,
         dataset: BaseDataset,
         indices: Optional[List[int]] = None,
-        q_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
-        d_phrase_ranges: Optional[List[Tuple[int, int]]] = None,
         nway: int = None,
         cache_nway: int = None,
         q_skip_ids: List[int] = None,
@@ -33,8 +31,6 @@ class DatasetWrapperForEAGLE(BaseDatasetWrapper):
                                                      cache_nway=cache_nway, 
                                                      q_skip_ids=q_skip_ids, 
                                                      d_skip_ids=d_skip_ids)
-        self.q_phrase_ranges = q_phrase_ranges
-        self.d_phrase_ranges = d_phrase_ranges
         self.model_name = model_name
         # Check if variables are valid
         assert (

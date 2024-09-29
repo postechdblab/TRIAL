@@ -15,8 +15,17 @@ class InferenceDataset(BaseDataset):
         cfg_dataset: DictConfig,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
+        query_phrase_ranges: Dict = None,
+        corpus_phrase_ranges: Dict = None,
     ):
-        super().__init__(cfg=cfg, cfg_dataset=cfg_dataset)
+        super().__init__(
+            cfg=cfg,
+            cfg_dataset=cfg_dataset,
+            tokenized_queries=tokenized_queries,
+            tokenized_corpus=tokenized_corpus,
+            query_phrase_ranges=query_phrase_ranges,
+            corpus_phrase_ranges=corpus_phrase_ranges,
+        )
         self.tokenized_queries = tokenized_queries
         self.tokenized_corpus = tokenized_corpus
 

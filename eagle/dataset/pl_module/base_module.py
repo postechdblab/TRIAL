@@ -11,10 +11,8 @@ from torch.utils.data import DataLoader
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
 from eagle.dataset.utils import (
-    get_indices_to_avoid_repeated_qids_in_minibatch,
     read_compressed,
     read_corpus,
-    read_qrels_qids,
     read_queries,
     save_compressed,
 )
@@ -45,6 +43,7 @@ class BaseDataModule(L.LightningDataModule):
     def is_debug(self) -> bool:
         return self.cfg.is_debug
 
+    # Paths
     @property
     def corpus_path(self) -> str:
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.corpus_file)
@@ -54,20 +53,32 @@ class BaseDataModule(L.LightningDataModule):
         return os.path.join(self.cfg.dir_path, self.cfg.name, self.cfg.query_file)
 
     @property
-    def corpus_cache_path(self) -> str:
+    def tokenized_corpus_cache_path(self) -> str:
         return self.corpus_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
-    def debug_corpus_cache_path(self) -> str:
-        return self.corpus_cache_path + DEBUG_FILE_SUFFIX
+    def debug_tokenized_corpus_cache_path(self) -> str:
+        return self.tokenized_corpus_cache_path + DEBUG_FILE_SUFFIX
 
     @property
-    def queries_cache_path(self) -> str:
+    def target_tokenized_corpus_cache_path(self) -> str:
+        if self.is_debug:
+            return self.debug_tokenized_corpus_cache_path
+        return self.tokenized_corpus_cache_path
+
+    @property
+    def tokenized_queries_cache_path(self) -> str:
         return self.queries_path + f".{self.tokenizers.model_name}-tok.cache"
 
     @property
-    def debug_queries_cache_path(self) -> str:
-        return self.queries_cache_path + DEBUG_FILE_SUFFIX
+    def debug_tokenized_queries_cache_path(self) -> str:
+        return self.target_tokenized_queries_cache_path + DEBUG_FILE_SUFFIX
+
+    @property
+    def target_tokenized_queries_cache_path(self) -> str:
+        if self.is_debug:
+            return self.debug_tokenized_queries_cache_path
+        return self.target_tokenized_queries_cache_path
 
     @property
     def q_phrase_range_path(self) -> str:
@@ -80,6 +91,12 @@ class BaseDataModule(L.LightningDataModule):
         return self.q_phrase_range_path + DEBUG_FILE_SUFFIX
 
     @property
+    def target_q_phrase_range_path(self) -> str:
+        if self.is_debug:
+            return self.debug_q_phrase_range_path
+        return self.q_phrase_range_path
+
+    @property
     def d_phrase_range_path(self) -> str:
         return os.path.join(
             self.cfg.dir_path, self.cfg.name, self.cfg.d_phrase_range_file
@@ -88,6 +105,12 @@ class BaseDataModule(L.LightningDataModule):
     @property
     def debug_d_phrase_range_path(self) -> str:
         return self.d_phrase_range_path + DEBUG_FILE_SUFFIX
+
+    @property
+    def target_d_phrase_range_path(self) -> str:
+        if self.is_debug:
+            return self.debug_d_phrase_range_path
+        return self.d_phrase_range_path
 
     @property
     def dataset_wrapper_cls(self) -> Type[BaseDataset]:
@@ -121,7 +144,7 @@ class BaseDataModule(L.LightningDataModule):
         Preprocess data for single process before spawning.
         """
         # Create a tokenized cache for entire document corpus
-        if not os.path.exists(self.corpus_cache_path):
+        if not os.path.exists(self.tokenized_corpus_cache_path):
             logger.info(f"Reading all documents...")
             d_corpus = read_corpus(self.corpus_path)
             logger.info("Tokenizing and caching document corpus...")
@@ -130,12 +153,12 @@ class BaseDataModule(L.LightningDataModule):
             )
             # Write the cache
             logger.info(
-                f"Saving {len(d_items)} tokenized document cache to {self.corpus_cache_path}"
+                f"Saving {len(d_items)} tokenized document cache to {self.tokenized_corpus_cache_path}"
             )
-            save_compressed(self.corpus_cache_path, d_items)
+            save_compressed(self.tokenized_corpus_cache_path, d_items)
 
         # Create a tokenized cache for entire query set
-        if not os.path.exists(self.queries_cache_path):
+        if not os.path.exists(self.target_tokenized_queries_cache_path):
             logger.info("Reading all queries...")
             q_corpus = read_queries(self.queries_path)
             logger.info("Tokenizing and caching query set...")
@@ -144,18 +167,18 @@ class BaseDataModule(L.LightningDataModule):
             )
             # Write the cache
             logger.info(
-                f"Saving {len(q_items)} tokenized query cache to {self.queries_cache_path}"
+                f"Saving {len(q_items)} tokenized query cache to {self.target_tokenized_queries_cache_path}"
             )
-            save_compressed(self.queries_cache_path, q_items)
+            save_compressed(self.target_tokenized_queries_cache_path, q_items)
 
-        # Create cache for debugging
+        # Create toy cache (i.e., small sampled data) for debugging
         if self.is_debug:
             # Load qids and pids to be used during debug
             qids_for_debug = pids_for_debug = None
             if any(
                 [
-                    not os.path.exists(self.debug_corpus_cache_path),
-                    not os.path.exists(self.debug_queries_cache_path),
+                    not os.path.exists(self.debug_tokenized_corpus_cache_path),
+                    not os.path.exists(self.debug_tokenized_queries_cache_path),
                     not os.path.exists(self.debug_q_phrase_range_path),
                     not os.path.exists(self.debug_d_phrase_range_path),
                 ]
@@ -164,14 +187,16 @@ class BaseDataModule(L.LightningDataModule):
                 qids_for_debug, pids_for_debug = self._load_debug_qids_and_pids()
 
             # Create debug cache for corpus and queries
-            if not os.path.exists(self.debug_corpus_cache_path) or not os.path.exists(
-                self.debug_queries_cache_path
-            ):
+            if not os.path.exists(
+                self.debug_tokenized_corpus_cache_path
+            ) or not os.path.exists(self.debug_tokenized_queries_cache_path):
                 logger.info(f"Creating debug corpus and queries cache...")
 
                 # Load full cache
-                tokenized_corpus = read_compressed(self.corpus_cache_path)
-                tokenized_queries = read_compressed(self.queries_cache_path)
+                tokenized_corpus = read_compressed(self.tokenized_corpus_cache_path)
+                tokenized_queries = read_compressed(
+                    self.target_tokenized_queries_cache_path
+                )
 
                 debug_tokenized_corpus = {}
                 debug_tokenized_queries = {}
@@ -191,8 +216,12 @@ class BaseDataModule(L.LightningDataModule):
                     debug_tokenized_corpus[pid] = tokenized_corpus[pid]
 
                 # Save debug cache
-                save_compressed(self.debug_corpus_cache_path, debug_tokenized_corpus)
-                save_compressed(self.debug_queries_cache_path, debug_tokenized_queries)
+                save_compressed(
+                    self.debug_tokenized_corpus_cache_path, debug_tokenized_corpus
+                )
+                save_compressed(
+                    self.debug_tokenized_queries_cache_path, debug_tokenized_queries
+                )
 
             if not os.path.exists(self.debug_q_phrase_range_path) or not os.path.exists(
                 self.debug_d_phrase_range_path
@@ -237,72 +266,56 @@ class BaseDataModule(L.LightningDataModule):
         Preprocess data for each process after spawning.
         Load cache if not debug. Otherwise, load sample data.
         """
-        # Load tokenized corpus and queries
-        logger.info(f"Loading tokenized corpus and queries...")
+        # Load tokenized queries and corpus
+        logger.info(f"Loading tokenized queries and corpus...")
+        tokenized_corpus = read_compressed(self.target_tokenized_corpus_cache_path)
+        tokenized_queries = read_compressed(self.target_tokenized_queries_cache_path)
 
-        if self.is_debug:
-            tokenized_corpus_path = self.debug_corpus_cache_path
-            tokenized_queries_path = self.debug_queries_cache_path
-        else:
-            tokenized_corpus_path = self.corpus_cache_path
-            tokenized_queries_path = self.queries_cache_path
-
-        # Load corpus and queries
-        tokenized_corpus = read_compressed(tokenized_corpus_path)
-        tokenized_queries = read_compressed(tokenized_queries_path)
+        # Load phrase ranges for queries and corpus
+        phrase_ranges_queries = phrase_ranges_corpus = None
+        if self.cfg_global.model.name == "eagle":
+            phrase_ranges_queries = file_utils.read_pickle_file(
+                self.target_q_phrase_range_path
+            )
+            phrase_ranges_corpus = file_utils.read_pickle_file(
+                self.target_d_phrase_range_path
+            )
 
         # Load train and val data
-        train_dataset = []
+        train_dataset = None
         if not self.skip_train:
             train_dataset: BaseDataset = self._load_train_data(
-                tokenized_queries=tokenized_queries, tokenized_corpus=tokenized_corpus
+                tokenized_queries=tokenized_queries,
+                tokenized_corpus=tokenized_corpus,
+                phrase_ranges_queries=phrase_ranges_queries,
+                phrase_ranges_corpus=phrase_ranges_corpus,
             )
         val_dataset: BaseDataset = self._load_val_data(
-            tokenized_queries=tokenized_queries, tokenized_corpus=tokenized_corpus
+            tokenized_queries=tokenized_queries,
+            tokenized_corpus=tokenized_corpus,
+            phrase_ranges_queries=phrase_ranges_queries,
+            phrase_ranges_corpus=phrase_ranges_corpus,
         )
 
-        # Load word and phrase ranges for query and document
-        q_phrase_ranges = d_phrase_ranges = None
-        if self.cfg_global.model.name == "eagle":
-            logger.info(f"Loading phrase ranges...")
-            if self.is_debug:
-                q_phrase_range_path = self.debug_q_phrase_range_path
-                d_phrase_range_path = self.debug_d_phrase_range_path
-            else:
-                q_phrase_range_path = self.q_phrase_range_path
-                d_phrase_range_path = self.d_phrase_range_path
-
-            # Load phrase ranges
-            q_phrase_ranges: List[List[Tuple[int, int]]] = file_utils.read_pickle_file(
-                q_phrase_range_path
-            )
-            d_phrase_ranges = file_utils.read_pickle_file(d_phrase_range_path)
-
         # Shuffle data to avoid qid repetition in the mini-batch
-        indices = None
         if not self.is_debug and not self.skip_train:
-            logger.info(f"Shuffling data to avoid qid repetition in the mini-batch...")
-            indices = self.get_shuffled_indices_to_avoid_qid_repetition(train_dataset)
-
-        # Configs
-        add_kwargs = {}
-        if self.cfg_global.model.name == "eagle":
-            add_kwargs = dict(
-                q_phrase_ranges=q_phrase_ranges,
-                d_phrase_ranges=d_phrase_ranges,
+            logger.info(
+                f"Shuffling training data to avoid qid repetition in the mini-batch..."
+            )
+            train_dataset.shuffle_indices_to_avoid_qid_repetition(
+                qrels_path=self.train_qrels_path,
+                bsize=self.cfg_global.training.per_device_train_batch_size,
             )
 
         # Create DatasetWrapper
         if not self.skip_train:
             train_dataset = self.dataset_wrapper_cls(
                 dataset=train_dataset,
-                indices=indices,
                 nway=self.cfg_global.training.nway,
                 cache_nway=self.cfg.cache_nway,
                 q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
                 d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
                 model_name=self.cfg_global.model.name,
-                **add_kwargs,
             )
 
         val_dataset = self.dataset_wrapper_cls(
@@ -312,7 +325,6 @@ class BaseDataModule(L.LightningDataModule):
             q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
             d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
             model_name=self.cfg_global.model.name,
-            **add_kwargs,
         )
 
         # Save datasets
