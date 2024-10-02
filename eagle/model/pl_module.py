@@ -14,14 +14,14 @@ from eagle.index.corpus import Corpus
 from eagle.metrics import (aggregate_final_metrics,
                            aggregate_intermediate_metrics, compute_metrics)
 from eagle.model.colbert import ColBERT
-from eagle.model.cross_encoder import CrossEncoder
+from eagle.model.dpr import DPR
 from eagle.model.eagle import EAGLE
 from eagle.model.utils import (_sort_by_length, _split_into_batches,
                                append_dummy_pid, pid_found_percentage,
                                unwrap_logging_items)
 from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
-from eagle.tokenizer import Tokenizers
+from eagle.tokenization import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
 
 
@@ -43,7 +43,7 @@ class LightningNewModel(L.LightningModule):
         if cfg.model.name == "eagle":
             model_module = EAGLE
         elif cfg.model.name == "cross_encoder":
-            model_module = CrossEncoder
+            model_module = DPR
         elif cfg.model.name == "colbert":
             model_module = ColBERT
         else:

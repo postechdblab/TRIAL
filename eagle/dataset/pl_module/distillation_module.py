@@ -19,20 +19,23 @@ class DistillationDataModule(BaseDataModule):
         )
 
     def _load_train_data(
-        self, tokenized_queries: Dict, tokenized_corpus: Dict
+        self,
+        tokenized_queries: Dict,
+        tokenized_corpus: Dict,
     ) -> DistillationDataset:
         train_raw_dataset = DistillationDataset(
             cfg=self.cfg.train_distillation,
             cfg_dataset=self.cfg,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
-            override_nway=self.cfg.cache_nway,
             is_eval=False,
         )
         return train_raw_dataset
 
     def _load_val_data(
-        self, tokenized_queries: Dict, tokenized_corpus: Dict
+        self,
+        tokenized_queries: Dict,
+        tokenized_corpus: Dict,
     ) -> ContrastiveDataset:
         val_raw_dataset = ContrastiveDataset(
             cfg=self.cfg.val,

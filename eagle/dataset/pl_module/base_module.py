@@ -16,12 +16,8 @@ from eagle.dataset.utils import (
     read_queries,
     save_compressed,
 )
-from eagle.dataset.wrapper import (
-    DatasetWrapperForColBERT,
-    DatasetWrapperForCrossEncoder,
-    DatasetWrapperForEAGLE,
-)
-from eagle.tokenizer import Tokenizers
+from eagle.model.batch import BatchForColBERT, BatchForDPR, BatchForEAGLE
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("DataModule")
 
@@ -72,7 +68,7 @@ class BaseDataModule(L.LightningDataModule):
 
     @property
     def debug_tokenized_queries_cache_path(self) -> str:
-        return self.target_tokenized_queries_cache_path + DEBUG_FILE_SUFFIX
+        return self.tokenized_queries_cache_path + DEBUG_FILE_SUFFIX
 
     @property
     def target_tokenized_queries_cache_path(self) -> str:
@@ -113,13 +109,13 @@ class BaseDataModule(L.LightningDataModule):
         return self.d_phrase_range_path
 
     @property
-    def dataset_wrapper_cls(self) -> Type[BaseDataset]:
+    def data_batching_cls(self) -> Type[BaseDataset]:
         if self.cfg_global.model.name == "eagle":
-            return DatasetWrapperForEAGLE
-        elif self.cfg_global.model.name == "cross_encoder":
-            return DatasetWrapperForCrossEncoder
+            return BatchForEAGLE
+        elif self.cfg_global.model.name == "dpr":
+            return BatchForDPR
         elif self.cfg_global.model.name == "colbert":
-            return DatasetWrapperForColBERT
+            return BatchForColBERT
         raise ValueError(f"Invalid model name: {self.cfg_global.model.name}")
 
     def _load_debug_qids_and_pids(self) -> Tuple[List, List]:
@@ -287,14 +283,10 @@ class BaseDataModule(L.LightningDataModule):
             train_dataset: BaseDataset = self._load_train_data(
                 tokenized_queries=tokenized_queries,
                 tokenized_corpus=tokenized_corpus,
-                phrase_ranges_queries=phrase_ranges_queries,
-                phrase_ranges_corpus=phrase_ranges_corpus,
             )
         val_dataset: BaseDataset = self._load_val_data(
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
-            phrase_ranges_queries=phrase_ranges_queries,
-            phrase_ranges_corpus=phrase_ranges_corpus,
         )
 
         # Shuffle data to avoid qid repetition in the mini-batch
@@ -307,96 +299,55 @@ class BaseDataModule(L.LightningDataModule):
                 bsize=self.cfg_global.training.per_device_train_batch_size,
             )
 
-        # Create DatasetWrapper
+        # Get additional kwargs for the batch
+        add_kwargs = {}
+        if self.cfg_global.model.name == "eagle":
+            add_kwargs["phrase_ranges_queries"] = phrase_ranges_queries
+            add_kwargs["phrase_ranges_corpus"] = phrase_ranges_corpus
+
+        # Create Dataset Batch
         if not self.skip_train:
-            train_dataset = self.dataset_wrapper_cls(
+            train_batch = self.data_batching_cls(
                 dataset=train_dataset,
-                nway=self.cfg_global.training.nway,
-                cache_nway=self.cfg.cache_nway,
-                q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
-                d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
-                model_name=self.cfg_global.model.name,
+                skip_tok_ids=self.tokenizers.skip_tok_ids,
+                **add_kwargs,
             )
 
-        val_dataset = self.dataset_wrapper_cls(
+        val_batch = self.data_batching_cls(
             dataset=val_dataset,
-            nway=self.cfg.val.override_nway,
-            cache_nway=self.cfg.val.override_nway,
-            q_skip_ids=self.tokenizers.q_tokenizer.skip_tok_ids,
-            d_skip_ids=self.tokenizers.d_tokenizer.skip_tok_ids,
-            model_name=self.cfg_global.model.name,
+            skip_tok_ids=self.tokenizers.skip_tok_ids,
+            **add_kwargs,
         )
 
         # Save datasets
-        self.train_dataset = train_dataset
-        self.val_dataset = val_dataset
-        self.test_dataset = val_dataset
-
-    def get_shuffled_indices_to_avoid_qid_repetition(
-        self, train_dataset: BaseDataset
-    ) -> List[int]:
-        """Make sure that there are no repeated qids in the batch.
-        So that in-batch negatives are valid."""
-        # Load training qrels to avoid loading the entire training dataset (instead, we stream it during training)
-        train_qids: List[str] = read_qrels_qids(self.train_qrels_path)
-        # Check the loaded data is valid
-        assert len(train_qids) == len(
-            train_dataset
-        ), f"len(qids)={len(train_qids)}, len(train_dataset)={len(train_dataset)}"
-
-        # Get new indices to avoid repeated qids in the mini-batch
-        bsize = self.cfg_global.training.per_device_train_batch_size
-        indices: List[int] = get_indices_to_avoid_repeated_qids_in_minibatch(
-            train_qids, bsize
-        )
-        assert len(indices) == len(
-            train_qids
-        ), f"len(indices)={len(indices)}, len(train_qids)={len(train_qids)}, bsize={bsize}"
-
-        # Check if there are repeated qids in the mini-batch
-        repeated_mini_batch_indices = []
-        for i in range(0, len(train_qids), bsize):
-            if i + bsize > len(train_qids):
-                break
-            qids = [train_qids[indices[j]] for j in range(i, i + bsize)]
-            if len(qids) != len(set(qids)):
-                repeated_mini_batch_indices.append(i)
-        if repeated_mini_batch_indices:
-            logger.info(
-                f"Num of mini-batch with repeated qids: {len(repeated_mini_batch_indices)}/{len(train_qids)//bsize}."
-            )
-            assert (
-                len(repeated_mini_batch_indices) < 10
-            ), f"len(repeated_mini_batch_indices)={len(repeated_mini_batch_indices)}"
-        else:
-            logger.info(f"No repeated qids in the mini-batch.")
-
-        return indices
+        self.train_batch = train_batch
+        self.val_batch = val_batch
+        self.test_batch = val_batch
 
     def train_dataloader(self) -> Union[DataLoader, None]:
         if self.skip_train:
             return None
         return DataLoader(
-            self.train_dataset,
+            self.train_batch,
             batch_size=self.cfg_global.training.per_device_train_batch_size,
-            num_workers=8,
-            collate_fn=self.dataset_wrapper_cls.collate_fn,
+            num_workers=self.cfg_global.training.train_num_workers,
+            collate_fn=self.data_batching_cls.collate_fn,
         )
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.val_dataset,
+            self.val_batch,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
-            num_workers=4,
-            collate_fn=self.dataset_wrapper_cls.collate_fn,
+            num_workers=self.cfg_global.training.val_num_workers,
+            collate_fn=self.data_batching_cls.collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.test_dataset,
+            self.test_batch,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
-            num_workers=1,
-            collate_fn=self.dataset_wrapper_cls.collate_fn,
+            num_workers=self.cfg_global.training.test_num_workers,
+            collate_fn=self.data_batching_cls.collate_fn,
         )
 
     @property

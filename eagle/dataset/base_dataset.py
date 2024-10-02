@@ -1,4 +1,3 @@
-import abc
 import logging
 import os
 from typing import *
@@ -23,8 +22,6 @@ class BaseDataset:
         cfg_dataset: DictConfig,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
-        query_phrase_ranges: Dict = None,
-        corpus_phrase_ranges: Dict = None,
     ):
         self.cfg = cfg
         self.cfg_dataset = cfg_dataset
@@ -32,11 +29,15 @@ class BaseDataset:
         # Save cached information
         self.tokenized_queries = tokenized_queries
         self.tokenized_corpus = tokenized_corpus
-        self.query_phrase_ranges = query_phrase_ranges
-        self.corpus_phrase_ranges = corpus_phrase_ranges
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def __getitem__(self, idx: int) -> Any:
+        # Go through proxy indices for shuffling
+        assert idx < len(self), f"Index {idx} out of range {len(self)}"
+        target_idx = self.indices[idx]
+        return self.data[target_idx]
 
     @property
     def indices(self) -> List[int]:
@@ -49,6 +50,10 @@ class BaseDataset:
         return os.path.join(
             self.cfg_dataset.dir_path, self.cfg_dataset.name, self.cfg.data_file
         )
+
+    @property
+    def nway(self) -> int:
+        return self.cfg.nway
 
     @property
     def neg_num(self) -> int:
@@ -65,6 +70,26 @@ class BaseDataset:
     @property
     def labels(self) -> np.array:
         return get_labels(bsize=1, neg_num=self.neg_num).squeeze(0)
+
+    @property
+    def tokenized_queries_key_type(self) -> type:
+        if len(self.tokenized_queries) == 0:
+            return None
+        if not hasattr(self, "_tokenized_queries_key_type"):
+            self._tokenized_queries_key_type = type(
+                list(self.tokenized_queries.keys())[0]
+            )
+        return self._tokenized_queries_key_type
+
+    @property
+    def tokenized_corpus_key_type(self) -> type:
+        if len(self.tokenized_corpus) == 0:
+            return None
+        if not hasattr(self, "_tokenized_corpus_key_type"):
+            self._tokenized_corpus_key_type = type(
+                list(self.tokenized_corpus.keys())[0]
+            )
+        return self._tokenized_corpus_key_type
 
     def _read_data(self, path: str) -> List[List[int]]:
         data: List = file_utils.read_json_file(path, auto_detect_extension=True)
@@ -115,7 +140,3 @@ class BaseDataset:
             logger.info(f"No repeated qids in the mini-batch.")
 
         self._indices = indices
-
-    @abc.abstractmethod
-    def __getitem__(self):
-        raise NotImplementedError()

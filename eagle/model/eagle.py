@@ -12,7 +12,7 @@ from eagle.model.objective import (
     get_target_scale_tensor,
 )
 from eagle.model.utils import get_vectors_from_ranges, get_weight_layer
-from eagle.tokenizer import Tokenizers
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("EAGLE")
 
@@ -140,13 +140,14 @@ class EAGLE(BaseModel):
         q_tok_ids: torch.Tensor,
         q_tok_att_mask: torch.Tensor,
         q_phrase_scatter_indices: torch.Tensor,
-        q_sentence_start_indices: torch.Tensor,
+        q_sent_start_indices: List[List[int]],
         q_tok_mask: torch.Tensor,
         q_phrase_mask: torch.Tensor,
         q_sent_mask: torch.Tensor,
         doc_tok_ids: torch.Tensor,
         doc_tok_att_mask: torch.Tensor,
         doc_phrase_scatter_indices: torch.Tensor,
+        doc_sent_start_indices: List[List[List[int]]],
         doc_tok_mask: torch.Tensor,
         doc_phrase_mask: torch.Tensor,
         doc_sent_mask: torch.Tensor,

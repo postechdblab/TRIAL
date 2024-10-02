@@ -1,7 +1,6 @@
 _global:
     is_debug: False
     seed: 10
-    nway: 32
     tag: "default"
     root_dir: "/root/EAGLE/runs"
 defaults:

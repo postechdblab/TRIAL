@@ -11,7 +11,7 @@ from eagle.model.objective import (
     get_target_scale_tensor,
 )
 from eagle.search.algorithm import compute_sum_maxsim
-from eagle.tokenizer import Tokenizer
+from eagle.tokenization import Tokenizer
 
 logger = logging.getLogger("ColBERT")
 

@@ -4,7 +4,7 @@ from typing import *
 
 import torch
 
-from eagle.tokenizer import Tokenizer
+from eagle.tokenization import Tokenizer
 
 
 SPLIT_DIR_NAME = "splitted"

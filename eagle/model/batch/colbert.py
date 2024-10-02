@@ -1,63 +1,19 @@
-import logging
 from typing import *
 
 import hkkang_utils.list as list_utils
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-from eagle.dataset.base_dataset import BaseDataset
-from eagle.dataset.utils import (add_doc_ranges_and_mask,
-                                 add_query_ranges_and_mask, collate_ranges)
-from eagle.dataset.wrapper import BaseDatasetWrapper
+from eagle.model.batch import BaseBatch
+from eagle.model.batch.utils import (
+    add_doc_ranges_and_mask,
+    add_query_ranges_and_mask,
+    collate_ranges,
+)
 
-logger = logging.getLogger("DatasetWrapper")
 
-
-class DatasetWrapperForColBERT(BaseDatasetWrapper):
-    def __init__(
-        self,
-        dataset: BaseDataset,
-        indices: Optional[List[int]] = None,
-        corpus_mapping: Dict[int, int] = None,
-        query_mapping: Dict[int, int] = None,
-        nway: int = None,
-        cache_nway: int = None,
-        q_skip_ids: List[int] = None,
-        d_skip_ids: List[int] = None,
-        model_name: str = None,
-    ):
-        super(DatasetWrapperForColBERT, self).__init__(dataset=dataset, 
-                                                     indices=indices, 
-                                                     nway=nway, 
-                                                     cache_nway=cache_nway, 
-                                                     q_skip_ids=q_skip_ids, 
-                                                     d_skip_ids=d_skip_ids,
-                                                     query_mapping=query_mapping,
-                                                     corpus_mapping=corpus_mapping)
-        self.query_mapping = query_mapping
-        self.corpus_mapping = corpus_mapping
-        self.model_name = model_name
-        # Check if variables are valid
-        assert (
-            "neg_doc_ids" not in self.dataset[0] 
-            or len(self.dataset[0]["neg_doc_ids"]) == 0
-            or len(self.dataset[0]["neg_doc_ids"]) >= nway - 1
-        ), f"nway={nway} is larger than the total doc num: {len(self.dataset[0]["neg_doc_ids"])}"
-        assert self.model_name == "colbert", f"Unsupported model name: {self.model_name}"
-        
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        # Replace the nway
-        if idx > len(self):
-            raise IndexError(f"Index {idx} out of range {len(self)}")
-        shuff_idx = self.indices[idx]
-        data = self.dataset[shuff_idx]
-        # Replace the nway
-        if self.nway < self.cache_nway:
-            data["doc_tok_ids"] = data["doc_tok_ids"][: self.nway]
-            data["doc_tok_att_mask"] = data["doc_tok_att_mask"][: self.nway]
-            if "distillation_scores" in data:
-                data["distillation_scores"] = data["distillation_scores"][: self.nway]
-
+class BatchForColBERT(BaseBatch):
+    def parse_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         # Extract meta data
         qid = data["q_id"]
         qidx = self.query_mapping[qid]
@@ -65,7 +21,7 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
         if "neg_doc_ids" in data:
             pids.extend(data["neg_doc_ids"])
         pindices = [self.corpus_mapping[pid] for pid in pids]
-        pindices = pindices[: self.nway]
+        pindices = pindices[: self.dataset.nway]
 
         # Add ranges and token mask
         data = add_query_ranges_and_mask(
@@ -83,6 +39,7 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
                 skip_ids=self.d_skip_ids,
                 use_coarse_emb=False,
             )
+
         # Add index for positive document
         data["pos_doc_idxs"] = [self.corpus_mapping[i] for i in data["pos_doc_ids"]]
 
@@ -91,6 +48,7 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
     @staticmethod
     def collate_fn(input_dics: List[Dict]) -> Dict:
         """Collate list of dictionaries into a single dictionary."""
+
         def get_dtype(key: str) -> torch.dtype:
             if "mask" in key or key == "labels":
                 return torch.bool
@@ -149,7 +107,9 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
                 values = list_utils.do_flatten_list(
                     [torch.unbind(dic[key].clone().detach()) for dic in input_dics]
                 )
-                padded_values = pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
+                padded_values = (
+                    pad_sequence(values, batch_first=True).unsqueeze(-1) == 0
+                )
             elif key in ["q_id", "pos_doc_idxs"]:
                 padded_values = [dic[key] for dic in input_dics]
             elif key in ["pos_doc_ids", "neg_doc_ids"]:
@@ -157,7 +117,9 @@ class DatasetWrapperForColBERT(BaseDatasetWrapper):
             elif key == "distillation_scores":
                 padded_values = torch.nn.functional.log_softmax(
                     torch.tensor(
-                        [dic[key] for dic in input_dics], dtype=get_dtype(key), device="cpu"
+                        [dic[key] for dic in input_dics],
+                        dtype=get_dtype(key),
+                        device="cpu",
                     ),
                     dim=-1,
                 )

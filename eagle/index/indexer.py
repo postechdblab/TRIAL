@@ -16,7 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from eagle.dataset.utils import (
     combine_word_phrase_ranges,
-    convert_range_for_scatter,
+    convert_range_to_scatter,
     fill_ranges,
     get_mask,
 )
@@ -25,7 +25,7 @@ from eagle.index.corpus import Corpus
 from eagle.index.index_saver import IndexSaver
 from eagle.index.utils import all_gather_nd, optimize_ivf
 from eagle.model.utils import _sort_by_length, _split_into_batches
-from eagle.tokenizer import Tokenizers
+from eagle.tokenization import Tokenizers
 from eagle.utils import add_global_configs
 
 TYPICAL_DOCLEN = 120
@@ -746,7 +746,7 @@ class Indexer:
                             word_ranges_batch_item,
                             max_len=max_len,
                         )
-                        indices = convert_range_for_scatter(ranges)
+                        indices = convert_range_to_scatter(ranges)
                         scatter_indices.append(
                             torch.tensor(indices, device=self.device)
                         )
@@ -775,7 +775,7 @@ class Indexer:
                             ),
                             max_len=max_len,
                         )
-                        indices = convert_range_for_scatter(ranges)
+                        indices = convert_range_to_scatter(ranges)
                         scatter_indices.append(
                             torch.tensor(indices, device=self.device)
                         )

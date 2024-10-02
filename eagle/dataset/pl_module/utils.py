@@ -1,6 +1,6 @@
 from typing import *
 
-from eagle.tokenizer import Tokenizer
+from eagle.tokenization import Tokenizer
 
 
 def tokenize_and_cache_corpus(

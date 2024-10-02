@@ -6,12 +6,12 @@ from omegaconf import DictConfig
 
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss
-from eagle.tokenizer import Tokenizer
+from eagle.tokenization import Tokenizer
 
-logger = logging.getLogger("CrossEncoder")
+logger = logging.getLogger("DPR")
 
 
-class CrossEncoder(BaseModel):
+class DPR(BaseModel):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
         super().__init__(cfg=cfg, tokenizers=tokenizers)
         self.score_projection_layer = torch.nn.Linear(self.llm.config.hidden_size, 1)

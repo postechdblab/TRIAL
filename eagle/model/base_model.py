@@ -6,7 +6,7 @@ import torch
 from omegaconf import DictConfig
 from transformers import AutoModel
 
-from eagle.tokenizer import Tokenizer
+from eagle.tokenization import Tokenizer
 from eagle.utils import add_config
 
 logger = logging.getLogger("BaseModel")
@@ -16,7 +16,6 @@ class BaseModel(torch.nn.Module):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
         super().__init__()
         self.cfg = cfg
-        self.nway = cfg.nway
         self.llm = self.__create_backbone_model(
             cfg.backbone_name, vocab_num=tokenizers.vocab_num
         )

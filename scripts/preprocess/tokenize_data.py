@@ -12,7 +12,7 @@ import tqdm
 from omegaconf import DictConfig
 
 from eagle.dataset.utils import save_compressed
-from eagle.tokenizer import Tokenizer, Tokenizers
+from eagle.tokenization import Tokenizer, Tokenizers
 from eagle.phrase.utils import (
     SPLIT_DIR_NAME,
     get_partial_data_name,

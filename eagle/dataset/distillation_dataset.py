@@ -15,9 +15,6 @@ class DistillationDataset(BaseDataset):
         cfg_dataset: DictConfig,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
-        query_phrase_ranges: Dict = None,
-        corpus_phrase_ranges: Dict = None,
-        override_nway: Optional[int] = None,
         is_eval: bool = False,
     ):
         super().__init__(
@@ -25,10 +22,7 @@ class DistillationDataset(BaseDataset):
             cfg_dataset=cfg_dataset,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
-            query_phrase_ranges=query_phrase_ranges,
-            corpus_phrase_ranges=corpus_phrase_ranges,
         )
-        self.nway = cfg.nway if override_nway is None else override_nway
         self.is_eval = is_eval
 
     def __getitem__(

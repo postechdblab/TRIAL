@@ -26,3 +26,7 @@ output_dir: ./results
 # Logging
 logging_dir: ./logs
 logging_steps: 40
+# Dataloader
+train_num_workers: 8
+val_num_workers: 4
+test_num_workers: 1

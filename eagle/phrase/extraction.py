@@ -5,7 +5,7 @@ import torch
 
 from eagle.phrase.noun import SpacyModel, Text
 from eagle.phrase.utils import get_phrase_indices
-from eagle.tokenizer import QTokenizer, Tokenizer
+from eagle.tokenization import Tokenizer
 
 
 class PhraseExtractor:
@@ -54,7 +54,7 @@ class PhraseExtractor:
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg):
-    tokenizer = QTokenizer(cfg.q_tokenizer)
+    tokenizer = Tokenizer(cfg.q_tokenizer)
     extractor = PhraseExtractor(tokenizer=tokenizer)
     extractor(["Hello, my name is John Doe.", "I am a software engineer."], max_len=512)
 

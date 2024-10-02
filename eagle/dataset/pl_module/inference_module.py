@@ -21,7 +21,9 @@ class InferenceDataModule(BaseDataModule):
         return None
 
     def _load_val_data(
-        self, tokenized_queries: Dict, tokenized_corpus: Dict
+        self,
+        tokenized_queries: Dict,
+        tokenized_corpus: Dict,
     ) -> InferenceDataset:
         val_raw_dataset = InferenceDataset(
             cfg=self.cfg.val,

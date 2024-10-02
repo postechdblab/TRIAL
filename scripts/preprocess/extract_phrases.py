@@ -20,7 +20,7 @@ from eagle.phrase.utils import (
     get_tokenized_path,
     remove_file_name_from_path,
 )
-from eagle.tokenizer import Tokenizers
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
 

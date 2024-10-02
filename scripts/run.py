@@ -18,7 +18,7 @@ from eagle.dataset.utils import (
 from eagle.index.indexer import multi_process_indexing
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.tokenizer import DTokenizer, QTokenizer
+from eagle.tokenization import Tokenizer
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, join_word
 
@@ -32,8 +32,8 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
     assert ckpt_path, "Please provide the path to the checkpoint"
     model = LightningNewModel.load_from_checkpoint(checkpoint_path=ckpt_path)
     model.eval()
-    q_tokenizer = QTokenizer(cfg=cfg.q_tokenizer)
-    d_tokenizer = DTokenizer(cfg=cfg.d_tokenizer)
+    q_tokenizer = Tokenizer(cfg=cfg.q_tokenizer)
+    d_tokenizer = Tokenizer(cfg=cfg.d_tokenizer)
 
     # Get phrase extractor
     phrase_extractor = PhraseExtractor(tokenizer=q_tokenizer)
