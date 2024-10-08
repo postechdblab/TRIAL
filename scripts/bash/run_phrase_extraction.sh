@@ -6,6 +6,13 @@ end=147
 total=196
 num_devices=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 
+# Create the outputs directory if it doesn't exist
+output_dir="outputs"
+if [ ! -d "$output_dir" ]; then
+  mkdir -p "$output_dir"
+  echo "Created directory: $output_dir"
+fi
+
 # Print the command being executed
 echo "Number of GPU devices: $num_devices"
 echo "Running: python scripts/preprocess/extract_phrases.py +total=$total +op=split_file +indices=[$begin,$end]"
@@ -20,7 +27,7 @@ for i in $(seq $begin $end); do
     echo "Running: CUDA_VISIBLE_DEVICES=$device python scripts/preprocess/extract_phrases.py +total=$total +i=$i +op=extract"
 
     # Run the command with the assigned device and store the output in a text file
-    CUDA_VISIBLE_DEVICES=$device python scripts/preprocess/extract_phrases.py +total=$total +i=$i +op=extract > output_$i.txt 2>&1 &
+    CUDA_VISIBLE_DEVICES=$device python scripts/preprocess/extract_phrases.py +total=$total +i=$i +op=extract > "${output_dir}/output_$i.txt" 2>&1 &
 done
 
 # Wait for all background processes to complete
