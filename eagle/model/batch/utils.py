@@ -1,3 +1,4 @@
+import copy
 from typing import *
 
 import hkkang_utils.list as list_utils
@@ -108,6 +109,7 @@ def collate_ranges(ranges: List[torch.Tensor]) -> torch.Tensor:
 def combined_phrase_ranges_into_one_sentence(
     phrase_ranges_list: List[List[Tuple[int, int]]]
 ) -> List[Tuple[int, int]]:
+    phrase_ranges_list = copy.deepcopy(phrase_ranges_list)
     SPECIAL_TOK_NUM = 2
     # Figure out the number to add for each sentences
     number_to_adds = []

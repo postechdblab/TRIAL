@@ -11,7 +11,7 @@ def get_target_scale_tensor(
     target_scale: int, b_size: int, device: torch.dtype, dtype: torch.dtype
 ) -> torch.Tensor:
     return torch.full(
-        (b_size, 1),
+        (b_size,),
         fill_value=target_scale,
         dtype=dtype,
         device=device,
@@ -69,15 +69,15 @@ def compute_loss(
     labels = get_loss_label(bsize, device=device)
     ib_labels = get_ib_loss_label(bsize, ib_nhard, device=device)
     return compute_loss_c(
-        scores=scores, 
-        ib_scores=ib_scores, 
-        labels=labels, 
-        ib_labels=ib_labels, 
-        nway=nway, 
-        ce_loss_coeff=intra_loss_coeff, 
+        scores=scores,
+        ib_scores=ib_scores,
+        labels=labels,
+        ib_labels=ib_labels,
+        nway=nway,
+        ce_loss_coeff=intra_loss_coeff,
         ib_loss_coeff=inter_loss_coeff,
         kl_loss_coeff=distillation_loss_coeff,
-        distillation_scores=distillation_scores
+        distillation_scores=distillation_scores,
     )
 
 

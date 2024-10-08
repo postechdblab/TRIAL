@@ -78,12 +78,34 @@ def is_token_included(src: set[int], target: List[int]) -> List[bool]:
 
 
 def convert_range_to_scatter(range_indices: List[Tuple[int, int]]) -> List[int]:
-    converted: List[int] = []
+    """Convert range indices to scatter indices.
+    :param range_indices: List of range indices
+    :type range_indices: List[Tuple[int, int]]
+    :return: List of scatter indices
+    :rtype: List[int]
+    """
+    scatter_indices: List[int] = []
+    last_seen_idx = 0
+    target_idx = 0
     # Add indices
-    for target_idx, (start, end) in enumerate(range_indices):
+    for start, end in range_indices:
+        # If range indices are not continuous, add the missing indices
+        if start > last_seen_idx:
+            for idx in range(last_seen_idx, start):
+                scatter_indices.append(target_idx)
+                target_idx += 1
+
+        # Add the indices
         new_indices = [target_idx] * (end - start)
-        converted.extend(new_indices)
-    return converted
+        scatter_indices.extend(new_indices)
+
+        # Update state
+        target_idx += 1
+        last_seen_idx = end
+    assert (
+        len(scatter_indices) == range_indices[-1][-1]
+    ), f"Length mismatch: {len(scatter_indices)} vs {range_indices[-1][-1]}"
+    return scatter_indices
 
 
 def add_padding_for_ranges(
@@ -347,6 +369,7 @@ def get_indices_to_avoid_repeated_qids_in_minibatch(
 def combine_splitted_tok_ids(
     tok_ids_list: List[List[int]],
 ) -> Tuple[List[int], List[int]]:
+    """Combine splitted list of tok ids (i.e., sentences) into one list of tok ids (i.e., one text)"""
     # This needs to be changed when the adding of the special tokens as prefix changes
     BEGIN_SPECIAL_TOK_NUM = 2
     sent_start_indices = []
@@ -363,7 +386,7 @@ def combine_splitted_tok_ids(
         # Add tokens for the current sentence
         combined_tok_ids.extend(tok_ids)
 
-    return tok_ids, sent_start_indices
+    return combined_tok_ids, sent_start_indices
 
 
 def combined_phrase_ranges_into_one_sentence(

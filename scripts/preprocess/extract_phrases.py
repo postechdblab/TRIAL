@@ -12,7 +12,7 @@ import tqdm
 from omegaconf import DictConfig
 
 from eagle.dataset.utils import read_compressed
-from eagle.phrase.extraction2 import PhraseExtractor2 as PhraseExtractor
+from eagle.phrase.extraction import PhraseExtractor
 from eagle.phrase.utils import (
     SPLIT_DIR_NAME,
     get_output_file_name,
@@ -214,8 +214,8 @@ def extract_phrase_indices(
     if is_splited:
         tokenized_data_chunk = file_utils.read_pickle_file(tokenized_path)
     else:
-        tokenized_data = read_compressed(tokenized_path)
-        tokenized_data_chunk: List = partial_processor.get_partial_data(tokenized_data)
+        tokenized_data: Dict = read_compressed(tokenized_path)
+        tokenized_data_chunk: Dict = partial_processor.get_partial_data(tokenized_data)
 
         # Free up memory by deleting the loaded data except the chunks
         del tokenized_data
@@ -247,23 +247,22 @@ def extract_phrase_indices(
 
     logger.info(f"Target chunk size: {len(dataset_chunk)}")
     mini_dataset_chunks: Generator = list_utils.chunks(dataset_chunk, CHUNK_SIZE)
-    mini_tokenized_data_chunks: List = list_utils.chunks(
-        tokenized_data_chunk, CHUNK_SIZE
-    )
+    # mini_tokenized_data_chunks: List = list_utils.chunks(
+    #     tokenized_data_chunk.items(), CHUNK_SIZE
+    # )
 
     logger.info(f"Begin to extract phrases from {len(dataset_chunk)} texts")
     all_results: Dict[Union[int, str], List[List[Tuple[int]]]] = {}
-    for ci, (d_chunk, t_chunk) in enumerate(
-        tqdm.tqdm(
-            zip(mini_dataset_chunks, mini_tokenized_data_chunks, strict=True),
-            total=math.ceil(len(dataset_chunk) / CHUNK_SIZE),
-        )
+    for ci, d_chunk in enumerate(
+        tqdm.tqdm(mini_dataset_chunks, total=math.ceil(len(dataset_chunk) / CHUNK_SIZE))
     ):
         # Get all sentences in the text
         sents = []
         sent_lens = []
         tok_ids_in_sent = []
-        for sent, sents_tok_ids in zip(d_chunk, t_chunk, strict=True):
+        for sent in d_chunk:
+            _id = sent["_id"]
+            sents_tok_ids = tokenized_data_chunk[_id]
             sents.extend(sent["text"])
             sent_lens.append(len(sent["text"]))
             tok_ids_in_sent.extend(sents_tok_ids)
@@ -276,9 +275,9 @@ def extract_phrase_indices(
         ), f"Length of sents: {len(sents)} != Length of tok_ids_in_sent: {len(tok_ids_in_sent)}"
 
         # Extract phrases
-        results = extractor(
+        results: List[List[Tuple[int, int]]] = extractor(
             texts=sents,
-            tok_ids=tok_ids_in_sent,
+            tok_ids_list=tok_ids_in_sent,
             to_token_indices=True,
         )
 

@@ -166,13 +166,13 @@ def modify_grad(x, inds):
     return x
 
 
-def get_vectors_from_ranges(
-    tensors: torch.Tensor, scatter_indices: torch.Tensor, reduce: str
+def aggregate_vectors_with_indices(
+    src_tensor: torch.Tensor, scatter_indices: torch.Tensor, reduce: str
 ) -> torch.Tensor:
     # scatter reduce the tensors
     results = []
     for b_idx, scatter_indices_tensor in enumerate(scatter_indices):
-        result = segment_coo(tensors[b_idx], scatter_indices_tensor, reduce=reduce)
+        result = segment_coo(src_tensor[b_idx], scatter_indices_tensor, reduce=reduce)
         results.append(result)
     return pad_sequence(results, batch_first=True, padding_value=0)
 

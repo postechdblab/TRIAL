@@ -12,6 +12,7 @@ from eagle.model.batch.utils import (
     convert_range_to_scatter,
     get_mask,
 )
+from eagle.phrase.utils import fill_in_missing_phrase_ranges, fix_bad_index_ranges
 
 
 class BatchForEAGLE(BaseBatch):
@@ -23,8 +24,8 @@ class BatchForEAGLE(BaseBatch):
         phrase_ranges_corpus,
     ):
         super().__init__(dataset=dataset, skip_tok_ids=skip_tok_ids)
-        self.phrase_ranges_queries = phrase_ranges_queries
-        self.phrase_ranges_corpus = phrase_ranges_corpus
+        self.phrase_ranges_queries: List[List[Tuple[int, int]]] = phrase_ranges_queries
+        self.phrase_ranges_corpus: List[List[Tuple[int, int]]] = phrase_ranges_corpus
 
     @property
     def phrase_ranges_queries_key_type(self) -> type:
@@ -47,6 +48,7 @@ class BatchForEAGLE(BaseBatch):
         return self._phrase_ranges_corpus_key_type
 
     def parse_data(self, data: List[Any]) -> Dict[str, Any]:
+        """Add phrase indices and masks to the data."""
         labels = data.get("labels", None)
         distillation_scores = data.get("distillation_scores", None)
 
@@ -66,13 +68,36 @@ class BatchForEAGLE(BaseBatch):
 
         # Get phrase ranges
         q_phrase_ranges: List[Tuple] = combined_phrase_ranges_into_one_sentence(
-            self.phrase_ranges_queries[self.phrase_ranges_queries_key_type(qid)]
+            [
+                fix_bad_index_ranges(item)
+                for item in self.phrase_ranges_queries[
+                    self.phrase_ranges_queries_key_type(qid)
+                ]
+            ]
         )
         doc_phrase_ranges: List[List[Tuple]] = [
             combined_phrase_ranges_into_one_sentence(
-                self.phrase_ranges_corpus[self.phrase_ranges_corpus_key_type(pid)]
+                [
+                    fix_bad_index_ranges(item)
+                    for item in self.phrase_ranges_corpus[
+                        self.phrase_ranges_corpus_key_type(pid)
+                    ]
+                ]
             )
             for pid in pos_doc_ids + neg_doc_ids
+        ]
+
+        # Validate doc_phrase_ranges
+        for ranges in doc_phrase_ranges:
+            for start, end in ranges:
+                if start >= end:
+                    stop = 1
+
+        # Fix the missing phrase ranges.
+        # This is a temporary fix. Need to change the phrase range creation logic to avoid this.
+        q_phrase_ranges = fill_in_missing_phrase_ranges(q_phrase_ranges)
+        doc_phrase_ranges = [
+            fill_in_missing_phrase_ranges(item) for item in doc_phrase_ranges
         ]
 
         # Get phrase masks
@@ -137,7 +162,7 @@ class BatchForEAGLE(BaseBatch):
     @staticmethod
     def _collate_q_phrase_scatter_indices(data: List[List[int]]) -> List[torch.Tensor]:
         padded_values = collate_ranges(
-            [torch.tensor(item, dtype=torch.int32, device="cpu") for item in data]
+            [torch.tensor(item, dtype=torch.long, device="cpu") for item in data]
         )
         return padded_values
 
@@ -205,7 +230,7 @@ class BatchForEAGLE(BaseBatch):
         padded_values = list_utils.do_flatten_list([item for item in data])
         padded_values = collate_ranges(
             [
-                torch.tensor(item, dtype=torch.int32, device="cpu")
+                torch.tensor(item, dtype=torch.long, device="cpu")
                 for item in padded_values
             ]
         )

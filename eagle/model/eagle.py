@@ -1,8 +1,10 @@
 import logging
 from typing import *
 
+import hkkang_utils.list as list_utils
 import torch
 from omegaconf import DictConfig
+from torch.nn.utils.rnn import pad_sequence
 
 from eagle.model.base_model import BaseModel
 from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
@@ -11,7 +13,7 @@ from eagle.model.objective import (
     doc_indices_for_ib_loss,
     get_target_scale_tensor,
 )
-from eagle.model.utils import get_vectors_from_ranges, get_weight_layer
+from eagle.model.utils import aggregate_vectors_with_indices, get_weight_layer
 from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("EAGLE")
@@ -36,7 +38,7 @@ class EAGLE(BaseModel):
         self.intra_loss_coeff = cfg.intra_loss_coeff
         self.inter_loss_coeff = cfg.inter_loss_coeff
         self.sim_type = cfg.sim_type
-        self.use_attn_for_phrase_encoding = True
+        self.use_attn_for_phrase_encoding = False
 
         # Layers to encode the query into phrase level
         if self.use_attn_for_phrase_encoding:
@@ -154,7 +156,6 @@ class EAGLE(BaseModel):
         labels: Optional[torch.Tensor] = None,
         distillation_scores: Optional[torch.Tensor] = None,
         is_inference: Optional[bool] = False,
-        is_analyze: Optional[bool] = False,
         **kwargs,
     ) -> Dict[str, Any]:
         # Configs
@@ -168,15 +169,15 @@ class EAGLE(BaseModel):
         # Encode
         (
             q_encoded,
-            q_sent_projected,
             q_tok_projected,
             q_phrase_projected,
-            q_sent_weight,
+            q_sent_projected,
             q_tok_weight,
             q_phrase_weight,
-            q_sent_scale_factor,
+            q_sent_weight,
             q_tok_scale_factor,
             q_phrase_scale_factor,
+            q_sent_scale_factor,
         ) = self.encode_q_text(
             tok_ids=q_tok_ids,
             att_mask=q_tok_att_mask,
@@ -184,46 +185,52 @@ class EAGLE(BaseModel):
             phrase_mask=q_phrase_mask,
             sent_mask=q_sent_mask,
             phrase_scatter_indices=q_phrase_scatter_indices,
+            sent_start_indices=q_sent_start_indices,
         )
         (
-            d_cls_projected,
             d_tok_projected,
             d_phrase_projected,
+            d_sent_projected,
             d_tok_weight_intra,
             d_tok_weight_inter,
             d_phrase_weight_intra,
             d_phrase_weight_inter,
+            d_sent_weight_intra,
+            d_sent_weight_inter,
         ) = self.encode_d_text(
             tok_ids=doc_tok_ids,
             att_mask=doc_tok_att_mask,
+            tok_mask=doc_tok_mask,
+            phrase_mask=doc_phrase_mask,
+            sent_mask=doc_sent_mask,
             scatter_indices=doc_phrase_scatter_indices,
+            sent_start_indices=doc_sent_start_indices,
             q_vectors=q_tok_projected,
             q_mask=q_tok_mask,
             nway=nway,
-            is_eval=is_eval,
+            is_inference=is_inference,
         )
 
         intra_scores, inter_scores = self.multi_granularity_interaction(
             q_sent=q_sent_projected,
             q_phrase=q_phrase_projected,
             q_tok=q_tok_projected,
-            d_cls=d_cls_projected,
+            d_sent=d_sent_projected,
             d_phrase=d_phrase_projected,
             d_tok=d_tok_projected,
             q_tok_weight=q_tok_weight,
-            d_tok_weight_inter=d_tok_weight_inter,
+            q_phrase_weight=q_phrase_weight,
             d_tok_weight_intra=d_tok_weight_intra,
-            d_phrase_weight_inter=d_phrase_weight_inter,
+            d_tok_weight_inter=d_tok_weight_inter,
             d_phrase_weight_intra=d_phrase_weight_intra,
-            d_sen_weight_inter=d_sen_weight_inter,
-            d_sen_weight_intra=d_sen_weight_intra,
-            q_tok_mask=q_tok_mask,
-            q_phrase_mask=q_phrase_mask,
-            d_tok_mask=doc_tok_mask,
-            d_phrase_mask=doc_phrase_mask,
+            d_phrase_weight_inter=d_phrase_weight_inter,
+            d_sent_weight_inter=d_sent_weight_inter,
+            d_sent_weight_intra=d_sent_weight_intra,
             q_scatter_indices=q_phrase_scatter_indices,
-            doc_scatter_indices=doc_phrase_scatter_indices,
-            q_scale_factor=q_tok_scale_factor,
+            q_tok_scale_factor=q_tok_scale_factor,
+            q_phrase_scale_factor=q_phrase_scale_factor,
+            q_sent_scale_factor=q_sent_scale_factor,
+            is_inference=is_inference,
         )
 
         # Compute loss
@@ -269,20 +276,23 @@ class EAGLE(BaseModel):
         q_weight_var = 0
         if q_weight_reg_term:
             num_valid = self.get_valid_num(q_tok_mask)
-            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask, 0)
+            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask.unsqueeze(-1) == 0, 0)
             q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
-            q_weight_var = q_tok_weight[q_tok_mask == 0].var()
+            q_weight_var = q_tok_weight[q_tok_mask == 1].var()
         # Analyze document weights
         d_weight_intra_ratio = 0
         d_weight_inter_ratio = 0
         d_weight_intra_var = 0
         d_weight_inter_var = 0
         if d_tok_weight_intra is not None:
-            d_mask_intra = doc_tok_mask
+            reshaped_doc_tok_mask = doc_tok_mask.reshape(
+                -1, doc_tok_mask.shape[-1]
+            ).unsqueeze(-1)
+            d_mask_intra = reshaped_doc_tok_mask
             d_weight_intra_masked = d_tok_weight_intra * d_mask_intra
             d_weight_intra_ratio = d_weight_intra_masked.sum() / d_mask_intra.sum()
             # Compute variance
-            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 0].var()
+            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 1].var()
             if d_tok_weight_inter is not None:
                 d_indices = doc_indices_for_ib_loss(
                     bsize,
@@ -291,10 +301,11 @@ class EAGLE(BaseModel):
                     return_as_tensor=True,
                     device=doc_tok_mask.device,
                 )
-                d_mask_inter = doc_tok_mask[d_indices]
+                d_mask_inter = reshaped_doc_tok_mask[d_indices]
                 d_weight_inter_masked = d_tok_weight_inter * d_mask_inter
                 d_weight_inter_ratio = d_weight_inter_masked.sum() / d_mask_inter.sum()
-                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 0].var()
+                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 1].var()
+
         # Append more log information
         return_dict["avg_intra_scores"] = intra_scores.mean().item()
         return_dict["avg_inter_scores"] = inter_scores.mean().item()
@@ -315,6 +326,7 @@ class EAGLE(BaseModel):
             # Mask
             return_dict["q_mask"] = q_tok_mask
             return_dict["d_mask"] = doc_tok_mask
+
         # Append weights
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
@@ -325,13 +337,14 @@ class EAGLE(BaseModel):
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
         phrase_scatter_indices: torch.Tensor = None,
+        sent_start_indices: List[List[int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # LLM encoding
         encoded_tok_vectors = self.llm(
             tok_ids, attention_mask=att_mask
         ).last_hidden_state
 
-        # Perform projection for token
+        # Perform lower-dimension projection in token-level
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
         # Encode phrase-level embeddings
@@ -339,26 +352,31 @@ class EAGLE(BaseModel):
             # TODO: Make different phrases into a batch
             # TODO: Add positional encoding
             encoded_phrase_vectors = None
+            projected_phrase_vectors = None
         else:
-            encoded_phrase_vectors = get_vectors_from_ranges(
-                tensors=projected_tok_vectors,
+            if projected_tok_vectors.shape[1] != phrase_scatter_indices.shape[1]:
+                raise RuntimeError("Shape mismatch")
+            encoded_phrase_vectors = aggregate_vectors_with_indices(
+                src_tensor=projected_tok_vectors,
                 scatter_indices=phrase_scatter_indices,
                 reduce=self.reduce_strategy,
             )
-            projected_phrase_vectors = self.phrase_projection_layer(
-                encoded_phrase_vectors
-            )
+            projected_phrase_vectors = encoded_phrase_vectors
+            # projected_phrase_vectors = self.phrase_projection_layer(
+            #     encoded_phrase_vectors
+            # )
 
         # Get sentence-level embeddings
-        # TODO: Extract cls and sep tokens for sentence embeddings
-        # TODO: remove cls and sep tokens from token embeddings
-        projected_cls_vectors = None
+        projected_sent_vectors = []
+        for b_idx, start_indices in enumerate(sent_start_indices):
+            projected_sent_vectors.append(projected_tok_vectors[b_idx, start_indices])
+        projected_sent_vectors = pad_sequence(projected_sent_vectors, batch_first=True)
 
         return (
             encoded_tok_vectors,
-            projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
+            projected_sent_vectors,
         )
 
     def encode_q_text(
@@ -369,6 +387,7 @@ class EAGLE(BaseModel):
         phrase_mask: torch.Tensor = None,
         sent_mask: torch.Tensor = None,
         phrase_scatter_indices: Optional[torch.Tensor] = None,
+        sent_start_indices: Optional[List[List[int]]] = None,
     ) -> Tuple[
         torch.Tensor,
         Optional[torch.Tensor],
@@ -382,16 +401,18 @@ class EAGLE(BaseModel):
     ]:
         (
             encoded_tok_vectors,
-            projected_sent_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
-        ) = self.encode_text(tok_ids, att_mask, phrase_scatter_indices)
+            projected_sent_vectors,
+        ) = self.encode_text(
+            tok_ids, att_mask, phrase_scatter_indices, sent_start_indices
+        )
         dtype = projected_tok_vectors.dtype
 
         # Mask paddings
-        projected_tok_vectors.masked_fill_(tok_mask, 0)
-        projected_phrase_vectors.masked_fill_(phrase_mask, 0)
-        projected_sent_vectors.masked_fill_(sent_mask, 0)
+        projected_tok_vectors.masked_fill_(tok_mask.unsqueeze(-1) == 0, 0)
+        projected_phrase_vectors.masked_fill_(phrase_mask.unsqueeze(-1) == 0, 0)
+        projected_sent_vectors.masked_fill_(sent_mask.unsqueeze(-1) == 0, 0)
 
         # Weights
         tok_weights = None
@@ -400,22 +421,19 @@ class EAGLE(BaseModel):
         if self.is_use_q_weight:
             tok_weights = self.q_weight_layer(projected_tok_vectors)
             if projected_phrase_vectors is not None:
-                phrase_weights = get_vectors_from_ranges(
-                    tensors=tok_weights,
-                    scatter_indices=phrase_scatter_indices,
-                    reduce=self.reduce_strategy,
-                )
-            # TODO: Extract sentence weights
+                phrase_weights = self.q_weight_layer(projected_phrase_vectors)
+            if projected_sent_vectors is not None:
+                sentence_weights = self.q_weight_layer(projected_sent_vectors)
 
         # Compute normalization scale for each query
         token_scale_factor = self.get_scale_factor(mask=tok_mask)
 
         sentence_scale_factor = None
-        if projected_cls_vectors is not None:
+        if projected_sent_vectors is not None:
             sentence_scale_factor = torch.full(
-                size=(projected_cls_vectors.shape[:-1]),
+                size=(projected_sent_vectors.shape[:-1]),
                 fill_value=self.q_maxlen,
-                dtype=projected_cls_vectors.dtype,
+                dtype=projected_sent_vectors.dtype,
                 device=tok_ids.device,
             )
 
@@ -429,12 +447,12 @@ class EAGLE(BaseModel):
         )
         if projected_tok_vectors.dtype != dtype:
             projected_tok_vectors = projected_tok_vectors.to(dtype)
-        if projected_cls_vectors is not None:
-            projected_cls_vectors = torch.nn.functional.normalize(
-                projected_cls_vectors, p=2, dim=2
+        if projected_sent_vectors is not None:
+            projected_sent_vectors = torch.nn.functional.normalize(
+                projected_sent_vectors, p=2, dim=2
             )
-            if projected_cls_vectors.dtype != dtype:
-                projected_cls_vectors = projected_cls_vectors.to(dtype)
+            if projected_sent_vectors.dtype != dtype:
+                projected_sent_vectors = projected_sent_vectors.to(dtype)
         if projected_phrase_vectors is not None:
             projected_phrase_vectors = torch.nn.functional.normalize(
                 projected_phrase_vectors, p=2, dim=2
@@ -444,53 +462,82 @@ class EAGLE(BaseModel):
 
         return (
             encoded_tok_vectors,
-            projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
-            sentence_weights,
+            projected_sent_vectors,
             tok_weights,
             phrase_weights,
-            sentence_scale_factor,
+            sentence_weights,
             token_scale_factor,
             phrase_scale_factor,
+            sentence_scale_factor,
         )
 
     def encode_d_text(
         self,
         tok_ids: torch.Tensor,
         att_mask: torch.Tensor,
+        tok_mask: torch.Tensor,
+        phrase_mask: torch.Tensor,
+        sent_mask: torch.Tensor,
         scatter_indices: torch.Tensor = None,
+        sent_start_indices: List[List[List[int]]] = None,
         q_vectors: torch.Tensor = None,
         q_mask: torch.Tensor = None,
         nway: int = None,
         is_encoding: bool = False,
-        is_eval: bool = False,
+        is_inference: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Configs
         if len(tok_ids.shape) == 3:
-            bsize, ndoc, max_len = tok_ids.shape
+            bsize, ndoc, max_tok_len = tok_ids.shape
+            _, _, max_phrase_len = phrase_mask.shape
+            _, _, max_sent_len = sent_mask.shape
             nhard = nway // bsize
-            tok_ids_combined = tok_ids.view(-1, max_len)
-            att_mask_combined = att_mask.view(-1, max_len)
+            tok_ids_combined = tok_ids.view(-1, max_tok_len)
+            att_mask_combined = att_mask.view(-1, max_tok_len)
+            tok_mask_combined = tok_mask.view(-1, max_tok_len)
+            phrase_mask_combined = phrase_mask.view(-1, max_phrase_len)
+            sent_mask_combined = sent_mask.view(-1, max_sent_len)
+            sent_start_indices = list_utils.do_flatten_list(sent_start_indices)
         elif len(tok_ids.shape) == 2:
             bsize, max_len = tok_ids.shape
             nhard = 1
             tok_ids_combined = tok_ids
             att_mask_combined = att_mask
+            tok_mask_combined = tok_mask
+            phrase_mask_combined = phrase_mask
+            sent_mask_combined = sent_mask
+        # Encode text
         (
             encoded_tok_vectors,
-            projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
-        ) = self.encode_text(tok_ids_combined, att_mask_combined, scatter_indices)
+            projected_sent_vectors,
+        ) = self.encode_text(
+            tok_ids_combined, att_mask_combined, scatter_indices, sent_start_indices
+        )
 
         dtype = projected_tok_vectors.dtype
+
+        # Apply mask
+        projected_tok_vectors = projected_tok_vectors.masked_fill(
+            tok_mask_combined.unsqueeze(-1) == 0, 0
+        )
+        projected_phrase_vectors = projected_phrase_vectors.masked_fill(
+            phrase_mask_combined.unsqueeze(-1) == 0, 0
+        )
+        projected_sent_vectors = projected_sent_vectors.masked_fill(
+            sent_mask_combined.unsqueeze(-1) == 0, 0
+        )
 
         # Create weight using q_vetors
         tok_weights_intra = None
         tok_weights_inter = None
         phrase_weights_intra = None
         phrase_weights_inter = None
+        sent_weights_intra = None
+        sent_weights_inter = None
         if self.is_use_d_weight and not is_encoding:
             # Further encode with q_vectors for intra-example weights
             q_vectors_intra = q_vectors.repeat_interleave(nway, dim=0)
@@ -511,17 +558,23 @@ class EAGLE(BaseModel):
             cross_encoded_tok_vectors_intra = self.d_weight_layer_norm(
                 cross_encoded_tok_vectors_intra
             )
-            # Predict the weights
+            # Predict token-level weights
             tok_weights_intra = self.d_weight_layer(cross_encoded_tok_vectors_intra)
+            # Predict phrase-level weights
             if projected_phrase_vectors is not None:
-                phrase_weights_intra = get_vectors_from_ranges(
-                    tensors=tok_weights_intra,
+                phrase_weights_intra = aggregate_vectors_with_indices(
+                    src_tensor=tok_weights_intra,
                     scatter_indices=scatter_indices,
                     reduce=self.reduce_strategy,
                 )
-
-            # Further encode with q_vectors for inter-example weights
-            if not is_eval:
+            # Get sentence-level weights
+            if projected_sent_vectors is not None:
+                sent_weights_intra = []
+                for b_idx, start_indices in enumerate(sent_start_indices):
+                    sent_weights_intra.append(tok_weights_intra[b_idx, start_indices])
+                sent_weights_intra = pad_sequence(sent_weights_intra, batch_first=True)
+            # Further encode with q_vectors for inter-example weights (only for training and evaluation)
+            if not is_inference:
                 repeat_n = nhard * (bsize - 1) + 1
                 q_vectors_inter = q_vectors.repeat_interleave(repeat_n, dim=0)
                 q_mask_inter = q_mask.repeat_interleave(repeat_n, dim=0)
@@ -554,10 +607,22 @@ class EAGLE(BaseModel):
                 tok_weights_inter = self.d_weight_layer(cross_encoded_tok_vectors_inter)
                 if projected_phrase_vectors is not None:
                     selected_scatter_indices = scatter_indices[doc_indices]
-                    phrase_weights_inter = get_vectors_from_ranges(
-                        tensors=tok_weights_inter,
+                    phrase_weights_inter = aggregate_vectors_with_indices(
+                        src_tensor=tok_weights_inter,
                         scatter_indices=selected_scatter_indices,
                         reduce=self.reduce_strategy,
+                    )
+                if projected_sent_vectors is not None:
+                    sent_weights_inter = []
+                    selected_sent_start_indices = [
+                        sent_start_indices[d_idx] for d_idx in doc_indices
+                    ]
+                    for b_idx, start_indices in enumerate(selected_sent_start_indices):
+                        sent_weights_inter.append(
+                            tok_weights_inter[b_idx, start_indices]
+                        )
+                    sent_weights_inter = pad_sequence(
+                        sent_weights_inter, batch_first=True
                     )
 
         # Normalize
@@ -566,12 +631,12 @@ class EAGLE(BaseModel):
         )
         if projected_tok_vectors.dtype != dtype:
             projected_tok_vectors = projected_tok_vectors.to(dtype)
-        if projected_cls_vectors is not None:
-            projected_cls_vectors = torch.nn.functional.normalize(
-                projected_cls_vectors, p=2, dim=2
+        if projected_sent_vectors is not None:
+            projected_sent_vectors = torch.nn.functional.normalize(
+                projected_sent_vectors, p=2, dim=2
             )
-            if projected_cls_vectors.dtype != dtype:
-                projected_cls_vectors = projected_cls_vectors.to(dtype)
+            if projected_sent_vectors.dtype != dtype:
+                projected_sent_vectors = projected_sent_vectors.to(dtype)
         if projected_phrase_vectors is not None:
             projected_phrase_vectors = torch.nn.functional.normalize(
                 projected_phrase_vectors, p=2, dim=2
@@ -579,14 +644,10 @@ class EAGLE(BaseModel):
             if projected_phrase_vectors.dtype != dtype:
                 projected_phrase_vectors = projected_phrase_vectors.to(dtype)
 
-        # TODO:
-        sent_weights_intra = None
-        sent_weights_inter = None
-
         return (
-            projected_cls_vectors,
             projected_tok_vectors,
             projected_phrase_vectors,
+            projected_sent_vectors,
             tok_weights_intra,
             tok_weights_inter,
             phrase_weights_intra,
@@ -596,7 +657,14 @@ class EAGLE(BaseModel):
         )
 
     def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
-        num_non_valid_tokens = mask.sum(dim=1)
+        """Get the number of valid tokens for each query
+        :param mask with 1 as valid and 0 as non-valid token (Shape: [bsize, num_toks])
+        :type mask: torch.Tensor
+        :return: num_valid_tokens Shape: [bsize]
+        :rtype: torch.Tensor
+        """
+        num_valid_tokens = mask.sum(dim=1)
+        num_non_valid_tokens = mask.shape[1] - num_valid_tokens
         target_scale = get_target_scale_tensor(
             target_scale=mask.shape[1],
             b_size=num_non_valid_tokens.shape[0],
@@ -607,211 +675,243 @@ class EAGLE(BaseModel):
         return num_valid_tokens
 
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
+        """Get the scale factor for normalization
+        :param mask: Shape: [bsize, num_toks]
+        :type mask: torch.Tensor
+        :return: scale factor Shape: [bsize]
+        :rtype: torch.Tensor
+        """
         num_valid_tokens = self.get_valid_num(mask)
         return self.q_maxlen / num_valid_tokens
 
     def multi_granularity_interaction(
         self,
-        q_cls: torch.Tensor,
+        q_sent: torch.Tensor,
         q_phrase: torch.Tensor,
         q_tok: torch.Tensor,
-        d_cls: torch.Tensor,
+        d_sent: torch.Tensor,
         d_phrase: torch.Tensor,
         d_tok: torch.Tensor,
         q_tok_weight: torch.Tensor,
+        q_phrase_weight: torch.Tensor,
         d_tok_weight_intra: torch.Tensor,
         d_tok_weight_inter: torch.Tensor,
-        q_tok_mask: torch.Tensor,
-        q_phrase_mask: torch.Tensor,
-        d_tok_mask: torch.Tensor,
-        d_phrase_mask: torch.Tensor,
+        d_phrase_weight_intra: torch.Tensor,
+        d_phrase_weight_inter: torch.Tensor,
+        d_sent_weight_intra: torch.Tensor,
+        d_sent_weight_inter: torch.Tensor,
         q_scatter_indices: torch.Tensor,
-        doc_scatter_indices: torch.Tensor,
-        q_scale_factor: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        q_tok_scale_factor: Optional[torch.Tensor] = None,
+        q_phrase_scale_factor: Optional[torch.Tensor] = None,
+        q_sent_scale_factor: Optional[torch.Tensor] = None,
+        is_inference: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # Configs
         bsize, q_tok_len, q_dim = q_tok.shape
         bsize, q_phrase_len, q_dim = q_phrase.shape
+        _, sent_inter_max_len, _ = d_sent_weight_inter.shape
         nway = d_tok.shape[0] // bsize
         ib_nhard = nway // bsize
+        repeat_num_for_inter = ib_nhard * (bsize - 1) + 1
+        d_inter_indices: torch.Tensor = doc_indices_for_ib_loss(
+            bsize,
+            nway,
+            ib_nhard,
+            return_as_tensor=True,
+            device=d_sent.device,
+        )
 
-        # Apply mask
-        q_tok = q_tok * (q_tok_mask == False)
-        d_tok = d_tok * (d_tok_mask == False)
-        q_phrase = q_phrase * (q_phrase_mask == False)
-        d_phrase = d_phrase * (d_phrase_mask == False)
-
-        # Compute intra scores
-        d_vecs = torch.cat([d_cls, d_phrase, d_tok], dim=1)
-        d_weights = torch.cat([d_tok_weight_intra, d_phrase_weight], dim=1)
-        if self.sim_type == "outer_agg":
-            # Repeat the query vectors
-            q_vec = q_tok.repeat_interleave(nway, dim=0)
-            q_mask = q_tok_mask.repeat_interleave(nway, dim=0)
-            q_weight = q_tok_weight.repeat_interleave(nway, dim=0)
-            q_scatter_indices = q_scatter_indices.repeat_interleave(nway, dim=0)
-
-            sim_scores = self.compute_outer_sim(
-                q_toks_vec=q_vec,
-                q_mask=q_mask,
-                q_weight=q_weight,
-                q_scatter_indices=q_scatter_indices,
-                d_vecs=d_vecs,
-                d_weights=d_tok_weight_intra,
+        # Combine document vectors and weights for intra and inter comparison
+        d_vecs_intra = torch.cat([d_sent, d_phrase, d_tok], dim=1)
+        d_weights_intra = torch.cat(
+            [d_sent_weight_intra, d_phrase_weight_intra, d_tok_weight_intra], dim=1
+        )
+        d_weights_inter = None
+        if not is_inference:
+            d_vecs_inter = torch.cat(
+                [d_sent[:, :sent_inter_max_len, :], d_phrase, d_tok], dim=1
             )
-        elif self.sim_type == "inner_agg":
-            sim_scores = self.compute_inner_sim(
-                q_phrases_vec=q_phrase, q_mask=q_phrase_mask, d_vecs=d_vecs
+            d_weights_inter = torch.cat(
+                [d_sent_weight_inter, d_phrase_weight_inter, d_tok_weight_inter], dim=1
             )
+
+        # Compute similarity scores
+        assert self.sim_type in [
+            "combination",
+            "outer_agg",
+            "inner_agg",
+        ], f"Invalid sim_type: {self.sim_type}"
+        if self.sim_type in ["combination", "outer_agg"]:
+            # Repeat the query vectors for intra comparison
+            q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
+            q_weight_intra = q_tok_weight.repeat_interleave(nway, dim=0)
+            q_scatter_indices_intra = q_scatter_indices.repeat_interleave(nway, dim=0)
+            q_scale_factors_intra = q_tok_scale_factor.repeat_interleave(nway, dim=0)
+
+            # Repeat the query vectors for inter comparison
+            if not is_inference:
+                q_vecs_inter = q_tok.repeat_interleave(repeat_num_for_inter, dim=0)
+                q_weight_inter = q_tok_weight.repeat_interleave(
+                    repeat_num_for_inter, dim=0
+                )
+                q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
+                    repeat_num_for_inter, dim=0
+                )
+                q_scale_factors_inter = q_tok_scale_factor.repeat_interleave(
+                    repeat_num_for_inter, dim=0
+                )
+                selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
+
+            # Compute intra query scores through outer aggregation (i.e., token-level vector similarity)
+            intra_sim_scores_outer = self.compute_outer_sim(
+                q_vecs=q_vecs_intra,
+                q_weights=q_weight_intra,
+                q_scatter_indices=q_scatter_indices_intra,
+                q_scale_factors=q_scale_factors_intra,
+                d_vecs=d_vecs_intra,
+                d_weights=d_weights_intra,
+            )
+
+            # Compute inter query scores through outer aggregation (i.e., token-level vector similarity)
+            if not is_inference:
+                inter_sim_scores_outer = self.compute_outer_sim(
+                    q_vecs=q_vecs_inter,
+                    q_weights=q_weight_inter,
+                    q_scatter_indices=q_scatter_indices_inter,
+                    q_scale_factors=q_scale_factors_inter,
+                    d_vecs=selected_d_vecs_inter,
+                    d_weights=d_weights_inter,
+                )
+
+        if self.sim_type in ["combination", "inner_agg"]:
+            # Repeat the query vectors for intra comparison
+            q_vecs_intra = q_phrase.repeat_interleave(nway, dim=0)
+            q_weight_intra = q_phrase_weight.repeat_interleave(nway, dim=0)
+            q_scale_factors_intra = q_phrase_scale_factor.repeat_interleave(nway, dim=0)
+
+            # Repeat the query vectors for inter comparison
+            if not is_inference:
+                q_vecs_inter = q_phrase.repeat_interleave(repeat_num_for_inter, dim=0)
+                q_weight_inter = q_phrase_weight.repeat_interleave(
+                    repeat_num_for_inter, dim=0
+                )
+                q_scale_factors_inter = q_phrase_scale_factor.repeat_interleave(
+                    repeat_num_for_inter, dim=0
+                )
+                selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
+
+            # Compute intra query scores through inner aggregation (i.e., phrase-level vector similarity)
+            intra_sim_scores_inner = self.compute_inner_sim(
+                q_vecs=q_vecs_intra,
+                q_weights=q_weight_intra,
+                q_scale_factors=q_scale_factors_intra,
+                d_vecs=d_vecs_intra,
+                d_weights=d_weights_intra,
+            )
+
+            # Compute inter query scores through inner aggregation (i.e., phrase-level vector similarity)
+            if not is_inference:
+                inter_sim_scores_inner = self.compute_inner_sim(
+                    q_vecs=q_vecs_inter,
+                    q_weights=q_weight_inter,
+                    q_scale_factors=q_scale_factors_inter,
+                    d_vecs=selected_d_vecs_inter,
+                    d_weights=d_weights_inter,
+                )
+
+        # Compute the final scores
+        inter_sim_scores = None
+        if self.sim_type == "combination":
+            intra_sim_scores = torch.max(intra_sim_scores_outer, intra_sim_scores_inner)
+            if not is_inference:
+                inter_sim_scores = torch.max(
+                    inter_sim_scores_outer, inter_sim_scores_inner
+                )
+        elif self.sim_type == "outer_agg":
+            intra_sim_scores = intra_sim_scores_outer
+            if not is_inference:
+                inter_sim_scores = inter_sim_scores_outer
         else:
-            raise ValueError(f"Unsupported similarity type: {self.sim_type}")
+            intra_sim_scores = intra_sim_scores_inner
+            if not is_inference:
+                inter_sim_scores = inter_sim_scores_inner
 
-        # Compute inter scores
-        intra_scores = self.compute_multi_grad_intra_scores(
-            q_cls=q_cls,
-            q_phrase=q_phrase,
-            q_tok=q_tok,
-            d_cls=d_cls,
-            d_phrase=d_phrase,
-            d_tok=d_tok,
-            q_scatter_indices=q_scatter_indices,
-            q_tok_mask=q_tok_mask,
-        )
-
-        # Compute inter scores
-        inter_scores = self.compute_multi_grad_inter_scores(
-            q_cls=q_cls,
-            q_phrase=q_phrase,
-            q_tok=q_tok,
-            d_cls=d_cls,
-            d_phrase=d_phrase,
-            d_tok=d_tok,
-            q_scatter_indices=q_scatter_indices,
-            q_tok_mask=q_tok_mask,
-        )
-
-        # Apply scale factor
-        if q_scale_factor is not None:
-            intra_scale_factors = q_scale_factor.repeat_interleave(nway)
-            intra_scores = intra_scores * intra_scale_factors
-            inter_scale_factors = q_scale_factor.repeat_interleave(
-                ib_nhard * (bsize - 1) + 1
-            )
-            inter_scores = inter_scores * inter_scale_factors
-
-        return intra_scores, inter_scores
-
-    def compute_multi_grad_intra_scores(
-        self,
-        q_cls: torch.Tensor,
-        q_phrase: torch.Tensor,
-        q_tok: torch.Tensor,
-        d_cls: torch.Tensor,
-        d_phrase: torch.Tensor,
-        d_tok: torch.Tensor,
-        q_scatter_indices: torch.Tensor,
-        q_tok_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        bsize, q_tok_len, q_dim = q_tok.shape
-        bsize, q_phrase_len, q_dim = q_phrase.shape
-        nway = d_tok.shape[0] // bsize
-
-        # Concatenate the different granularity
-        q_vectors = q_tok
-        d_all = torch.cat([d_cls, d_phrase, d_tok], dim=1)
-
-        q_all = q_all.repeat_interleave(nway, dim=0)
-        q_scatter_indices = q_scatter_indices.repeat_interleave(nway, dim=0)
-        q_tok_mask = q_tok_mask.repeat_interleave(nway, dim=0)
-
-        ## Compute intra scores
-        element_wise_scores = d_all @ q_all.transpose(-2, -1)
-        max_q_scores = element_wise_scores.max(dim=1).values
-        # Split back to each granularity
-        cls_intra_scores, phrase_intra_scores, tok_intra_scores = torch.split(
-            max_q_scores, [1, q_phrase_len, q_tok_len], dim=1
-        )
-        phrase_intra_scores_flatten = []
-        for b_idx in range(phrase_intra_scores.shape[0]):
-            phrase_intra_scores_flatten.append(
-                phrase_intra_scores[b_idx][q_scatter_indices[b_idx]]
-            )
-        phrase_intra_scores_flatten = torch.stack(phrase_intra_scores_flatten)
-        cls_intra_scores = cls_intra_scores.repeat(1, q_tok_len)
-        cls_intra_scores = cls_intra_scores * (q_tok_mask == False).squeeze(-1)
-        # Concatenate the scores
-        intra_scores = torch.stack(
-            [cls_intra_scores, phrase_intra_scores_flatten, tok_intra_scores], dim=1
-        )
-        # Find the max along dim=1
-        intra_scores = intra_scores.max(dim=1).values
-        intra_scores = intra_scores.sum(dim=1)
-        return intra_scores
-
-    def compute_multi_grad_inter_scores(
-        self,
-        q_cls: torch.Tensor,
-        q_phrase: torch.Tensor,
-        q_tok: torch.Tensor,
-        d_cls: torch.Tensor,
-        d_phrase: torch.Tensor,
-        d_tok: torch.Tensor,
-        q_scatter_indices: torch.Tensor,
-        q_tok_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        bsize, q_tok_len, q_dim = q_tok.shape
-        bsize, q_phrase_len, q_dim = q_phrase.shape
-        nway = d_tok.shape[0] // bsize
-        ib_nhard = nway // bsize
-        repeat_num = ib_nhard * (bsize - 1) + 1
-
-        # Concatenate the different granularity
-        q_all = torch.cat([q_cls, q_phrase, q_tok], dim=1)
-        d_all = torch.cat([d_cls, d_phrase, d_tok], dim=1)
-
-        # Select the indices
-        q_all = q_all.repeat_interleave(repeat_num, dim=0)
-        q_scatter_indices = q_scatter_indices.repeat_interleave(repeat_num, dim=0)
-        q_tok_mask = q_tok_mask.repeat_interleave(repeat_num, dim=0)
-        d_indices_tensor: torch.Tensor = doc_indices_for_ib_loss(
-            bsize, nway, ib_nhard, return_as_tensor=True, device=d_all.device
-        )
-        d_all = d_all[d_indices_tensor]
-
-        ## Compute inter scores
-        element_wise_scores = d_all @ q_all.transpose(-2, -1)
-        max_q_scores = element_wise_scores.max(dim=1).values
-        # Split back to each granularity
-        cls_inter_scores, phrase_inter_scores, tok_inter_scores = torch.split(
-            max_q_scores, [1, q_phrase_len, q_tok_len], dim=1
-        )
-        phrase_inter_scores_flatten = []
-        for b_idx in range(phrase_inter_scores.shape[0]):
-            phrase_inter_scores_flatten.append(
-                phrase_inter_scores[b_idx][q_scatter_indices[b_idx]]
-            )
-        phrase_inter_scores_flatten = torch.stack(phrase_inter_scores_flatten)
-        cls_inter_scores = cls_inter_scores.repeat(1, q_tok_len)
-        cls_inter_scores = cls_inter_scores * (q_tok_mask == False).squeeze(-1)
-        # Concatenate the scores
-        inter_scores = torch.stack(
-            [cls_inter_scores, phrase_inter_scores_flatten, tok_inter_scores], dim=1
-        )
-        # Find the max along dim=1
-        inter_scores = inter_scores.max(dim=1).values
-        inter_scores = inter_scores.sum(dim=1)
-        return inter_scores
+        return intra_sim_scores, inter_sim_scores
 
     def compute_outer_sim(
         self,
         q_vecs: torch.Tensor,
-        q_mask: torch.Tensor,
-        q_weight: torch.Tensor,
+        q_weights: torch.Tensor,
         q_scatter_indices: torch.Tensor,
+        q_scale_factors: torch.Tensor,
         d_vecs: torch.Tensor,
+        d_weights: torch.Tensor,
     ) -> torch.Tensor:
-        stop = 1
+        """Compute vector similarity in token-level, and then aggregate to phrase-level"""
+
+        # Compute maxsim
+        max_q_scores = self.compute_maxsim(
+            q_vecs=q_vecs,
+            q_weights=q_weights,
+            d_vecs=d_vecs,
+            d_weights=d_weights,
+        )
+
+        # Aggregate token-level vector similarity to phrase-level
+        max_q_aggregated = aggregate_vectors_with_indices(
+            src_tensor=max_q_scores,
+            scatter_indices=q_scatter_indices,
+            reduce=self.reduce_strategy,
+        )
+
+        # Aggregate phrase-level scores to query-level scores
+        q_scores = max_q_aggregated.sum(dim=1)
+
+        # Scale the query scores
+        q_scores = q_scores * q_scale_factors
+
+        return q_scores
 
     def compute_inner_sim(
-        self, q_phrases_vec: torch.Tensor, q_mask: torch.Tensor, d_vecs: torch.Tensor
+        self,
+        q_vecs: torch.Tensor,
+        q_weights: torch.Tensor,
+        q_scale_factors: torch.Tensor,
+        d_vecs: torch.Tensor,
+        d_weights: torch.Tensor,
     ) -> torch.Tensor:
-        stop = 1
+        """Compute vector similarity in phrase-level"""
+
+        # Compute maxsim
+        max_q_scores = self.compute_maxsim(
+            q_vecs=q_vecs,
+            q_weights=q_weights,
+            d_vecs=d_vecs,
+            d_weights=d_weights,
+        )
+
+        # Aggregate phrase-level scores to query-level scores
+        q_scores = max_q_scores.sum(dim=1)
+
+        # Scale the query scores
+        q_scores = q_scores * q_scale_factors
+
+        return q_scores
+
+    def compute_maxsim(
+        self,
+        q_vecs: torch.Tensor,
+        d_vecs: torch.Tensor,
+        q_weights: torch.Tensor = None,
+        d_weights: torch.Tensor = None,
+    ) -> torch.Tensor:
+        # Apply d weights
+        if d_weights is not None:
+            d_vecs = d_vecs * d_weights
+        # Compute similarity scores for each q vectors and d vectors
+        element_wise_scores = d_vecs @ q_vecs.transpose(-2, -1)
+        max_q_scores = element_wise_scores.max(dim=1).values
+        # Apply q weights
+        if q_weights is not None:
+            max_q_scores = max_q_scores * q_weights.squeeze()
+        return max_q_scores

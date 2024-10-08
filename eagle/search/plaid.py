@@ -5,7 +5,6 @@ import torch
 
 from eagle.index.codecs.residual_embeddings_strided import ResidualEmbeddingsStrided
 from eagle.index.index_loader import IndexLoader
-from eagle.model.utils import get_vectors_from_ranges
 from eagle.search.algorithm import (
     compute_sum_maxsim,
     reduce_element_wise_relevance_scores,

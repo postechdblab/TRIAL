@@ -45,6 +45,7 @@ def truncate_exceeding_tokens(doc) -> None:
 class Phrase:
     text: str
     start_idx: int
+    label: str
 
     @property
     def end_idx(self) -> int:
@@ -134,23 +135,57 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         :rtype: Tuple[List, bool]
         """
         if len(list(tree._.children)) == 0:
-            return [Phrase(tree.text, tree.start_char)], False
-        return_list = []
+            return [Phrase(text=tree.text, start_idx=tree.start_char, label="")], False
+            # return [Phrase(tree.text, tree.start_char)]
         label = tree._.labels[0]
-        is_noun_phrase = label == "NP"
-        has_noun_phrase_child = False
+        return_list = []
+        is_target_phrase = self.is_phrase_to_isolate(label)
+        # is_noun_phrase = label == "NP"
+        # has_noun_phrase_child = False
+        has_target_phrase_in_child = False
         for p_idx, span in enumerate(tree._.children):
             # Go deeper
-            child_phrases, is_child_noun_phrase = self.traverse(span)
-            has_noun_phrase_child = has_noun_phrase_child or is_child_noun_phrase
+            # child_phrases, is_child_noun_phrase = self.traverse(span)
+            child_phrases, is_child_phrase = self.traverse(span)
+            has_target_phrase_in_child = has_target_phrase_in_child or is_child_phrase
+            # has_noun_phrase_child = has_noun_phrase_child or is_child_noun_phrase
             return_list.extend(child_phrases)
         # Combine the children if 1) the current node is noun phrase and 2) there is no noun phrase child
-        if is_noun_phrase and not has_noun_phrase_child:
-            return_list = [
-                Phrase(
-                    " ".join([p.text for p in return_list]), return_list[0].start_idx
-                )
-            ]
-        contains_noun_phrase = is_noun_phrase or has_noun_phrase_child
+        # if is_noun_phrase and not has_noun_phrase_child:
+        if is_target_phrase and not has_target_phrase_in_child:
+            return_list = [self.join_phrases(return_list, label=label)]
+        elif is_target_phrase:
+            # Connect phrases until phrase is found
+            result = []
+            tmp = []
+            disposable_label = label
+            for idx in range(len(return_list)):
+                if self.is_phrase_to_isolate(return_list[idx].label):
+                    # Clear the tmp list
+                    if len(tmp) > 0:
+                        result.append(self.join_phrases(tmp, label=disposable_label))
+                        tmp = []
+                        disposable_label = ""
+                    # Add the phrase
+                    result.append(return_list[idx])
+                else:
+                    tmp.append(return_list[idx])
+            # Add the remaining phrases
+            if len(tmp) > 0:
+                result.append(self.join_phrases(tmp, label=disposable_label))
+            return_list = result
+        contains_target_phrase = is_target_phrase or has_target_phrase_in_child
+        # contains_noun_phrase = is_noun_phrase or has_noun_phrase_child
 
-        return return_list, contains_noun_phrase
+        return return_list, contains_target_phrase
+        # return return_list
+
+    def is_phrase_to_isolate(self, label: str) -> bool:
+        return label in ["NP", "VP", "PP", "ADJP", "ADVP"]
+
+    def join_phrases(self, phrases: List[Phrase], label: str = None) -> Phrase:
+        return Phrase(
+            text=" ".join([p.text for p in phrases]),
+            start_idx=phrases[0].start_idx,
+            label=label,
+        )

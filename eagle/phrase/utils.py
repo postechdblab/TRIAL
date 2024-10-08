@@ -10,6 +10,44 @@ from eagle.tokenization import Tokenizer
 SPLIT_DIR_NAME = "splitted"
 
 
+def fix_bad_index_ranges(ranges: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """Fix the bad ranges in the given ranges.
+    :param ranges: list of ranges
+    :type ranges: List[Tuple[int, int]]
+    :return: list of ranges with the bad ranges fixed
+    :rtype: List
+    """
+    new_ranges = []
+    for start, end in ranges:
+        if start >= end:
+            continue
+        new_ranges.append((start, end))
+    return new_ranges
+
+
+def fill_in_missing_phrase_ranges(
+    ranges: List[Tuple[int, int]]
+) -> List[Tuple[int, int]]:
+    """Fill in the missing ranges in the given ranges.
+    :param ranges: list of ranges
+    :type ranges: List[Tuple[int, int]]
+    :return: list of ranges with the missing ranges filled in
+    :rtype: List
+    """
+    last_seen = 0
+    new_ranges = []
+    for start, end in ranges:
+        # Add the missing ranges
+        if start > last_seen:
+            for i in range(last_seen, start):
+                new_ranges.append((i, i + 1))
+        # Add the current range
+        new_ranges.append((start, end))
+        # Update state
+        last_seen = end
+    return new_ranges
+
+
 def remove_file_name_from_path(path: str) -> str:
     return os.path.join("/", *[item for item in path.split("/")[:-1] if item])
 

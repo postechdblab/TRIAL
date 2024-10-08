@@ -11,7 +11,7 @@ from eagle.tokenization import Tokenizer, Tokenizers
 logger = logging.getLogger("AnalysisExtractedPhrase")
 
 
-def examine(
+def examine_extracted_phrase_ranges(
     cfg: DictConfig, tokenizer: Tokenizer, prefix: str, dataset_path: str
 ) -> None:
     # Load data
@@ -76,14 +76,14 @@ def main(cfg: DictConfig) -> None:
     # Examine the extracted phrases for query
     logger.info(f"Examine the extracted phrases for query")
     dataset_path = os.path.join(dir_path, cfg.dataset.query_file)
-    examine(
+    examine_extracted_phrase_ranges(
         cfg, tokenizer=tokenizers.q_tokenizer, prefix="query", dataset_path=dataset_path
     )
 
     # Examine the extracted phrases for document
     logger.info(f"Examine the extracted phrases for document")
     dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
-    examine(
+    examine_extracted_phrase_ranges(
         cfg,
         tokenizer=tokenizers.d_tokenizer,
         prefix="document",
