@@ -371,6 +371,9 @@ def main(cfg: DictConfig) -> None:
         - indices (optional): indices to extract
         - total: total number of splits
     """
+    # Dummy variable to download spacy models in advance (during split_file)
+    tmp = PhraseExtractor(tokenizer=None)
+
     if cfg.op == "split_file":
         split_and_save_file(
             cfg,
