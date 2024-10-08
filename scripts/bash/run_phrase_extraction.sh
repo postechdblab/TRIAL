@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # Define the total variable
-begin=0
-end=35
-total=144
-num_devices=8  # Number of available devices (0 to num_devices-1)
+begin=128
+end=147
+total=196
+num_devices=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 
 # Print the command being executed
+echo "Number of GPU devices: $num_devices"
 echo "Running: python scripts/preprocess/extract_phrases.py +total=$total +op=split_file +indices=[$begin,$end]"
 python scripts/preprocess/extract_phrases.py +total=$total +op=split_file +indices=[$begin,$end]
 
