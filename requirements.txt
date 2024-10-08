@@ -1,6 +1,9 @@
 bitarray
 gitpython
-spacy[cuda12x]
+pip
+setuptools
+wheel
+# spacy[cuda12x]
 spacy-transformers
 tqdm
 transformers
