@@ -99,6 +99,7 @@ def split_and_save_file(
         # Skip if the file is already saved
         if i not in indices_to_save:
             continue
+        tokenized_chunk = dict(tokenized_chunk)
 
         # Get the file names
         file_path = get_partial_data_name(
