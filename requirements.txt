@@ -3,7 +3,6 @@ gitpython
 pip
 setuptools
 wheel
-# spacy[cuda12x]
 spacy-transformers
 tqdm
 transformers
@@ -27,3 +26,5 @@ beir
 benepar
 # Install torch-scatter==2.1.2+pt24cu121
 https://data.pyg.org/whl/torch-2.4.0+cu124/torch_scatter-2.1.2+pt24cu124-cp312-cp312-linux_x86_64.whl
+# Place the spacy at the bottom to avoid conflicts with other packages
+spacy[cuda12x]
