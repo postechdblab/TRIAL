@@ -156,6 +156,6 @@ class PhraseExtractor:
         end = ranges[-1][1]
         if end != tok_ids_len:
             # Append tuples until the tok_ids_len
-            for i in range(end, tok_ids_len - 1):
+            for i in range(end, tok_ids_len):
                 ranges.append((i, i + 1))
         return ranges
