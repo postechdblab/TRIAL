@@ -156,7 +156,7 @@ def get_range_of_phrases_in_token_level(
         else:
             # If not, connect with the previous token
             # Loop backward to find the start of the phrase
-            phrase_start_in_tok = None
+            phrase_start_in_tok = 0
             for i in range(token_idx, -1, -1):
                 t_start, t_end = token_range_in_char[i]
                 if t_start <= p_start_in_char:
@@ -168,7 +168,7 @@ def get_range_of_phrases_in_token_level(
         else:
             # If not, connect with the next token
             # Loop forward to find the end of the phrase
-            phrase_end_in_tok = None
+            phrase_end_in_tok = len(token_range_in_char)
             for i in range(token_idx, len(token_range_in_char)):
                 t_start, t_end = token_range_in_char[i]
                 if t_end >= p_end_in_char:
