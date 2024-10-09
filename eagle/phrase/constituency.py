@@ -12,7 +12,7 @@ from transformers import T5TokenizerFast
 t5_tokenizer = T5TokenizerFast.from_pretrained("t5-base")
 
 MAX_TOKEN_LENGTH = 512
-MIN_SPACY_TOKEN_LENGTH_TO_CHECK = 200
+MIN_SPACY_TOKEN_LENGTH_TO_CHECK = 100
 
 logger = logging.getLogger("Constituency")
 nlp = spacy.blank("en")
