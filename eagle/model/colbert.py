@@ -55,6 +55,7 @@ class ColBERT(BaseModel):
         bsize, nway, dim = doc_tok_ids.shape
         ib_nhard = nway // bsize
         is_eval = labels is not None
+        doc_tok_mask = doc_tok_mask.view(-1, doc_tok_mask.shape[-1]).unsqueeze(-1)
         assert (
             q_tok_ids.shape[0] == bsize
         ), f"Batch size is not consistent: {q_tok_ids.shape[0]} vs {bsize}"
@@ -333,5 +334,5 @@ class ColBERT(BaseModel):
         return num_valid_tokens
 
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
-        num_valid_tokens = self.get_valid_num(mask)
+        num_valid_tokens = self.get_valid_num(mask == 0)
         return self.q_maxlen / num_valid_tokens

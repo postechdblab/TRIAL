@@ -87,12 +87,6 @@ class BatchForEAGLE(BaseBatch):
             for pid in pos_doc_ids + neg_doc_ids
         ]
 
-        # Validate doc_phrase_ranges
-        for ranges in doc_phrase_ranges:
-            for start, end in ranges:
-                if start >= end:
-                    stop = 1
-
         # Fix the missing phrase ranges.
         # This is a temporary fix. Need to change the phrase range creation logic to avoid this.
         q_phrase_ranges = fill_in_missing_phrase_ranges(q_phrase_ranges)

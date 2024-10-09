@@ -16,8 +16,11 @@ class BaseModel(torch.nn.Module):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
         super().__init__()
         self.cfg = cfg
+        backbone_name = cfg.override_backbone_name
+        if backbone_name is None:
+            backbone_name = cfg.backbone_name
         self.llm = self.__create_backbone_model(
-            cfg.backbone_name, vocab_num=tokenizers.vocab_num
+            backbone_name, vocab_num=tokenizers.vocab_num
         )
 
     def __create_backbone_model(self, name: str, vocab_num: int) -> torch.nn.Module:

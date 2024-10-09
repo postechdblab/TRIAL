@@ -1,5 +1,6 @@
 name: colbert
 backbone_name: bert-base-uncased
+override_backbone_name: Null
 ckpt_path: Null
 out_dim: 128
 # Quantization

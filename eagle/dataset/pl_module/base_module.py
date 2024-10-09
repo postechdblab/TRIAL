@@ -74,7 +74,7 @@ class BaseDataModule(L.LightningDataModule):
     def target_tokenized_queries_cache_path(self) -> str:
         if self.is_debug:
             return self.debug_tokenized_queries_cache_path
-        return self.target_tokenized_queries_cache_path
+        return self.tokenized_queries_cache_path
 
     @property
     def q_phrase_range_path(self) -> str:

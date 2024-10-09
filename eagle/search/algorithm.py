@@ -128,7 +128,7 @@ def maxsim_from_element_wise_relevance_score(
     """
     # Apply mask to the scores
     if k_mask is not None:
-        element_wise_scores.masked_fill_(k_mask, float("-inf"))
+        element_wise_scores.masked_fill_(k_mask == 0, float("-inf"))
 
     # Find the maximum scores for each document
     return element_wise_scores.max(dim=1).values
