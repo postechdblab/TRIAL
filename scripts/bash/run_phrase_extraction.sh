@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the total variable
-begin=128
-end=147
+begin=0
+end=31
 total=196
 num_devices=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
 

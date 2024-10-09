@@ -92,29 +92,42 @@ def get_range_of_phrases_in_token_level(
     max_token_len: int = 0,
     is_partial: bool = False,
 ) -> List[Tuple[int, int]]:
-    def append_phrase_indices(all_indices, start, end) -> bool:
-        real_start = start + offset
-        real_end = end + offset
+    def append_phrase_indices(
+        all_indices: List, start_tok_idx: int, end_tok_idx: int
+    ) -> bool:
+        """Append the phrase indices in token-level to the list"""
+        real_start = start_tok_idx + offset
+        real_end = end_tok_idx + offset
+        # Validate input: start and end are found
+        assert (
+            real_start != None and real_end != None
+        ), f"real_start:{real_start} real_end:{real_end}"
+        # Validate input: start is less than end
+        if real_start >= real_end:
+            raise ValueError(
+                f"real_start={real_start} >= real_end={real_end}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
+            )
+        # Validate input: check if the phrase is out of the max token length
         if max_token_len:
             max_tmp = max_token_len - padding
             if real_end > max_tmp:
                 return False
-        all_indices.append((real_start, real_end))
+        # Check if the phrase should be concatenated with the previous phrase
+        if len(all_indices) > 0 and real_start < all_indices[-1][1]:
+            all_indices[-1] = (all_indices[-1][0], real_end)
+            return True
+        else:
+            # Add the new phrase
+            all_indices.append((real_start, real_end))
         return True
 
-    def modify_last_phrase_index(all_indices, start, end) -> None:
-        real_start = start + offset
-        real_end = end + offset
-        if max_token_len:
-            max_tmp = max_token_len - padding
-            if real_end > max_tmp:
-                return None
-        all_indices[-1] = (real_start, real_end)
-        return None
-
     token_idx = 0
-    all_phrase_indices = [] if is_partial else [(i, i + 1) for i in range(offset)]
-    for phrase_idx, (p_start, p_end) in enumerate(noun_phrase_range_in_char):
+    all_phrase_indices_in_tok = (
+        [] if is_partial else [(i, i + 1) for i in range(offset)]
+    )
+    for phrase_idx, (p_start_in_char, p_end_in_char) in enumerate(
+        noun_phrase_range_in_char
+    ):
         # Skip the phrase if it is out of max token range
         if (
             max_token_len and offset + token_idx >= max_token_len - padding
@@ -122,112 +135,56 @@ def get_range_of_phrases_in_token_level(
             break
 
         # If the phrase does not cover all the tokens in the given text
-        if is_partial:
-            # Skip to the token_idx that is greater than the start of the phrase
-            while (
-                token_idx < len(token_range_in_char)
-                and token_range_in_char[token_idx][0] < p_start
-                and token_range_in_char[token_idx][1] <= p_start
-            ):
-                token_idx += 1
-            if token_idx == len(token_range_in_char):
-                # TODO: Need to shorten the phrase indices
-                break
+        # Skip to the token_idx that is greater than the start of the phrase
+        while (
+            token_idx < len(token_range_in_char)
+            and token_range_in_char[token_idx][1] <= p_start_in_char
+        ):
+            token_idx += 1
 
-        # Get the current token
-        t_start, t_end = token_range_in_char[token_idx]
+        if token_idx == len(token_range_in_char):
+            # TODO: Need to shorten the phrase indices
+            break
 
-        # Check if it is exact match
-        if t_start == p_start and t_end == p_end:
-            # Append the phrase:
-            success = append_phrase_indices(
-                all_phrase_indices, token_idx, token_idx + 1
-            )
-            if not success:
-                break
+        # Get the current token start and end indices in character level
+        t_start_in_char, t_end_in_char = token_range_in_char[token_idx]
 
-        # Phrase is part of the token, but the current token is not the last token of the phrase
-        elif t_start == p_start and t_end < p_end:
-            start = token_idx
-            while t_end < p_end and token_idx + 1 < len(token_range_in_char):
-                token_idx += 1
-                t_start, t_end = token_range_in_char[token_idx]
-            if t_start >= p_end:
-                success = append_phrase_indices(all_phrase_indices, start, token_idx)
-                token_idx -= 1
-            elif token_idx == len(token_range_in_char) - 1:
-                success = append_phrase_indices(
-                    all_phrase_indices, start, token_idx + 1
-                )
-            else:
-                assert (
-                    t_end >= p_end
-                ), f"t_end={t_end} >= p_end={p_end}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
-                success = append_phrase_indices(
-                    all_phrase_indices, start, token_idx + 1
-                )
-            if not success:
-                break
-
-        # Phrase is part of the token
-        elif t_start == p_start and t_end > p_end:
-            success = append_phrase_indices(
-                all_phrase_indices, token_idx, token_idx + 1
-            )
-
-        elif t_start < p_start and t_end == p_end:
-            success = append_phrase_indices(
-                all_phrase_indices, token_idx, token_idx + 1
-            )
-
-        elif t_start < p_start and t_end < p_end:
-            # Check next token
-            start = token_idx
-            while t_end < p_end and token_idx + 1 < len(token_range_in_char):
-                token_idx += 1
-                t_start, t_end = token_range_in_char[token_idx]
-            if t_start >= p_end:
-                success = append_phrase_indices(all_phrase_indices, start, token_idx)
-                token_idx -= 1
-            elif token_idx == len(token_range_in_char) - 1:
-                success = append_phrase_indices(
-                    all_phrase_indices, start, token_idx + 1
-                )
-            else:
-                assert (
-                    t_end >= p_end
-                ), f"t_end={t_end} >= p_end={p_end}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
-                success = append_phrase_indices(
-                    all_phrase_indices, start, token_idx + 1
-                )
-            assert (
-                success
-            ), f"Failed to append phrase_indices. start:{start} end:{token_idx+1}"
-        elif t_start > p_start:
-            # Check if the current phrase end is the same as the last token end (happens due to bad split in spacy)
-            if token_range_in_char[token_idx - 1][-1] == p_end:
-                # Skip the current token
-                pass
-            else:
-                while token_range_in_char[token_idx][1] < p_end and token_idx + 1 < len(
-                    token_range_in_char
-                ):
-                    token_idx += 1
-                # Modify the last saved phrase indices
-                modify_last_phrase_index(
-                    all_phrase_indices, all_phrase_indices[-1][0], token_idx + 1
-                )
+        # Find the phrase start in token-level
+        # Find the token start that is equal or less than the phrase start
+        if t_start_in_char <= p_start_in_char:
+            phrase_start_in_tok = token_idx
         else:
-            raise ValueError(
-                f"t_start={t_start} < p_start={p_start}. \ntoken_range_in_char:{token_range_in_char}\nnoun_phrase_range_in_char:{noun_phrase_range_in_char}"
-            )
-        token_idx += 1
+            # If not, connect with the previous token
+            # Loop backward to find the start of the phrase
+            phrase_start_in_tok = None
+            for i in range(token_idx, -1, -1):
+                t_start, t_end = token_range_in_char[i]
+                if t_start <= p_start_in_char:
+                    phrase_start_in_tok = i
+                    break
+        # Find the phrase end in token-level
+        if t_end_in_char >= p_end_in_char:
+            phrase_end_in_tok = token_idx + 1
+        else:
+            # If not, connect with the next token
+            # Loop forward to find the end of the phrase
+            phrase_end_in_tok = None
+            for i in range(token_idx, len(token_range_in_char)):
+                t_start, t_end = token_range_in_char[i]
+                if t_end >= p_end_in_char:
+                    phrase_end_in_tok = i + 1
+                    break
+        # Append to the phrase indices
+        append_phrase_indices(
+            all_phrase_indices_in_tok, phrase_start_in_tok, phrase_end_in_tok
+        )
+
     if padding and not is_partial:
-        last_idx = all_phrase_indices[-1][1]
-        all_phrase_indices.extend(
+        last_idx = all_phrase_indices_in_tok[-1][1]
+        all_phrase_indices_in_tok.extend(
             [(i + last_idx, i + last_idx + 1) for i in range(padding)]
         )
-    return all_phrase_indices
+    return all_phrase_indices_in_tok
 
 
 def get_range_of_tokens_in_char_level(

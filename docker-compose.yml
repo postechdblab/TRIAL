@@ -11,7 +11,7 @@ services:
         volumes:
             - /etc/timezone:/etc/timezone:ro 
             - ./:/root/EAGLE/
-            - /mnt/sdc/hkkang:/mnt/md0/hkkang
+            - /mnt/md0/hkkang:/mnt/md0/hkkang
         working_dir: /root
         user: $UID:$GID
         command: >

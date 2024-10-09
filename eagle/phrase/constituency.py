@@ -43,17 +43,18 @@ def truncate_exceeding_tokens(doc) -> None:
 
 @data_utils.dataclass
 class Phrase:
-    text: str
+    original_text: str
     start_idx: int
+    end_idx: int
     label: str
-
-    @property
-    def end_idx(self) -> int:
-        return self.start_idx + len(self.text)
 
     @property
     def idx_range(self) -> Tuple[int, int]:
         return self.start_idx, self.end_idx
+
+    @property
+    def text(self) -> str:
+        return self.original_text[self.start_idx : self.end_idx]
 
 
 class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
@@ -135,7 +136,14 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         :rtype: Tuple[List, bool]
         """
         if len(list(tree._.children)) == 0:
-            return [Phrase(text=tree.text, start_idx=tree.start_char, label="")], False
+            return [
+                Phrase(
+                    original_text=tree.sent,
+                    start_idx=tree.start_char,
+                    end_idx=tree.end_char,
+                    label="",
+                )
+            ], False
             # return [Phrase(tree.text, tree.start_char)]
         label = tree._.labels[0]
         return_list = []
@@ -185,7 +193,8 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
 
     def join_phrases(self, phrases: List[Phrase], label: str = None) -> Phrase:
         return Phrase(
-            text=" ".join([p.text for p in phrases]),
+            original_text=phrases[0].original_text,
             start_idx=phrases[0].start_idx,
+            end_idx=phrases[-1].end_idx,
             label=label,
         )

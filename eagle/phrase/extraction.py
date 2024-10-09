@@ -111,24 +111,13 @@ class PhraseExtractor:
         # Convert the char-level indices into token-level indices
         all_phrase_indices_in_tok = []
         for b_idx in range(len(texts)):
-            try:
-                phrase_indices_in_tok = get_range_of_phrases_in_token_level(
-                    all_token_in_char_indices[b_idx],
-                    all_phrase_indices_in_char[b_idx],
-                    offset=self.offset,
-                    padding=self.padding,
-                    max_token_len=max_tok_len,
-                )
-            except:
-                logger.warning(f"Error in processing {texts[b_idx]}")
-                phrase_indices_in_tok = [
-                    (i, i + 1)
-                    for i in range(
-                        len(all_token_in_char_indices[b_idx])
-                        + self.offset
-                        + self.padding
-                    )
-                ]
+            phrase_indices_in_tok = get_range_of_phrases_in_token_level(
+                all_token_in_char_indices[b_idx],
+                all_phrase_indices_in_char[b_idx],
+                offset=self.offset,
+                padding=self.padding,
+                max_token_len=max_tok_len,
+            )
             assert self.validate_ranges(
                 phrase_indices_in_tok,
                 tok_ids_len=len(tok_ids_list[b_idx]) + self.offset + self.padding,
