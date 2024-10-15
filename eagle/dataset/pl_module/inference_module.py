@@ -28,6 +28,7 @@ class InferenceDataModule(BaseDataModule):
         val_raw_dataset = InferenceDataset(
             cfg=self.cfg.val,
             cfg_dataset=self.cfg,
+            tokenizers=self.tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
         )

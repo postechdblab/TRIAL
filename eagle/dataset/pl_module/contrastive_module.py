@@ -26,6 +26,7 @@ class ContrastiveDataModule(BaseDataModule):
         train_raw_dataset = ContrastiveDataset(
             cfg=self.cfg.train_contrastive,
             cfg_dataset=self.cfg,
+            tokenizers=self.tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
             is_eval=False,
@@ -41,6 +42,7 @@ class ContrastiveDataModule(BaseDataModule):
         val_raw_dataset = ContrastiveDataset(
             cfg=self.cfg.val,
             cfg_dataset=self.cfg,
+            tokenizers=self.tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
             is_eval=True,

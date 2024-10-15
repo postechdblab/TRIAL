@@ -5,7 +5,6 @@ import torch
 CAPABILITY = torch.cuda.get_device_capability()
 
 
-# @torch.compile(dynamic=True, fullgraph=True, mode="max-autotune")
 def compute_loss_c(
     scores: torch.Tensor,
     ib_scores: torch.Tensor,
@@ -20,10 +19,8 @@ def compute_loss_c(
     # Compute inter-data cross-entropy loss
     scores = scores.view(-1, nway)
     q_n = scores.size(0)
-    
-    
     # Compute inter-data cross-entropy loss (i.e., in-batch negatives)
-    ib_loss = torch.nn.CrossEntropyLoss()(ib_scores.view(q_n, -1), ib_labels)    
+    ib_loss = torch.nn.CrossEntropyLoss()(ib_scores.view(q_n, -1), ib_labels)
     if ib_loss_coeff is not None and ib_loss_coeff != 1:
         ib_loss = ib_loss_coeff * ib_loss
 

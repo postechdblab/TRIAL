@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.utils import combine_splitted_tok_ids
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("ContrastiveDataset")
 
@@ -16,6 +17,7 @@ class ContrastiveDataset(BaseDataset):
         self,
         cfg: DictConfig,
         cfg_dataset: DictConfig,
+        tokenizers: Tokenizers,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
         is_eval: bool = False,
@@ -23,6 +25,7 @@ class ContrastiveDataset(BaseDataset):
         super().__init__(
             cfg=cfg,
             cfg_dataset=cfg_dataset,
+            tokenizers=tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
         )
@@ -56,6 +59,12 @@ class ContrastiveDataset(BaseDataset):
             tok_ids, sent_start_indices = combine_splitted_tok_ids(item)
             d_tok_ids.append(tok_ids)
             d_sent_start_indices.append(sent_start_indices)
+
+        # Cut off by max length
+        q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
+        d_tok_ids = [
+            self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
+        ]
 
         # Convert list to tensor
         q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")

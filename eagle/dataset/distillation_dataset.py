@@ -4,6 +4,7 @@ from typing import *
 from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("DistillationDataset")
 
@@ -13,6 +14,7 @@ class DistillationDataset(BaseDataset):
         self,
         cfg: DictConfig,
         cfg_dataset: DictConfig,
+        tokenizers: Tokenizers,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
         is_eval: bool = False,
@@ -20,6 +22,7 @@ class DistillationDataset(BaseDataset):
         super().__init__(
             cfg=cfg,
             cfg_dataset=cfg_dataset,
+            tokenizers=tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
         )
@@ -39,10 +42,18 @@ class DistillationDataset(BaseDataset):
         pos_doc_ids = [str(item) for item in pos_doc_ids]
         neg_doc_ids = [str(n_id) for n_id in neg_doc_ids]
 
-        # Get token and attention mask
+        # Get token
         q_tok_ids = self.tokenized_queries[qid]
-        q_tok_att_mask = [True] * len(q_tok_ids)
         d_tok_ids = [self.tokenized_corpus[pid] for pid in pos_doc_ids + neg_doc_ids]
+
+        # Cut off by max length
+        q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
+        d_tok_ids = [
+            self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
+        ]
+
+        # Get attention mask
+        q_tok_att_mask = [True] * len(q_tok_ids)
         d_tok_att_mask = [[True] * len(item) for item in d_tok_ids]
 
         result = {

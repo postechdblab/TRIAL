@@ -11,6 +11,7 @@ from eagle.dataset.utils import (
     get_labels,
     read_qrels_qids,
 )
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("BaseDataset")
 
@@ -20,11 +21,13 @@ class BaseDataset:
         self,
         cfg: DictConfig,
         cfg_dataset: DictConfig,
+        tokenizers: Tokenizers,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
     ):
         self.cfg = cfg
         self.cfg_dataset = cfg_dataset
+        self.tokenizers = tokenizers
         self.data = self._read_data(self.data_path)
         # Save cached information
         self.tokenized_queries = tokenized_queries
