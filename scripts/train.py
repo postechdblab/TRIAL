@@ -91,7 +91,7 @@ def main(cfg: DictConfig) -> None:
                 dirpath=default_root_dir,
                 monitor="val_NDCG@10",
                 mode="max",
-                save_top_k=1,
+                save_top_k=2,
                 save_on_train_epoch_end=True,
             ),
         ],
