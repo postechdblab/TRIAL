@@ -5,6 +5,14 @@ from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
 
+def l1_regularization(tensor: torch.Tensor) -> torch.Tensor:
+    return torch.linalg.matrix_norm(tensor.squeeze(-1))
+
+
+def l2_regularization(tensor: torch.Tensor) -> torch.Tensor:
+    return torch.linalg.matrix_norm(tensor.squeeze(-1)) ** 2
+
+
 def pid_found_percentage(pids_to_find: List[int], pids_corpus: List[int]) -> float:
     """Calculate the percentage of pids that are found in the corpus"""
     return len(set(pids_to_find).intersection(set(pids_corpus))) / len(pids_to_find)
