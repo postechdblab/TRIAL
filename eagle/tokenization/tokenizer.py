@@ -169,7 +169,9 @@ class Tokenizer:
         if maintain_special_tokens and tok_ids[-1] == self.tokenizer.sep_token_id:
             cutoff_idx -= 1
         # Cut off by the max length
-        tok_ids = tok_ids[:cutoff_idx] + [self.tokenizer.sep_token_id]
+        tok_ids = tok_ids[:cutoff_idx]
+        if maintain_special_tokens:
+            tok_ids = tok_ids + [self.tokenizer.sep_token_id]
         # Convert back to tensor if it was a tensor
         if not is_list:
             tok_ids = torch.tensor(tok_ids, dtype=dtype, device=device)

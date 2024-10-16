@@ -75,12 +75,6 @@ class BatchForEAGLE(BaseBatch):
                 doc_tok_ids
             )
 
-        # Get token masks
-        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
-        q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
-        doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
-        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
-
         # Get phrase ranges
         q_phrase_ranges: List[Tuple] = combined_phrase_ranges_into_one_sentence(
             [
@@ -102,6 +96,17 @@ class BatchForEAGLE(BaseBatch):
             for pid in pos_doc_ids + neg_doc_ids
         ]
 
+        # Cut off phrase ranges if it exceeds the maximum length
+        q_phrase_ranges = self.cut_off_phrase_ranges_by_max_len(
+            q_phrase_ranges, self.dataset.tokenizers.q_tokenizer.cfg.max_len
+        )
+        doc_phrase_ranges = [
+            self.cut_off_phrase_ranges_by_max_len(
+                item, self.dataset.tokenizers.d_tokenizer.cfg.max_len
+            )
+            for item in doc_phrase_ranges
+        ]
+
         # Fix the missing phrase ranges.
         # This is a temporary fix. Need to change the phrase range creation logic to avoid this.
         q_phrase_ranges = fill_in_missing_phrase_ranges(q_phrase_ranges)
@@ -109,24 +114,44 @@ class BatchForEAGLE(BaseBatch):
             fill_in_missing_phrase_ranges(item) for item in doc_phrase_ranges
         ]
 
-        # Get phrase masks
+        # Get scatter indices for phrases
+        q_phrase_scatter_indices: List[int] = convert_range_to_scatter(q_phrase_ranges)
+        doc_phrase_scatter_indices: List[List[int]] = [
+            convert_range_to_scatter(item) for item in doc_phrase_ranges
+        ]
+
+        # Cut off phrase scatter indices if it exceeds the maximum length
+        q_phrase_scatter_indices = (
+            self.dataset.tokenizers.q_tokenizer.cutoff_by_max_len(
+                q_phrase_scatter_indices,
+                maintain_special_tokens=False,
+            )
+        )
+        doc_phrase_scatter_indices = [
+            self.dataset.tokenizers.d_tokenizer.cutoff_by_max_len(
+                item,
+                maintain_special_tokens=False,
+            )
+            for item in doc_phrase_scatter_indices
+        ]
+
+        # Create mask
+        # Create token masks
+        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
+        q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
+        doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
+        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
+        # Create phrase masks
         q_phrase_mask = torch.ones(len(q_phrase_ranges), dtype=torch.bool).float()
         doc_phrase_mask = [
             torch.ones(len(dpr), dtype=torch.bool).float() for dpr in doc_phrase_ranges
         ]
         doc_phrase_mask = pad_sequence(doc_phrase_mask, batch_first=True)
-
-        # Get sentence masks
+        # Create sentence masks
         q_sent_mask = torch.ones(len(q_sent_start_indices), dtype=torch.bool).float()
         doc_sent_mask = [
             torch.ones(len(dssi), dtype=torch.bool).float()
             for dssi in doc_sent_start_indices
-        ]
-
-        # Get scatter indices for phrases
-        q_phrase_scatter_indices: List[int] = convert_range_to_scatter(q_phrase_ranges)
-        doc_phrase_scatter_indices: List[List[int]] = [
-            convert_range_to_scatter(item) for item in doc_phrase_ranges
         ]
 
         return {
@@ -148,39 +173,75 @@ class BatchForEAGLE(BaseBatch):
             "distillation_scores": distillation_scores,
         }
 
-    @staticmethod
-    def _collate_q_tok_ids(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_q_tok_ids(self, data: List[torch.Tensor]) -> torch.Tensor:
+        if self.pad_to_max_length:
+            return torch.stack(data)
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_q_tok_att_mask(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_q_tok_att_mask(self, data: List[torch.Tensor]) -> torch.Tensor:
+        if self.pad_to_max_length:
+            return torch.stack(data)
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_q_tok_mask(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_q_tok_mask(self, data: List[torch.Tensor]) -> torch.Tensor:
+        if self.pad_to_max_length:
+            return torch.stack(data)
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_q_phrase_mask(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_q_phrase_mask(self, data: List[torch.Tensor]) -> torch.Tensor:
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_q_sent_mask(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_q_sent_mask(self, data: List[torch.Tensor]) -> torch.Tensor:
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_q_phrase_scatter_indices(data: List[List[int]]) -> List[torch.Tensor]:
+    def _collate_q_phrase_scatter_indices(
+        self, data: List[List[int]]
+    ) -> List[torch.Tensor]:
         padded_values = collate_ranges(
             [torch.tensor(item, dtype=torch.long, device="cpu") for item in data]
         )
         return padded_values
 
-    @staticmethod
-    def _collate_q_sent_start_indices(data: List[List[int]]) -> List[List[int]]:
+    def _collate_q_sent_start_indices(self, data: List[List[int]]) -> List[List[int]]:
         return data
 
-    @staticmethod
-    def _collate_doc_tok_ids(data: List[torch.Tensor]) -> torch.Tensor:
+    def _collate_doc_tok_ids(self, data: List[torch.Tensor]) -> torch.Tensor:
+        """Data shape: [bsize, num_docs, num_toks]"""
+        if self.pad_to_max_length:
+            return torch.stack(data)
+        bsize, num_docs = len(data), len(data[0])
+        # Convert to list of list of tensors
+        flattened_data = list_utils.do_flatten_list([item for item in data])
+        # Pad the sequence to the maximum length
+        padded_data = pad_sequence(flattened_data, batch_first=True)
+        # Convert to the original shape
+        return padded_data.reshape(bsize, num_docs, -1)
+
+    def _collate_doc_tok_att_mask(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Data shape: [bsize, num_docs, num_toks]"""
+        if self.pad_to_max_length:
+            return torch.stack(data)
+        bsize, num_docs = len(data), len(data[0])
+        # Convert to list of list of tensors
+        flattened_data = list_utils.do_flatten_list([item for item in data])
+        # Pad the sequence to the maximum length
+        padded_data = pad_sequence(flattened_data, batch_first=True)
+        # Convert to the original shape
+        return padded_data.reshape(bsize, num_docs, -1)
+
+    def _collate_doc_tok_mask(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Data shape: [bsize, num_docs, num_toks]"""
+        if self.pad_to_max_length:
+            return torch.stack(data)
+        bsize, num_docs = len(data), len(data[0])
+        # Convert to list of list of tensors
+        flattened_data = list_utils.do_flatten_list([item for item in data])
+        # Pad the sequence to the maximum length
+        padded_data = pad_sequence(flattened_data, batch_first=True)
+        # Convert to the original shape
+        return padded_data.reshape(bsize, num_docs, -1)
+
+    def _collate_doc_phrase_mask(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         """Data shape: [bsize, num_docs, num_toks]"""
         bsize, num_docs = len(data), len(data[0])
         # Convert to list of list of tensors
@@ -190,8 +251,7 @@ class BatchForEAGLE(BaseBatch):
         # Convert to the original shape
         return padded_data.reshape(bsize, num_docs, -1)
 
-    @staticmethod
-    def _collate_doc_tok_att_mask(data: List[torch.Tensor]) -> List[torch.Tensor]:
+    def _collate_doc_sent_mask(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         """Data shape: [bsize, num_docs, num_toks]"""
         bsize, num_docs = len(data), len(data[0])
         # Convert to list of list of tensors
@@ -201,41 +261,9 @@ class BatchForEAGLE(BaseBatch):
         # Convert to the original shape
         return padded_data.reshape(bsize, num_docs, -1)
 
-    @staticmethod
-    def _collate_doc_tok_mask(data: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Data shape: [bsize, num_docs, num_toks]"""
-        bsize, num_docs = len(data), len(data[0])
-        # Convert to list of list of tensors
-        flattened_data = list_utils.do_flatten_list([item for item in data])
-        # Pad the sequence to the maximum length
-        padded_data = pad_sequence(flattened_data, batch_first=True)
-        # Convert to the original shape
-        return padded_data.reshape(bsize, num_docs, -1)
-
-    @staticmethod
-    def _collate_doc_phrase_mask(data: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Data shape: [bsize, num_docs, num_toks]"""
-        bsize, num_docs = len(data), len(data[0])
-        # Convert to list of list of tensors
-        flattened_data = list_utils.do_flatten_list([item for item in data])
-        # Pad the sequence to the maximum length
-        padded_data = pad_sequence(flattened_data, batch_first=True)
-        # Convert to the original shape
-        return padded_data.reshape(bsize, num_docs, -1)
-
-    @staticmethod
-    def _collate_doc_sent_mask(data: List[torch.Tensor]) -> List[torch.Tensor]:
-        """Data shape: [bsize, num_docs, num_toks]"""
-        bsize, num_docs = len(data), len(data[0])
-        # Convert to list of list of tensors
-        flattened_data = list_utils.do_flatten_list([item for item in data])
-        # Pad the sequence to the maximum length
-        padded_data = pad_sequence(flattened_data, batch_first=True)
-        # Convert to the original shape
-        return padded_data.reshape(bsize, num_docs, -1)
-
-    @staticmethod
-    def _collate_doc_phrase_scatter_indices(data: List[Any]) -> List[torch.Tensor]:
+    def _collate_doc_phrase_scatter_indices(
+        self, data: List[Any]
+    ) -> List[torch.Tensor]:
         padded_values = list_utils.do_flatten_list([item for item in data])
         padded_values = collate_ranges(
             [
@@ -245,22 +273,19 @@ class BatchForEAGLE(BaseBatch):
         )
         return padded_values
 
-    @staticmethod
     def _collate_doc_sent_start_indices(
+        self,
         data: List[List[List[int]]],
     ) -> List[List[List[int]]]:
         return data
 
-    @staticmethod
-    def _collate_labels(data: List[torch.Tensor]) -> List[torch.Tensor]:
+    def _collate_labels(self, data: List[torch.Tensor]) -> List[torch.Tensor]:
         return pad_sequence(data, batch_first=True)
 
-    @staticmethod
-    def _collate_distillation_scores(data: List[Any]) -> List[Any]:
+    def _collate_distillation_scores(self, data: List[Any]) -> List[Any]:
         return data
 
-    @staticmethod
-    def collate_fn(input_dics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def collate_fn(self, input_dics: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Collate list of dictionaries into a single dictionary."""
         new_dict = {}
         # Assume all dictionaries have the same keys
@@ -277,5 +302,18 @@ class BatchForEAGLE(BaseBatch):
                 raise ValueError(f"Unsupported key: {key}")
             # Perform the collation
             collate_method = getattr(BatchForEAGLE, collate_method_name)
-            new_dict[key] = collate_method([dic[key] for dic in input_dics])
+            new_dict[key] = collate_method(self, [dic[key] for dic in input_dics])
         return new_dict
+
+    def cut_off_phrase_ranges_by_max_len(
+        self, phrase_ranges: List[Tuple[int, int]], max_len: int
+    ) -> List[Tuple[int, int]]:
+        new_phrase_ranges = []
+        for i, (start, end) in enumerate(phrase_ranges):
+            if start >= max_len:
+                break
+            if end > max_len:
+                new_phrase_ranges.append((start, max_len))
+                break
+            new_phrase_ranges.append((start, end))
+        return new_phrase_ranges
