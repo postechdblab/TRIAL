@@ -27,6 +27,8 @@ output_dir: ./results
 logging_dir: ./logs
 logging_steps: 40
 # Dataloader
-train_num_workers: 8
-val_num_workers: 4
+train_num_workers: 1
+val_num_workers: 1
 test_num_workers: 1
+# Tokenization
+pad_to_max_length: True

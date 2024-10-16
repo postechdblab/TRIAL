@@ -20,10 +20,15 @@ class BatchForEAGLE(BaseBatch):
         self,
         dataset: BaseDataset,
         skip_tok_ids: List[int],
-        phrase_ranges_queries,
-        phrase_ranges_corpus,
+        pad_to_max_length: bool = False,
+        phrase_ranges_queries=None,
+        phrase_ranges_corpus=None,
     ):
-        super().__init__(dataset=dataset, skip_tok_ids=skip_tok_ids)
+        super().__init__(
+            dataset=dataset,
+            skip_tok_ids=skip_tok_ids,
+            pad_to_max_length=pad_to_max_length,
+        )
         self.phrase_ranges_queries: List[List[Tuple[int, int]]] = phrase_ranges_queries
         self.phrase_ranges_corpus: List[List[Tuple[int, int]]] = phrase_ranges_corpus
 
@@ -49,6 +54,7 @@ class BatchForEAGLE(BaseBatch):
 
     def parse_data(self, data: List[Any]) -> Dict[str, Any]:
         """Add phrase indices and masks to the data."""
+        # Get data
         labels = data.get("labels", None)
         distillation_scores = data.get("distillation_scores", None)
 
@@ -59,6 +65,15 @@ class BatchForEAGLE(BaseBatch):
         neg_doc_ids = data["neg_doc_ids"]
         q_sent_start_indices = data["q_sent_start_indices"]
         doc_sent_start_indices = data["doc_sent_start_indices"]
+
+        # Pad the input ids to the maximum length
+        if self.pad_to_max_length:
+            q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
+                q_tok_ids
+            )
+            doc_tok_ids = self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
+                doc_tok_ids
+            )
 
         # Get token masks
         q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)

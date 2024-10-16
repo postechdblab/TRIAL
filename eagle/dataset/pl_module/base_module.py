@@ -310,12 +310,14 @@ class BaseDataModule(L.LightningDataModule):
             train_batch = self.data_batching_cls(
                 dataset=train_dataset,
                 skip_tok_ids=self.tokenizers.skip_tok_ids,
+                pad_to_max_length=self.cfg_global.training.pad_to_max_length,
                 **add_kwargs,
             )
 
         val_batch = self.data_batching_cls(
             dataset=val_dataset,
             skip_tok_ids=self.tokenizers.skip_tok_ids,
+            pad_to_max_length=self.cfg_global.training.pad_to_max_length,
             **add_kwargs,
         )
 
@@ -331,7 +333,7 @@ class BaseDataModule(L.LightningDataModule):
             self.train_batch,
             batch_size=self.cfg_global.training.per_device_train_batch_size,
             num_workers=self.cfg_global.training.train_num_workers,
-            collate_fn=self.data_batching_cls.collate_fn,
+            collate_fn=self.train_batch.collate_fn,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -339,7 +341,7 @@ class BaseDataModule(L.LightningDataModule):
             self.val_batch,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
             num_workers=self.cfg_global.training.val_num_workers,
-            collate_fn=self.data_batching_cls.collate_fn,
+            collate_fn=self.val_batch.collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -347,7 +349,7 @@ class BaseDataModule(L.LightningDataModule):
             self.test_batch,
             batch_size=self.cfg_global.training.per_device_eval_batch_size,
             num_workers=self.cfg_global.training.test_num_workers,
-            collate_fn=self.data_batching_cls.collate_fn,
+            collate_fn=self.test_batch.collate_fn,
         )
 
     @property

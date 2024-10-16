@@ -14,7 +14,6 @@ from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     ModelSummary,
 )
-from lightning.pytorch.profilers import PyTorchProfiler
 from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
 
@@ -24,8 +23,8 @@ from eagle.utils import add_config, add_global_configs
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 torch.set_float32_matmul_precision("high")
-
 logger = logging.getLogger("PL_Trainer")
+torch._dynamo.config.optimize_ddp = False
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")

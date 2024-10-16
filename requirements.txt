@@ -15,7 +15,6 @@ unidecode
 matplotlib
 hydra-core
 lz4
-peft
 wget
 diskcache
 ninja

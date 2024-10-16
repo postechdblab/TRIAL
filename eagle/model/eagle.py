@@ -7,13 +7,17 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.model.base_model import BaseModel
-from eagle.model.compiled_tensor_op import l1_regularization, l2_regularization
 from eagle.model.objective import (
     compute_loss,
     doc_indices_for_ib_loss,
     get_target_scale_tensor,
 )
-from eagle.model.utils import aggregate_vectors_with_indices, get_weight_layer
+from eagle.model.utils import (
+    aggregate_vectors_with_indices,
+    get_weight_layer,
+    l1_regularization,
+    l2_regularization,
+)
 from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("EAGLE")

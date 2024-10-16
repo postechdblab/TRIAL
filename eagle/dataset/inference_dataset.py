@@ -4,6 +4,7 @@ from typing import *
 from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
+from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("InferenceDataset")
 
@@ -13,12 +14,14 @@ class InferenceDataset(BaseDataset):
         self,
         cfg: DictConfig,
         cfg_dataset: DictConfig,
+        tokenizers: Tokenizers,
         tokenized_queries: Dict,
         tokenized_corpus: Dict,
     ):
         super().__init__(
             cfg=cfg,
             cfg_dataset=cfg_dataset,
+            tokenizers=tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
         )
@@ -43,6 +46,12 @@ class InferenceDataset(BaseDataset):
             q_tok_att_mask = [True] * len(q_tok_ids)
         else:
             raise ValueError(f"Invalid data type: {type(self.data[idx])}")
+
+        # Cut off by max length
+        q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
+        d_tok_ids = [
+            self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
+        ]
 
         return {
             "q_id": qid,

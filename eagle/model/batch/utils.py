@@ -8,6 +8,14 @@ from torch.nn.utils.rnn import pad_sequence
 from eagle.dataset.utils import convert_range_to_scatter, fill_ranges, get_mask
 
 
+def zero_pad_1d_tensor(data: List[torch.Tensor]) -> torch.Tensor:
+    return torch.nn.utils.rnn.pad_sequence(data, batch_first=True)
+
+
+def zero_pad_2d_tensor(data: List[List[torch.Tensor]]) -> List[torch.Tensor]:
+    return [torch.nn.utils.rnn.pad_sequence(item, batch_first=True) for item in data]
+
+
 def add_query_ranges_and_mask(
     input_dict: Dict,
     phrase_ranges: List[Tuple[int, int]],

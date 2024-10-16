@@ -151,3 +151,67 @@ class Tokenizer:
                 return_tensors=return_tensors,
             )
         return tokenized_texts
+
+    def cutoff_by_max_len(
+        self, tok_ids: Union[List, torch.Tensor], maintain_special_tokens: bool = True
+    ) -> Union[List, torch.Tensor]:
+        # Check if the length is less than the max length
+        if len(tok_ids) <= self.cfg.max_len:
+            return tok_ids
+        # Get the type of the input
+        is_list = type(tok_ids) == list
+        # Convert to tensor if it is a list
+        if not is_list:
+            device, dtype = tok_ids.device, tok_ids.dtype
+            tok_ids = tok_ids.tolist()
+        # Find the cutoff index
+        cutoff_idx = self.cfg.max_len
+        if maintain_special_tokens and tok_ids[-1] == self.tokenizer.sep_token_id:
+            cutoff_idx -= 1
+        # Cut off by the max length
+        tok_ids = tok_ids[:cutoff_idx] + [self.tokenizer.sep_token_id]
+        # Convert back to tensor if it was a tensor
+        if not is_list:
+            tok_ids = torch.tensor(tok_ids, dtype=dtype, device=device)
+        return tok_ids
+
+    def pad_1d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+        if len(data) >= self.cfg.max_len:
+            return data
+        return torch.tensor(
+            data.tolist()
+            + [self.tokenizer.pad_token_id] * (self.cfg.max_len - len(data)),
+            dtype=data.dtype,
+            device=data.device,
+        )
+
+    def pad_2d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+        assert len(data.shape) == 2, f"Unsupported shape: {data.shape}"
+        if data.shape[1] >= self.cfg.max_len:
+            return data
+        # Create a tensor with the maximum length
+        tmp = torch.zeros(
+            (data.shape[0], self.cfg.max_len),
+            dtype=data.dtype,
+            device=data.device,
+        )
+        # Fill with pad token
+        if self.tokenizer.pad_token_id != 0:
+            tmp.fill_(self.tokenizer.pad_token_id)
+        # Copy the original data
+        tmp[:, : data.shape[1]] = data
+        return tmp
+
+    def pad_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+        if len(data.shape) == 1:
+            return self.pad_1d_tensor_by_max_len(data)
+        elif len(data.shape) == 2:
+            return self.pad_2d_tensor_by_max_len(data)
+        raise ValueError(f"Unsupported shape: {data.shape}")
+
+    def pad_sequence_by_max_len(
+        self, data: Union[List, torch.Tensor]
+    ) -> Union[List, torch.Tensor]:
+        if isinstance(data, torch.Tensor):
+            return self.pad_tensor_by_max_len(data)
+        raise ValueError(f"Unsupported type: {type(data)}")

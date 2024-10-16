@@ -5,6 +5,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.model.batch import BaseBatch
+from eagle.model.batch.utils import get_mask
 
 
 class BatchForDPR(BaseBatch):
@@ -19,11 +20,20 @@ class BatchForDPR(BaseBatch):
 
         # Get query token ids and attention mask
         q_tok_ids = data["q_tok_ids"]
-        q_tok_att_mask = data["q_tok_att_mask"]
-
-        # Get document token ids and attention mask
         doc_tok_ids = data["doc_tok_ids"]
-        doc_tok_att_mask = data["doc_tok_att_mask"]
+
+        # Pad the input ids to the maximum length
+        if self.pad_to_max_length:
+            q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
+                q_tok_ids
+            )
+            doc_tok_ids = self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
+                doc_tok_ids
+            )
+
+        # Get token masks
+        q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
+        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         distillation_scores = data.get("distillation_scores", None)
         labels = data.get("labels", None)

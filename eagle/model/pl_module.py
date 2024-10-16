@@ -11,18 +11,27 @@ from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
 from eagle.index.corpus import Corpus
-from eagle.metrics import (aggregate_final_metrics,
-                           aggregate_intermediate_metrics, compute_metrics)
+from eagle.metrics import (
+    aggregate_final_metrics,
+    aggregate_intermediate_metrics,
+    compute_metrics,
+)
 from eagle.model.colbert import ColBERT
 from eagle.model.dpr import DPR
 from eagle.model.eagle import EAGLE
-from eagle.model.utils import (_sort_by_length, _split_into_batches,
-                               append_dummy_pid, pid_found_percentage,
-                               unwrap_logging_items)
+from eagle.model.utils import (
+    _sort_by_length,
+    _split_into_batches,
+    append_dummy_pid,
+    pid_found_percentage,
+    unwrap_logging_items,
+)
 from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
 from eagle.tokenization import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
+
+CAPABILITY = torch.cuda.get_device_capability()
 
 
 class LightningNewModel(L.LightningModule):
@@ -37,7 +46,9 @@ class LightningNewModel(L.LightningModule):
         self.dataset_name = cfg.dataset.name
         self.train_batch_num = train_batch_num
         # Tmp
-        self.tokenizers = Tokenizers(cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name)
+        self.tokenizers = Tokenizers(
+            cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name
+        )
         # Load model
         assert cfg.model.name in ["colbert", "eagle", "cross_encoder"]
         if cfg.model.name == "eagle":
@@ -51,6 +62,9 @@ class LightningNewModel(L.LightningModule):
         self.model = model_module(
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
+        if CAPABILITY[0] >= 7:
+            self.model = torch.compile(self.model, dynamic=True)
+
         self.swa_model = (
             AveragedModel(self.model)
             if handle_old_ckpt(self.cfg, "is_use_swa")
@@ -233,16 +247,23 @@ class LightningNewModel(L.LightningModule):
                 phrase_weight=phrase_weight,
                 # gold_doc_ids=pos_doc_idxs,
                 return_intermediate_pids=True,
-                is_debug=is_debug
+                is_debug=is_debug,
             )
             if is_debug:
-                pids, scores, intermediate_pids, (max_scores_by_token,
-                max_scores_by_phrase,
-                max_scores_by_cls,
-                max_sim_by_token,
-                max_sim_by_phrase,
-                max_sim_by_cls,
-                max_key_tok_ids) = result
+                (
+                    pids,
+                    scores,
+                    intermediate_pids,
+                    (
+                        max_scores_by_token,
+                        max_scores_by_phrase,
+                        max_scores_by_cls,
+                        max_sim_by_token,
+                        max_sim_by_phrase,
+                        max_sim_by_cls,
+                        max_key_tok_ids,
+                    ),
+                ) = result
                 all_max_scores_by_cls.append(max_scores_by_cls)
                 all_max_scores_by_phrase.append(max_scores_by_phrase)
                 all_max_sim_by_token.append(max_sim_by_token)
@@ -332,7 +353,12 @@ class LightningNewModel(L.LightningModule):
                 max_sim_by_cls = all_max_scores_by_cls[b_idx]
                 max_sim_by_phrase = all_max_scores_by_phrase[b_idx]
                 max_sim_by_token = all_max_sim_by_token[b_idx]
-                max_key_tok_ids = [self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(item, skip_special_tokens=False) for item in all_max_key_tok_ids[b_idx]]
+                max_key_tok_ids = [
+                    self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
+                        item, skip_special_tokens=False
+                    )
+                    for item in all_max_key_tok_ids[b_idx]
+                ]
                 # Query
                 q_tok_ids = batch["q_tok_ids"][b_idx].tolist()
                 q_toks = q_toks_batch[b_idx]
@@ -340,10 +366,18 @@ class LightningNewModel(L.LightningModule):
                 top_10_scores = all_scores[b_idx, :10].tolist()
                 top_10_pids = all_pids[b_idx, :10].tolist()
                 gold_pids = batch["pos_doc_idxs"][b_idx]
-                gold_indics = [all_pids[b_idx].tolist().index(gold_pid) for gold_pid in gold_pids]
-                gold_scores = [all_scores[b_idx][gold_idx].item() for gold_idx in gold_indics]
-                gold_max_key_tok_ids = [max_key_tok_ids[gold_idx] for gold_idx in gold_indics]
-                gold_tok_scores = [max_sim_by_token[gold_idx].tolist() for gold_idx in gold_indics]
+                gold_indics = [
+                    all_pids[b_idx].tolist().index(gold_pid) for gold_pid in gold_pids
+                ]
+                gold_scores = [
+                    all_scores[b_idx][gold_idx].item() for gold_idx in gold_indics
+                ]
+                gold_max_key_tok_ids = [
+                    max_key_tok_ids[gold_idx] for gold_idx in gold_indics
+                ]
+                gold_tok_scores = [
+                    max_sim_by_token[gold_idx].tolist() for gold_idx in gold_indics
+                ]
                 # Get the negative pids
                 negatives = []
                 negative_scores = []
@@ -359,11 +393,20 @@ class LightningNewModel(L.LightningModule):
                     negative_scores = top_10_scores
 
                 # Get gold documents
-                gold_docs = [self.corpus.get_document_by_id(gold_pid+1)[0] for gold_pid in gold_pids]
-                gold_docs_tok_ids = [self.tokenizers.d_tokenizer(str(gold_doc))[
-                    "input_ids"
-                ][0] for gold_doc in gold_docs]
-                gold_doc_toks = [self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(gold_doc_tok_ids, skip_special_tokens=False) for gold_doc_tok_ids in gold_docs_tok_ids]
+                gold_docs = [
+                    self.corpus.get_document_by_id(gold_pid + 1)[0]
+                    for gold_pid in gold_pids
+                ]
+                gold_docs_tok_ids = [
+                    self.tokenizers.d_tokenizer(str(gold_doc))["input_ids"][0]
+                    for gold_doc in gold_docs
+                ]
+                gold_doc_toks = [
+                    self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
+                        gold_doc_tok_ids, skip_special_tokens=False
+                    )
+                    for gold_doc_tok_ids in gold_docs_tok_ids
+                ]
                 # Get negative documents
                 negative_docs = []
                 negative_doc_toks = []
@@ -372,7 +415,7 @@ class LightningNewModel(L.LightningModule):
                 negative_tok_scores = []
                 for n_pid in negatives:
                     # Search document
-                    doc = self.corpus.get_document_by_id(n_pid+1)[0]
+                    doc = self.corpus.get_document_by_id(n_pid + 1)[0]
                     negative_docs.append(doc)
                     # Tokenize the text
                     tok_ids = self.tokenizers.d_tokenizer(str(doc))["input_ids"][0]
@@ -391,11 +434,19 @@ class LightningNewModel(L.LightningModule):
                 print("\n\n")
                 print(f"Query: {" ".join(q_toks)}")
                 for j in range(len(gold_docs)):
-                    print(f"Gold {j+1} (score: {gold_scores[j]:.2f}): {" ".join(gold_doc_toks[j])}")
-                    print(f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, gold_max_key_tok_ids[j], gold_tok_scores[j])]}\n")
+                    print(
+                        f"Gold {j+1} (score: {gold_scores[j]:.2f}): {" ".join(gold_doc_toks[j])}"
+                    )
+                    print(
+                        f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, gold_max_key_tok_ids[j], gold_tok_scores[j])]}\n"
+                    )
                 for j in range(len(negative_docs)):
-                    print(f"\nNegative {j+1} (score: {negative_scores[j]:.2f}): {" ".join(negative_doc_toks[j])}")
-                    print(f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, negative_max_key_tok_ids[j], negative_tok_scores[j])]}\n")
+                    print(
+                        f"\nNegative {j+1} (score: {negative_scores[j]:.2f}): {" ".join(negative_doc_toks[j])}"
+                    )
+                    print(
+                        f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, negative_max_key_tok_ids[j], negative_tok_scores[j])]}\n"
+                    )
 
                     # Show which query token is mapped with which document token
                 stop = 1
@@ -415,6 +466,7 @@ class LightningNewModel(L.LightningModule):
         import copy
 
         import hkkang_utils.file as file_utils
+
         tmp = copy.deepcopy(gathered_final_results)
         collected = []
         for item1 in tmp:
