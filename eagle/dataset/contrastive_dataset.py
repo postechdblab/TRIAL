@@ -31,15 +31,14 @@ class ContrastiveDataset(BaseDataset):
         )
         self.is_eval = is_eval
 
-    def __getitem__(self, idx: int) -> Tuple[int, List[str], List[str]]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         # Get the target data through the parent class (for shuffling)
         target_data = super().__getitem__(idx)
 
         # Get qid, pos_doc_ids, and neg_doc_ids
         qid = target_data[0]
-        pos_doc_ids = target_data[1]
+        pos_doc_ids = [target_data[1]]
         neg_doc_ids = target_data[2:][self.neg_start_idx : self.neg_end_idx]
-        pos_doc_ids = [pos_doc_ids]
 
         # Get token ids and attention mask
         q_tok_ids_per_sentences: List[List[int]] = self.tokenized_queries[

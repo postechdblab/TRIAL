@@ -54,7 +54,10 @@ class BaseDataModule(L.LightningDataModule):
 
     @property
     def debug_tokenized_corpus_cache_path(self) -> str:
-        return self.tokenized_corpus_cache_path + DEBUG_FILE_SUFFIX
+        suffix = ""
+        if self.cfg_global.training.use_distillation:
+            suffix = ".distillation"
+        return self.tokenized_corpus_cache_path + suffix + DEBUG_FILE_SUFFIX
 
     @property
     def target_tokenized_corpus_cache_path(self) -> str:
@@ -68,7 +71,10 @@ class BaseDataModule(L.LightningDataModule):
 
     @property
     def debug_tokenized_queries_cache_path(self) -> str:
-        return self.tokenized_queries_cache_path + DEBUG_FILE_SUFFIX
+        suffix = ""
+        if self.cfg_global.training.use_distillation:
+            suffix = ".distillation"
+        return self.tokenized_queries_cache_path + suffix + DEBUG_FILE_SUFFIX
 
     @property
     def target_tokenized_queries_cache_path(self) -> str:
@@ -131,7 +137,14 @@ class BaseDataModule(L.LightningDataModule):
         pids = set()
         for datum in train_dataset_sampled.data + val_dataset_sampled.data:
             qids.add(datum[0])
-            pids |= set(datum[1:])
+            # Extract pids
+            if type(datum[1]) == list:
+                # Extract pids for distillation data
+                list_of_pids = [d[0] for d in datum[1:]]
+                pids |= set(list_of_pids)
+            else:
+                # Extract pids for contrastive data
+                pids |= set(datum[1:])
 
         return qids, pids
 
@@ -154,7 +167,7 @@ class BaseDataModule(L.LightningDataModule):
             save_compressed(self.tokenized_corpus_cache_path, d_items)
 
         # Create a tokenized cache for entire query set
-        if not os.path.exists(self.target_tokenized_queries_cache_path):
+        if not os.path.exists(self.tokenized_queries_cache_path):
             logger.info("Reading all queries...")
             q_corpus = read_queries(self.queries_path)
             logger.info("Tokenizing and caching query set...")
@@ -163,9 +176,9 @@ class BaseDataModule(L.LightningDataModule):
             )
             # Write the cache
             logger.info(
-                f"Saving {len(q_items)} tokenized query cache to {self.target_tokenized_queries_cache_path}"
+                f"Saving {len(q_items)} tokenized query cache to {self.tokenized_queries_cache_path}"
             )
-            save_compressed(self.target_tokenized_queries_cache_path, q_items)
+            save_compressed(self.tokenized_queries_cache_path, q_items)
 
         # Create toy cache (i.e., small sampled data) for debugging
         if self.is_debug:
@@ -190,9 +203,7 @@ class BaseDataModule(L.LightningDataModule):
 
                 # Load full cache
                 tokenized_corpus = read_compressed(self.tokenized_corpus_cache_path)
-                tokenized_queries = read_compressed(
-                    self.target_tokenized_queries_cache_path
-                )
+                tokenized_queries = read_compressed(self.tokenized_queries_cache_path)
 
                 debug_tokenized_corpus = {}
                 debug_tokenized_queries = {}
@@ -202,14 +213,14 @@ class BaseDataModule(L.LightningDataModule):
                 for qid in qids_for_debug:
                     if key_type == str:
                         qid = str(qid)
-                    debug_tokenized_queries[qid] = tokenized_queries[qid]
+                    debug_tokenized_queries[str(qid)] = tokenized_queries[qid]
 
                 # Get data from tokenized corpus
                 key_type = type(list(tokenized_corpus.keys())[0])
                 for pid in pids_for_debug:
                     if key_type == str:
                         pid = str(pid)
-                    debug_tokenized_corpus[pid] = tokenized_corpus[pid]
+                    debug_tokenized_corpus[str(pid)] = tokenized_corpus[pid]
 
                 # Save debug cache
                 save_compressed(

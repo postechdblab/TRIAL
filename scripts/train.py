@@ -24,6 +24,7 @@ from eagle.utils import add_config, add_global_configs
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 torch.set_float32_matmul_precision("high")
 logger = logging.getLogger("PL_Trainer")
+
 torch._dynamo.config.optimize_ddp = False
 
 
@@ -62,21 +63,18 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Load data module and model
-    if cfg.training.is_use_distillation:
+    if cfg.training.use_distillation:
         data_module = DistillationDataModule(cfg)
     else:
         data_module = ContrastiveDataModule(cfg)
     model = LightningNewModel(cfg=cfg, train_batch_num=train_batch_num)
-
-    # Create profiler
-    profiler = "simple"
 
     # Trainer initialization with your training args
     trainer = L.Trainer(
         deterministic=True,
         max_epochs=cfg.training.max_epochs,
         num_sanity_val_steps=2,
-        profiler=profiler,
+        profiler="simple",
         accelerator="gpu",
         devices=device_cnt,
         precision=cfg.training.precision,

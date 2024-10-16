@@ -62,7 +62,7 @@ class LightningNewModel(L.LightningModule):
         self.model = model_module(
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
-        if CAPABILITY[0] >= 7:
+        if self.cfg.use_torch_compile and CAPABILITY[0] >= 7:
             self.model = torch.compile(self.model, dynamic=True)
 
         self.swa_model = (
@@ -512,7 +512,7 @@ class LightningNewModel(L.LightningModule):
 
     def validation_step(self, batch: Dict, batch_idx: int) -> None:
         bsize = len(batch["labels"])
-        if self.cfg.is_use_swa and batch_idx > self.cfg.swa_start_batch_idx:
+        if self.cfg.use_swa and batch_idx > self.cfg.swa_start_batch_idx:
             loss_dic, scores = self.swa_model(**batch)
         else:
             loss_dic, scores = self.model(**batch)
@@ -546,7 +546,7 @@ class LightningNewModel(L.LightningModule):
 
         # Get the optimizers and learning rate schedulers
         llm_opt, head_opt = self.optimizers()
-        if self.cfg.is_use_swa:
+        if self.cfg.use_swa:
             llm_scheduler, head_scheduler, swa_llm_scheduler, swa_head_scheduler = (
                 self.lr_schedulers()
             )
@@ -582,7 +582,7 @@ class LightningNewModel(L.LightningModule):
             llm_opt.step()
             head_opt.step()
             # Update scheduler
-            if self.cfg.is_use_swa and batch_idx > self.cfg.swa_start_batch_idx:
+            if self.cfg.use_swa and batch_idx > self.cfg.swa_start_batch_idx:
                 self.swa_model.update_parameters(self.model)
                 swa_llm_scheduler.step()
                 swa_head_scheduler.step()
@@ -679,7 +679,7 @@ class LightningNewModel(L.LightningModule):
             "name": "head_lr_scheduler",
         }
         schedulers.extend([llm_lr_scheduler, head_lr_scheduler])
-        if self.cfg.is_use_swa:
+        if self.cfg.use_swa:
             swa_llm_lr_scheduler = {
                 "scheduler": SWALR(
                     optimizer=llm_optimizer, swa_lr=self.cfg.llm_learning_rate / 2

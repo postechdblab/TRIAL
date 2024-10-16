@@ -64,7 +64,7 @@ class BatchForColBERT(BaseBatch):
         return torch.stack(data)
 
     def _collate_distillation_scores(self, data: List[Any]) -> List[Any]:
-        return data
+        return torch.stack(data)
 
     def collate_fn(
         self,

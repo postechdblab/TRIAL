@@ -41,10 +41,9 @@ class DistillationDataModule(BaseDataModule):
         val_raw_dataset = ContrastiveDataset(
             cfg=self.cfg.val,
             cfg_dataset=self.cfg,
-            cfg_tokenizers=self.cfg_global.tokenizers,
+            tokenizers=self.tokenizers,
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
-            override_nway=self.cfg.val.override_nway,
             is_eval=True,
         )
         return val_raw_dataset
