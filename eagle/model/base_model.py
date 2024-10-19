@@ -51,11 +51,17 @@ class BaseModel(torch.nn.Module):
             # Remove "model." from the keys
             renamed_params = {}
             prefix_to_remove = "model."
+            prefix_to_remove2 = "model._orig_mod."
             for k, v in loaded_params.items():
-                assert k.startswith(
-                    prefix_to_remove
-                ), f"Cannot find {prefix_to_remove} in {k}"
-                renamed_params[k[len(prefix_to_remove) :]] = v
+                # Remove the prefix
+                if k.startswith(prefix_to_remove2):
+                    k = k[len(prefix_to_remove2) :]
+                elif k.startswith(prefix_to_remove):
+                    k = k[len(prefix_to_remove) :]
+                else:
+                    raise ValueError(f"Cannot find {prefix_to_remove} in {k}")
+                # Save the renamed params
+                renamed_params[k] = v
             # Replace the parameters
             found_params = []
             for name, param in self.named_parameters():
