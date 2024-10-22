@@ -9,7 +9,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install basic packages
 RUN apt update
-RUN apt install gnupg git curl make cmake g++ wget zip vim sudo tmux -y
+RUN apt install gnupg git curl make cmake g++ wget zip vim sudo tmux ninja-build -y
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata
 
 # Set timezone
@@ -43,6 +43,8 @@ RUN apt-get install language-pack-en -y
 
 # Install numpy
 RUN pip install numpy
+
+RUN apt-get install -y libgflags-dev
 
 # Install cmake
 #RUN wget https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3.tar.gz && tar -zxvf cmake-3.27.3.tar.gz && cd cmake-3.27.3 && ./bootstrap && make && make install && cd .. && rm -r cmake-3.27.3.tar.gz cmake-3.27.3

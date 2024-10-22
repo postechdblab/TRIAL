@@ -1,11 +1,15 @@
+import logging
 import os
 from typing import *
 
 import hkkang_utils.data as data_utils
 import hkkang_utils.file as file_utils
+import tqdm
 from omegaconf import DictConfig
 
 MINCHUNKSIZE = 25000
+
+logger = logging.getLogger("Corpus")
 
 
 @data_utils.dataclass
@@ -21,14 +25,19 @@ class Document:
 class Corpus:
     def __init__(self, cfg: DictConfig) -> None:
         self.cfg = cfg
-        self.data: List[Document] = [
-            Document(**item) for item in file_utils.read_jsonl_file(self.corpus_path)
-        ]
-        self.word_indices = file_utils.read_pickle_file(self.word_range_path)
-        self.phrase_indices = file_utils.read_pickle_file(self.phrase_range_path)
+        self._load_data()
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def _load_data(self) -> None:
+        # Load corpus data
+        logger.info(f"Loading corpus data from {self.corpus_path}..")
+        corpus = file_utils.read_jsonl_file(self.corpus_path)
+        logger.info(f"Loaded {len(corpus)} documents. Converting to Document objects..")
+        self.data = [Document(**item) for item in tqdm.tqdm(corpus)]
+
+        return None
 
     def get_document(self, idx: int) -> Document:
         return self.data[idx]
@@ -45,22 +54,6 @@ class Corpus:
             self.cfg.dataset.corpus_file,
         )
 
-    @property
-    def word_range_path(self) -> str:
-        return os.path.join(
-            self.cfg.dataset.dir_path,
-            self.cfg.dataset.name,
-            self.cfg.dataset.d_word_range_file,
-        )
-
-    @property
-    def phrase_range_path(self) -> str:
-        return os.path.join(
-            self.cfg.dataset.dir_path,
-            self.cfg.dataset.name,
-            self.cfg.dataset.d_phrase_range_file,
-        )
-
     def get_chunk_size(self, world_size: int) -> int:
         assert len(self), f"The corpus is empty."
         return min(MINCHUNKSIZE, len(self) // world_size)
@@ -71,13 +64,9 @@ class Corpus:
     def enumerate(
         self, rank: int = 0, world_size: int = 1
     ) -> Iterator[Tuple[int, Document]]:
-        for _, doc_idx, docs, word_ranges, phrase_ranges in self.enumerate_chunk(
-            rank=rank, world_size=world_size
-        ):
+        for _, doc_idx, docs in self.enumerate_chunk(rank=rank, world_size=world_size):
             for local_idx, doc in enumerate(docs):
-                word_range = word_ranges[local_idx] if word_ranges else None
-                phrase_range = phrase_ranges[local_idx] if phrase_ranges else None
-                yield (doc_idx + local_idx, doc, word_range, phrase_range)
+                yield (doc_idx + local_idx, doc)
 
     def enumerate_chunk(
         self, rank: int = 0, world_size: int = 1
@@ -88,14 +77,4 @@ class Corpus:
             # yield if the chunk index is the same as the rank
             if chunk_idx % world_size == rank:
                 docs = self.data[doc_idx : doc_idx + chunk_size]
-                word_ranges = (
-                    self.word_indices[doc_idx : doc_idx + chunk_size]
-                    if self.word_indices
-                    else None
-                )
-                phrase_ranges = (
-                    self.phrase_indices[doc_idx : doc_idx + chunk_size]
-                    if self.phrase_indices
-                    else None
-                )
-                yield (chunk_idx, doc_idx, docs, word_ranges, phrase_ranges)
+                yield (chunk_idx, doc_idx, docs)

@@ -9,11 +9,11 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.cpp_extension import load
 
-from eagle.index.codecs.residual_embeddings import ResidualEmbeddings
+from eagle.index.codecs.residual_embeddings import BaseResidualEmbeddings
 
 
 class ResidualCodec:
-    Embeddings = ResidualEmbeddings
+    Embeddings = BaseResidualEmbeddings
 
     def __init__(
         self,
@@ -209,7 +209,7 @@ class ResidualCodec:
         else:
             torch.save(torch.tensor([self.avg_residual]), avgresidual_path)
 
-    def compress(self, embs: torch.Tensor) -> ResidualEmbeddings:
+    def compress(self, embs: torch.Tensor) -> BaseResidualEmbeddings:
         codes, residuals = [], []
 
         for batch in embs.split(1 << 18):
@@ -300,7 +300,7 @@ class ResidualCodec:
         return torch.cat(centroids)
 
     # @profile
-    def decompress(self, compressed_embs: ResidualEmbeddings) -> torch.Tensor:
+    def decompress(self, compressed_embs: BaseResidualEmbeddings) -> torch.Tensor:
         """
         We batch below even if the target device is CUDA to avoid large temporary buffers causing OOM.
         """

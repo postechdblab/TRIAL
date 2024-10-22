@@ -16,6 +16,7 @@ class BaseModel(torch.nn.Module):
     def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
         super().__init__()
         self.cfg = cfg
+        self.tokenizers = tokenizers
         backbone_name = cfg.override_backbone_name
         if backbone_name is None:
             backbone_name = cfg.backbone_name
@@ -90,6 +91,10 @@ class BaseModel(torch.nn.Module):
             )
             add_config(self.cfg, key="ckpt_path", value=None)
         return None
+
+    @abc.abstractmethod
+    def encode_passage(self, *args, **kwargs) -> Any:
+        pass
 
     @abc.abstractmethod
     def forward(self, *args, **kwargs) -> Any:

@@ -1,10 +1,34 @@
 import os
 import re
+from typing import *
 
 import hkkang_utils.list as list_utils
 import torch
 import tqdm
 import ujson
+
+
+def flatten_items_with_mask(
+    items: torch.Tensor, mask: torch.Tensor
+) -> Tuple[torch.Tensor, List[int]]:
+    """Flatten the given items tensor based on the given mask.
+    :param items: Shape: (A, B, dim) or (A, dim)
+    :type items: torch.Tensor
+    :param mask: Shape (A, B)
+    :type mask: torch.Tensor
+    :return: Flattened items of shape (C, dim), and lengths of each item in the flattened tensor
+    :rtype: Tuple[torch.Tensor, List[int]]
+    """
+    assert (
+        items.shape[:2] == mask.shape
+    ), f"Shape mismatch: {items.shape} vs {mask.shape}"
+    assert mask.dtype == torch.bool, f"Type mismatch: {mask.dtype}"
+    assert items.dim() in [2, 3], f"Expected 2D or 3D tensor, got {items.dim()}D tensor"
+
+    lengths = mask.sum(dim=1).tolist()
+    items = items[mask]
+
+    return items, lengths
 
 
 def all_gather_nd(tensor: torch.Tensor, world_size: int) -> torch.Tensor:

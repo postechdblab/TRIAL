@@ -59,3 +59,24 @@ bash scripts/bash/run_phrase_extraction.sh
 ```bash
 python scripts/preprocess/extract_phrase.py +op=merge +total=${total} 
 ```
+
+# Training
+## Training the baseline model
+```bash
+python scripts/train.py _global.tag=colbert +model=colbert training.use_torch_compile=True
+```
+
+## Training the EAGLE model
+```bash
+python scripts/train.py _global.tag=eagle +model=eagle
+```
+
+# Indexing
+```bash
+TODO
+```
+
+# Evaluation
+```bash
+TODO
+```

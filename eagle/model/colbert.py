@@ -1,15 +1,20 @@
 import logging
 from typing import *
 
+import hkkang_utils.list as list_utils
 import torch
+import tqdm
 from omegaconf import DictConfig
+from torch.nn.utils.rnn import pad_sequence
 
+from eagle.dataset.utils import get_mask
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import (
     compute_loss,
     doc_indices_for_ib_loss,
     get_target_scale_tensor,
 )
+from eagle.model.utils import _sort_by_length, _split_into_batches
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenization import Tokenizer
 
@@ -170,11 +175,13 @@ class ColBERT(BaseModel):
         nway: int = None,
     ) -> torch.Tensor:
         # Configs
+        # For the training
         if len(tok_ids.shape) == 3:
             bsize, ndoc, max_len = tok_ids.shape
             nhard = nway // bsize
             tok_ids_combined = tok_ids.view(-1, max_len)
             att_mask_combined = att_mask.view(-1, max_len)
+        # For the inference
         elif len(tok_ids.shape) == 2:
             bsize, max_len = tok_ids.shape
             nhard = 1
@@ -191,6 +198,8 @@ class ColBERT(BaseModel):
         projected_tok_vectors = torch.nn.functional.normalize(
             projected_tok_vectors, p=2, dim=2
         )
+
+        # Convert the dtype if necessary
         if projected_tok_vectors.dtype != dtype:
             projected_tok_vectors = projected_tok_vectors.to(dtype)
 
@@ -336,3 +345,58 @@ class ColBERT(BaseModel):
     def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
         num_valid_tokens = self.get_valid_num(mask == 0)
         return self.q_maxlen / num_valid_tokens
+
+    def encode_passages(
+        self, passages: List[str], bsize: int = 128, show_progress: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        with torch.inference_mode():
+            # Configs
+            device = self.llm.device
+
+            # Tokenize the passages
+            result = self.tokenizers.d_tokenizer(
+                passages, padding=True, return_tensors="pt"
+            )
+            ids, att_mask = result["input_ids"], result["attention_mask"]
+
+            # Create mask
+            tok_mask = get_mask(
+                input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
+            ).bool()
+
+            # Save the original order
+            all_tok_ids = ids
+            all_tok_mask = tok_mask
+
+            # Sort by length
+            ids, att_mask, reverse_indices = _sort_by_length(
+                ids, att_mask, descending=True
+            )
+
+            # Encode the passages
+            all_tok_embs: List[torch.Tensor] = []
+            for input_ids, attention_mask in tqdm.tqdm(
+                _split_into_batches(ids, att_mask, bsize=bsize),
+                disable=not show_progress,
+            ):
+                # Assumption: Attention mask is applied for every token in the input_ids (from left-to-right)
+                local_max_tok_len = attention_mask.sum(1).max().item()
+                # Sample the input_ids and attention_mask
+                input_ids = input_ids[:, :local_max_tok_len]
+                attention_mask = attention_mask[:, :local_max_tok_len]
+                tmp_result = self.encode_d_text(
+                    tok_ids=input_ids.to(device), att_mask=attention_mask.to(device)
+                )
+                all_tok_embs.append(tmp_result.cpu().half())
+
+            # Concatenate by padding the embeddings
+            # Here, All_tok_embs shape was (bsize, n_tok, dim)
+            all_tok_embs = list_utils.do_flatten_list(
+                [t.unbind() for t in all_tok_embs]
+            )
+            all_tok_embs = pad_sequence(all_tok_embs, batch_first=True, padding_value=0)
+
+            # Convert back to the original order
+            all_tok_embs = all_tok_embs[reverse_indices]
+
+        return all_tok_ids, all_tok_embs, all_tok_mask

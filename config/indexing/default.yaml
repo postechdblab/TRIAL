@@ -3,3 +3,4 @@ nbits: 2
 bsize: 256
 dim: 128
 kmeans_niters: 20
+override: False

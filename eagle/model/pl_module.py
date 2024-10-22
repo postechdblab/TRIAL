@@ -16,9 +16,8 @@ from eagle.metrics import (
     aggregate_intermediate_metrics,
     compute_metrics,
 )
-from eagle.model.colbert import ColBERT
-from eagle.model.dpr import DPR
-from eagle.model.eagle import EAGLE
+from eagle.model.base_model import BaseModel
+from eagle.model.registry import MODEL_REGISTRY
 from eagle.model.utils import (
     _sort_by_length,
     _split_into_batches,
@@ -50,15 +49,7 @@ class LightningNewModel(L.LightningModule):
             cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name
         )
         # Load model
-        assert cfg.model.name in ["colbert", "eagle", "cross_encoder"]
-        if cfg.model.name == "eagle":
-            model_module = EAGLE
-        elif cfg.model.name == "cross_encoder":
-            model_module = DPR
-        elif cfg.model.name == "colbert":
-            model_module = ColBERT
-        else:
-            raise ValueError(f"Unsupported model name: {cfg.model.name}")
+        model_module: BaseModel = MODEL_REGISTRY[cfg.model.name]
         self.model = model_module(
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args

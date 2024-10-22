@@ -28,12 +28,12 @@ def initialize_weights(m):
             torch.nn.init.zeros_(m.bias)
 
 
-def _sort_by_length(ids, mask, bsize):
-    if ids.size(0) <= bsize:
+def _sort_by_length(ids, mask, bsize=None, descending=False):
+    if bsize is not None and ids.size(0) <= bsize:
         return ids, mask, torch.arange(ids.size(0))
 
-    indices = mask.sum(-1).sort().indices
-    reverse_indices = indices.sort().indices
+    indices = mask.sum(-1).sort(descending=descending).indices
+    reverse_indices = indices.sort(descending=descending).indices
 
     return ids[indices], mask[indices], reverse_indices
 

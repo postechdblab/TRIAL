@@ -15,7 +15,6 @@ from eagle.dataset.utils import (
     add_query_ranges_and_mask,
     collate_fn,
 )
-from eagle.index.indexer import multi_process_indexing
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenization import Tokenizer
@@ -199,19 +198,6 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
     return None
 
 
-def indexing(cfg: DictConfig) -> None:
-    # Get configs
-    world_size = torch.cuda.device_count()
-
-    mp.spawn(
-        multi_process_indexing,
-        args=(cfg, world_size),
-        nprocs=world_size,
-        join=True,
-    )
-    print("Done!")
-
-
 def run(
     cfg: DictConfig,
     mode: str,
@@ -228,8 +214,6 @@ def run(
         with torch.no_grad():
             if mode == "inference":
                 return inference(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
-            elif mode == "indexing":
-                return indexing(cfg)
             elif mode == "evaluate_retrieval":
                 return full_retrieval(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
             elif mode == "evaluate_reranking":
@@ -242,9 +226,9 @@ def check_arguments(cfg: DictConfig) -> DictConfig:
         cfg.args,
         name="mode",
         arg_type=str,
-        choices=["inference", "indexing", "evaluate_retrieval", "evaluate_reranking"],
+        choices=["inference", "evaluate_retrieval", "evaluate_reranking"],
         is_requried=True,
-        help="mode should be 'inference', 'indexing' ,'evaluate_retrieval', or 'evaluate_reranking'",
+        help="mode should be 'inference' ,'evaluate_retrieval', or 'evaluate_reranking'",
     )
     check_argument(
         cfg.args, name="is_analyze", arg_type=bool, help="Whether to analyze the model"

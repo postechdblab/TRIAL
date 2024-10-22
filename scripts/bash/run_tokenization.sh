@@ -4,7 +4,7 @@
 begin=0
 end=63
 total=64
-num_devices=5  # Number of available devices (0 to num_devices-1)
+num_devices=2  # Number of available devices (0 to num_devices-1)
 
 # Print the command being executed
 echo "Running: python scripts/preprocess/tokenize_data.py +total=$total +op=split_file +indices=[$begin,$end]"
