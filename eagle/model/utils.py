@@ -4,6 +4,37 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch_scatter import segment_coo
 
+from eagle.model.objective import get_target_scale_tensor
+
+
+def get_valid_num(mask: torch.Tensor) -> torch.Tensor:
+    """Get the number of valid tokens for each query
+    :param mask with 0 as valid and 1 as non-valid token (Shape: [bsize, num_toks])
+    :type mask: torch.Tensor
+    :return: num_valid_tokens Shape: [bsize]
+    :rtype: torch.Tensor
+    """
+    num_non_valid_tokens = mask.sum(dim=1)
+    target_scale = get_target_scale_tensor(
+        target_scale=mask.shape[1],
+        b_size=num_non_valid_tokens.shape[0],
+        device=num_non_valid_tokens.device,
+        dtype=num_non_valid_tokens.dtype,
+    )
+    num_valid_tokens = target_scale - num_non_valid_tokens
+    return num_valid_tokens
+
+
+def get_scale_factor(mask: torch.Tensor, q_maxlen: int) -> torch.Tensor:
+    """Get the scale factor for normalization
+    :param mask: Shape: [bsize, num_toks]
+    :type mask: torch.Tensor
+    :return: scale factor Shape: [bsize]
+    :rtype: torch.Tensor
+    """
+    num_valid_tokens = get_valid_num(mask)
+    return q_maxlen / num_valid_tokens
+
 
 def l1_regularization(tensor: torch.Tensor) -> torch.Tensor:
     return torch.linalg.matrix_norm(tensor.squeeze(-1))

@@ -157,9 +157,7 @@ class LightningNewModel(L.LightningModule):
         if self.searcher is None:
             self._load_searcher()
 
-        # Reverse the mask
-        batch["q_tok_mask"] = ~batch["q_tok_mask"].bool()
-
+        # Perform search on the index
         all_pids, all_scores, all_intermediate_pids = self.searcher(**batch)
 
         # Post-process the results if the dataset is BEIR-ArguAna

@@ -284,18 +284,27 @@ def read_qrels_qids(path: str) -> List[str]:
     return [item["query-id"] for item in qrels]
 
 
-def get_mask(input_ids: torch.Tensor, skip_ids: List[int]) -> List[int]:
+def get_mask(input_ids: torch.Tensor, skip_ids: List[int]) -> torch.Tensor:
+    """
+    Mask all the tokens in the skiplist.
+    Set to 0 if the token needs to be computed.
+    Set to 1 if the token needs to be masked.
+    """
+    # Convert skip_ids list to a tensor for comparison
+    skip_ids_tensor = torch.tensor(skip_ids, device=input_ids.device)
+
+    # Create mask: 1 if the token is in skip_ids, else 0
+    mask = torch.isin(input_ids, skip_ids_tensor).float()
+    return mask
+
+
+def get_att_mask(input_ids: torch.Tensor, skip_ids: List[int]) -> torch.Tensor:
     """
     Mask all the tokens in the skiplist.
     Set to 1 if the token needs to be computed.
     Set to 0 if the token needs to be masked.
     """
-    # Create mask
-    mask = torch.ones_like(input_ids, requires_grad=False)
-    for skip_id in skip_ids:
-        # 1 if the token is not in the skip_ids
-        mask *= input_ids != skip_id
-    return mask.float()
+    return (1 - get_mask(input_ids, skip_ids)).float()
 
 
 @functools.lru_cache(maxsize=None)

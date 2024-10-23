@@ -5,12 +5,12 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset import BaseDataset
+from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model.batch import BaseBatch
 from eagle.model.batch.utils import (
     collate_ranges,
     combined_phrase_ranges_into_one_sentence,
     convert_range_to_scatter,
-    get_mask,
 )
 from eagle.phrase.utils import fill_in_missing_phrase_ranges, fix_bad_index_ranges
 
@@ -138,9 +138,9 @@ class BatchForEAGLE(BaseBatch):
         # Create mask
         # Create token masks
         q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
-        q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
+        q_tok_att_mask = get_att_mask(input_ids=q_tok_ids, skip_ids=[0])
         doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
-        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
+        doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
         # Create phrase masks
         q_phrase_mask = torch.ones(len(q_phrase_ranges), dtype=torch.bool).float()
         doc_phrase_mask = [

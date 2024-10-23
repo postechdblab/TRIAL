@@ -9,12 +9,8 @@ from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.utils import get_mask
 from eagle.model.base_model import BaseModel
-from eagle.model.objective import (
-    compute_loss,
-    doc_indices_for_ib_loss,
-    get_target_scale_tensor,
-)
-from eagle.model.utils import _sort_by_length, _split_into_batches
+from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
+from eagle.model.utils import _sort_by_length, _split_into_batches, get_scale_factor
 from eagle.search.algorithm import compute_sum_maxsim
 from eagle.tokenization import Tokenizer
 
@@ -152,7 +148,7 @@ class ColBERT(BaseModel):
         dtype = projected_tok_vectors.dtype
 
         # Compute normalization scale for each query
-        token_scale_factor = self.get_scale_factor(mask=tok_mask)
+        token_scale_factor = get_scale_factor(mask=tok_mask, q_maxlen=self.q_maxlen)
 
         # Normalize
         projected_tok_vectors = torch.nn.functional.normalize(
@@ -328,21 +324,6 @@ class ColBERT(BaseModel):
             return_max_scores=return_max_scores,
             return_element_wise_scores=return_entire_scores,
         )
-
-    def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
-        num_non_valid_tokens = mask.sum(dim=1)
-        target_scale = get_target_scale_tensor(
-            target_scale=mask.shape[1],
-            b_size=num_non_valid_tokens.shape[0],
-            device=num_non_valid_tokens.device,
-            dtype=num_non_valid_tokens.dtype,
-        )
-        num_valid_tokens = target_scale - num_non_valid_tokens
-        return num_valid_tokens
-
-    def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
-        num_valid_tokens = self.get_valid_num(mask == 0)
-        return self.q_maxlen / num_valid_tokens
 
     def encode_passages(
         self, passages: List[str], bsize: int = 128, show_progress: bool = False

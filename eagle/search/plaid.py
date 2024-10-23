@@ -306,7 +306,7 @@ class PLAID:
             # Reshape the mask if necessary
             if len(query_tok.shape) > len(q_mask.shape):
                 q_mask = q_mask.unsqueeze(-1)
-            query_tok.masked_fill_(q_mask, 0)
+            query_tok.masked_fill_(q_mask == True, 0)
 
         # Extract document token embeddings
         d_tok_packed, d_tok_length, d_tok_ids = self.tok_embeddings_strided.lookup_pids(

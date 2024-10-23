@@ -4,8 +4,8 @@ import hkkang_utils.list as list_utils
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
+from eagle.dataset.utils import get_att_mask
 from eagle.model.batch import BaseBatch
-from eagle.model.batch.utils import get_mask
 
 
 class BatchForDPR(BaseBatch):
@@ -32,8 +32,8 @@ class BatchForDPR(BaseBatch):
             )
 
         # Get token masks
-        q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
-        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
+        q_tok_att_mask = get_att_mask(input_ids=q_tok_ids, skip_ids=[0])
+        doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         distillation_scores = data.get("distillation_scores", None)
         labels = data.get("labels", None)

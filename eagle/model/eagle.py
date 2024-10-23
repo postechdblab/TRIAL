@@ -10,13 +10,13 @@ from eagle.model.base_model import BaseModel
 from eagle.model.objective import (
     compute_loss,
     doc_indices_for_ib_loss,
-    get_target_scale_tensor,
 )
 from eagle.model.utils import (
     aggregate_vectors_with_indices,
     get_weight_layer,
     l1_regularization,
     l2_regularization,
+    get_scale_factor,
 )
 from eagle.tokenization import Tokenizers
 
@@ -280,9 +280,9 @@ class EAGLE(BaseModel):
         q_weight_var = 0
         if q_weight_reg_term:
             num_valid = self.get_valid_num(q_tok_mask)
-            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask.unsqueeze(-1) == 0, 0)
+            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask.unsqueeze(-1), 0)
             q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
-            q_weight_var = q_tok_weight[q_tok_mask == 1].var()
+            q_weight_var = q_tok_weight[q_tok_mask == False].var()
         # Analyze document weights
         d_weight_intra_ratio = 0
         d_weight_inter_ratio = 0
@@ -296,7 +296,7 @@ class EAGLE(BaseModel):
             d_weight_intra_masked = d_tok_weight_intra * d_mask_intra
             d_weight_intra_ratio = d_weight_intra_masked.sum() / d_mask_intra.sum()
             # Compute variance
-            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == 1].var()
+            d_weight_intra_var = d_weight_intra_masked[d_mask_intra == False].var()
             if d_tok_weight_inter is not None:
                 d_indices = doc_indices_for_ib_loss(
                     bsize,
@@ -308,7 +308,7 @@ class EAGLE(BaseModel):
                 d_mask_inter = reshaped_doc_tok_mask[d_indices]
                 d_weight_inter_masked = d_tok_weight_inter * d_mask_inter
                 d_weight_inter_ratio = d_weight_inter_masked.sum() / d_mask_inter.sum()
-                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == 1].var()
+                d_weight_inter_var = d_weight_inter_masked[d_mask_inter == False].var()
 
         # Append more log information
         return_dict["avg_intra_scores"] = intra_scores.mean().item()
@@ -414,9 +414,9 @@ class EAGLE(BaseModel):
         dtype = projected_tok_vectors.dtype
 
         # Mask paddings
-        projected_tok_vectors.masked_fill_(tok_mask.unsqueeze(-1) == 0, 0)
-        projected_phrase_vectors.masked_fill_(phrase_mask.unsqueeze(-1) == 0, 0)
-        projected_sent_vectors.masked_fill_(sent_mask.unsqueeze(-1) == 0, 0)
+        projected_tok_vectors.masked_fill_(tok_mask.unsqueeze(-1) == True, 0)
+        projected_phrase_vectors.masked_fill_(phrase_mask.unsqueeze(-1) == True, 0)
+        projected_sent_vectors.masked_fill_(sent_mask.unsqueeze(-1) == True, 0)
 
         # Weights
         tok_weights = None
@@ -430,7 +430,7 @@ class EAGLE(BaseModel):
                 sentence_weights = self.q_weight_layer(projected_sent_vectors)
 
         # Compute normalization scale for each query
-        token_scale_factor = self.get_scale_factor(mask=tok_mask)
+        token_scale_factor = get_scale_factor(mask=tok_mask, q_maxlen=self.q_maxlen)
 
         sentence_scale_factor = None
         if projected_sent_vectors is not None:
@@ -443,7 +443,9 @@ class EAGLE(BaseModel):
 
         phrase_scale_factor = None
         if projected_phrase_vectors is not None:
-            phrase_scale_factor = self.get_scale_factor(mask=phrase_mask)
+            phrase_scale_factor = get_scale_factor(
+                mask=phrase_mask, q_maxlen=self.q_maxlen
+            )
 
         # Normalize
         projected_tok_vectors = torch.nn.functional.normalize(
@@ -526,13 +528,13 @@ class EAGLE(BaseModel):
 
         # Apply mask
         projected_tok_vectors = projected_tok_vectors.masked_fill(
-            tok_mask_combined.unsqueeze(-1) == 0, 0
+            tok_mask_combined.unsqueeze(-1) == True, 0
         )
         projected_phrase_vectors = projected_phrase_vectors.masked_fill(
-            phrase_mask_combined.unsqueeze(-1) == 0, 0
+            phrase_mask_combined.unsqueeze(-1) == True, 0
         )
         projected_sent_vectors = projected_sent_vectors.masked_fill(
-            sent_mask_combined.unsqueeze(-1) == 0, 0
+            sent_mask_combined.unsqueeze(-1) == True, 0
         )
 
         # Create weight using q_vetors
@@ -659,34 +661,6 @@ class EAGLE(BaseModel):
             sent_weights_intra,
             sent_weights_inter,
         )
-
-    def get_valid_num(self, mask: torch.Tensor) -> torch.Tensor:
-        """Get the number of valid tokens for each query
-        :param mask with 1 as valid and 0 as non-valid token (Shape: [bsize, num_toks])
-        :type mask: torch.Tensor
-        :return: num_valid_tokens Shape: [bsize]
-        :rtype: torch.Tensor
-        """
-        num_valid_tokens = mask.sum(dim=1)
-        num_non_valid_tokens = mask.shape[1] - num_valid_tokens
-        target_scale = get_target_scale_tensor(
-            target_scale=mask.shape[1],
-            b_size=num_non_valid_tokens.shape[0],
-            device=num_non_valid_tokens.device,
-            dtype=num_non_valid_tokens.dtype,
-        )
-        num_valid_tokens = target_scale - num_non_valid_tokens
-        return num_valid_tokens
-
-    def get_scale_factor(self, mask: torch.Tensor) -> torch.Tensor:
-        """Get the scale factor for normalization
-        :param mask: Shape: [bsize, num_toks]
-        :type mask: torch.Tensor
-        :return: scale factor Shape: [bsize]
-        :rtype: torch.Tensor
-        """
-        num_valid_tokens = self.get_valid_num(mask)
-        return self.q_maxlen / num_valid_tokens
 
     def multi_granularity_interaction(
         self,
