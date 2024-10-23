@@ -63,20 +63,21 @@ python scripts/preprocess/extract_phrase.py +op=merge +total=${total}
 # Training
 ## Training the baseline model
 ```bash
-python scripts/train.py _global.tag=colbert +model=colbert training.use_torch_compile=True
+python scripts/train.py _global.tag=colbert model=colbert training.use_torch_compile=True
 ```
 
 ## Training the EAGLE model
 ```bash
-python scripts/train.py _global.tag=eagle +model=eagle
+python scripts/train.py _global.tag=eagle model=eagle
 ```
 
 # Indexing
 ```bash
-TODO
+python scripts/index.py _global.tag=colbert model=colbert model.ckpt_path=/root/EAGLE/runs/colbert/best_model.ckpt dataset.name=beir-msmarco
 ```
 
 # Evaluation
+## Evaluate Reranking
 ```bash
-TODO
+python scripts/run.py _global.tag=colbert model=colbert
 ```

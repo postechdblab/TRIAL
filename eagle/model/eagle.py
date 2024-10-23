@@ -7,16 +7,14 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.model.base_model import BaseModel
-from eagle.model.objective import (
-    compute_loss,
-    doc_indices_for_ib_loss,
-)
+from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
 from eagle.model.utils import (
     aggregate_vectors_with_indices,
+    get_scale_factor,
+    get_valid_num,
     get_weight_layer,
     l1_regularization,
     l2_regularization,
-    get_scale_factor,
 )
 from eagle.tokenization import Tokenizers
 
@@ -279,8 +277,8 @@ class EAGLE(BaseModel):
         q_weight_ratio = 0
         q_weight_var = 0
         if q_weight_reg_term:
-            num_valid = self.get_valid_num(q_tok_mask)
-            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask.unsqueeze(-1), 0)
+            num_valid = get_valid_num(q_tok_mask)
+            q_tok_weight = q_tok_weight.masked_fill(q_tok_mask.unsqueeze(-1) == True, 0)
             q_weight_ratio = q_tok_weight.sum() / num_valid.sum()
             q_weight_var = q_tok_weight[q_tok_mask == False].var()
         # Analyze document weights
