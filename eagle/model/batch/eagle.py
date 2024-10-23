@@ -147,15 +147,17 @@ class BatchForEAGLE(BaseBatch):
         doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
         doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
         # Create phrase masks
-        q_phrase_mask = torch.ones(len(q_phrase_ranges), dtype=torch.bool).float()
+        q_phrase_mask = torch.zeros(len(q_phrase_ranges), dtype=torch.bool).float()
         doc_phrase_mask = [
-            torch.ones(len(dpr), dtype=torch.bool).float() for dpr in doc_phrase_ranges
+            torch.zeros(len(dpr), dtype=torch.bool).float() for dpr in doc_phrase_ranges
         ]
-        doc_phrase_mask = pad_sequence(doc_phrase_mask, batch_first=True)
+        doc_phrase_mask = pad_sequence(
+            doc_phrase_mask, batch_first=True, padding_value=1.0
+        )
         # Create sentence masks
-        q_sent_mask = torch.ones(len(q_sent_start_indices), dtype=torch.bool).float()
+        q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
         doc_sent_mask = [
-            torch.ones(len(dssi), dtype=torch.bool).float()
+            torch.zeros(len(dssi), dtype=torch.bool).float()
             for dssi in doc_sent_start_indices
         ]
 
