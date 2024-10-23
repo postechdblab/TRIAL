@@ -9,15 +9,70 @@ import torch
 from omegaconf import DictConfig
 
 from eagle.dataset import ContrastiveDataModule, InferenceDataModule
+from eagle.dataset.utils import combine_splitted_tok_ids, get_att_mask, get_mask
 from eagle.model import LightningNewModel
-from eagle.phrase.extraction import PhraseExtractor
-from eagle.tokenization import Tokenizer
+from eagle.model.batch.utils import (
+    convert_range_to_scatter,
+    cut_off_phrase_ranges_by_max_len,
+)
+from eagle.phrase import (
+    PhraseExtractor,
+    combined_phrase_ranges_into_one_sentence,
+    fix_bad_index_ranges,
+)
+from eagle.tokenization import Sentencizer, Tokenizer
 from eagle.utils import add_global_configs, set_random_seed
-from scripts.utils import check_argument, join_word
+from scripts.utils import check_argument, pretty_print_tokens_with_their_indices
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 logger = logging.getLogger("Run")
+
+
+def preprocess(text: str, tokenizer: Tokenizer) -> Any:
+    # Split the text into sentences
+    sentences: List[str] = Sentencizer()(text)
+    # Tokenize the text
+    tokenized_sentences = tokenizer(sentences)["input_ids"]
+    # Extract the phrases
+    extractor = PhraseExtractor(tokenizer=tokenizer)
+    # Extract phrases and combine them as a single sentence
+    phrase_ranges_per_sent: List[List[Tuple[int, int]]] = extractor(
+        texts=sentences,
+        tok_ids_list=tokenized_sentences,
+        to_token_indices=True,
+    )
+    phrase_ranges = combined_phrase_ranges_into_one_sentence(
+        [fix_bad_index_ranges(item) for item in phrase_ranges_per_sent]
+    )
+
+    # Preprocess as the model input
+    # Combine the splitted sentences
+    tok_ids, sent_start_indices = combine_splitted_tok_ids(tokenized_sentences)
+    # Cut-off by max length
+    tok_ids = tokenizer.cutoff_by_max_len(tok_ids)
+    phrase_ranges = cut_off_phrase_ranges_by_max_len(
+        phrase_ranges, tokenizer.cfg.max_len
+    )
+    # Get scatter indices for phrases
+    scatter_indices: List[int] = convert_range_to_scatter(phrase_ranges)
+    # # Cut off phrase scatter indices if it exceeds the maximum length
+    # scatter_indices = tokenizer.cutoff_by_max_len(
+    #     scatter_indices, maintain_special_tokens=False
+    # )
+    # Convert list to tensor
+    tok_ids_tensor = torch.tensor(tok_ids)
+    # Create token mask
+    tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids)
+    tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
+
+    return {
+        "tok_ids": tok_ids_tensor,
+        "tok_att_mask": tok_att_mask,
+        "tok_mask": tok_mask,
+        "sent_start_indices": sent_start_indices,
+        "phrase_scatter_indices": scatter_indices,
+    }
 
 
 def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
@@ -25,11 +80,12 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
     assert ckpt_path, "Please provide the path to the checkpoint"
     model = LightningNewModel.load_from_checkpoint(checkpoint_path=ckpt_path)
     model.eval()
-    q_tokenizer = Tokenizer(cfg=cfg.q_tokenizer)
-    d_tokenizer = Tokenizer(cfg=cfg.d_tokenizer)
-
-    # Get phrase extractor
-    phrase_extractor = PhraseExtractor(tokenizer=q_tokenizer)
+    q_tokenizer = Tokenizer(
+        cfg=cfg.tokenizers.query, model_name=cfg.model.backbone_name
+    )
+    d_tokenizer = Tokenizer(
+        cfg=cfg.tokenizers.document, model_name=cfg.model.backbone_name
+    )
 
     # Get input
     while True:
@@ -42,111 +98,75 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
             logger.info("Exit the program")
             break
 
-        # Preprocess input query and document text
-        input_dict = {
-            "q_texts": query_text,
-            "pos_doc_text_list": document_text,
-            "neg_doc_texts_list": [],
+        # Prepare the input
+        preprocessed_query = preprocess(query_text, tokenizer=q_tokenizer)
+        preprocessed_document = preprocess(document_text, tokenizer=d_tokenizer)
+
+        # Create batch input
+        preprocessed_batch = {
+            "q_tok_ids": preprocessed_query["tok_ids"].unsqueeze(0),
+            "q_tok_att_mask": preprocessed_query["tok_att_mask"].unsqueeze(0),
+            "q_tok_mask": preprocessed_query["tok_mask"].unsqueeze(0),
+            "doc_tok_ids": preprocessed_document["tok_ids"].unsqueeze(0).unsqueeze(0),
+            "doc_tok_att_mask": preprocessed_document["tok_att_mask"]
+            .unsqueeze(0)
+            .unsqueeze(0),
+            "doc_tok_mask": preprocessed_document["tok_mask"].unsqueeze(0).unsqueeze(0),
+            "labels": None,
+            "distillation_scores": None,
+            "pos_doc_ids": None,
+            "is_analyze": True,
         }
-        raise NotImplementedError("Fix below code")
-        preprocessed_batch = preprocess(
-            input_dict,
-            q_tokenizer=q_tokenizer,
-            d_tokenizer=d_tokenizer,
-            is_eval=True,
-            unbatch=True,
-            is_compress=False,
-        )
+        # Move the tensors to the device same as the model
+        preprocessed_batch = {
+            k: v.to(model.device) if isinstance(v, torch.Tensor) else v
+            for k, v in preprocessed_batch.items()
+        }
 
-        # Extract word indices
-        q_word_indices = []
-        d_word_indices = [[]]
-        # Extract phrase indices
-        q_phrase_indices = phrase_extractor(
-            input_dict["q_texts"], max_len=cfg.q_tokenizer.max_len
-        )[0]
-        d_phrase_indices = phrase_extractor(
-            input_dict["pos_doc_text_list"], max_len=cfg.d_tokenizer.max_len
-        )
+        # Forward the model
+        results = model.model(**preprocessed_batch)
 
-        # Add ranges and masks
-        preprocessed_batch, q_ranges = add_query_ranges_and_mask(
-            input_dict=preprocessed_batch,
-            word_ranges=q_word_indices,
-            phrase_ranges=q_phrase_indices,
-            skip_ids=q_tokenizer.special_toks_ids,
-            use_coarse_emb=model.model.is_use_multi_granularity,
-            return_ranges=True,
-        )
-        preprocessed_batch, d_ranges = add_doc_ranges_and_mask(
-            input_dict=preprocessed_batch,
-            word_ranges=d_word_indices,
-            phrase_ranges=d_phrase_indices,
-            skip_ids=d_tokenizer.special_toks_ids + d_tokenizer.punctuations,
-            use_coarse_emb=model.model.is_use_multi_granularity,
-            return_ranges=True,
-        )
-        # Collate
-        collated_batch = collate_fn([preprocessed_batch])
+        # Move the result tensors to the CPU
+        results = {
+            k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in results.items()
+        }
 
-        log_dict, scores = model(**collated_batch, is_analyze=is_analyze)
+        # Get the query-doc token similarity scores
+        qd_scores = results["intra_qd_scores"].squeeze().transpose(0, 1)
 
-        if is_analyze:
-            # Get the query terms
-            q_tokens = q_tokenizer.tokenizer.convert_ids_to_tokens(
-                collated_batch["q_tok_ids"][0]
+        # Find the max scores for each token
+        max_scores, max_indices = qd_scores.max(1)
+
+        # Find the total score of the query-document
+        total_score = max_scores.sum()
+
+        # Analyze
+        # Show the max document token and score for each query token
+        logger.info(f"Total score: {total_score}")
+        for i, (max_score, max_idx) in enumerate(zip(max_scores, max_indices)):
+            query_token = q_tokenizer.decode([preprocessed_query["tok_ids"][i]])
+            doc_token = d_tokenizer.decode([preprocessed_document["tok_ids"][max_idx]])
+            logger.info(
+                f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
             )
-            q_terms = [join_word(q_tokens, start, end) for (start, end) in q_ranges]
-            q_weights = (
-                [1 for _ in q_terms]
-                if log_dict["q_weight"] is None
-                else log_dict["q_weight"]
-            )
-            # Get the document terms
-            d_tokens = d_tokenizer.tokenizer.convert_ids_to_tokens(
-                collated_batch["doc_tok_ids"][0][0]
-            )
-            d_terms = [join_word(d_tokens, start, end) for (start, end) in d_ranges[0]]
-            d_weights = (
-                [1 for _ in d_terms]
-                if log_dict["d_weight_intra"] is None
-                else log_dict["d_weight_intra"]
-            )
-            # Show the document score
-            logger.info(f"Relevance score: {scores.item()}")
-            logger.info(f"Query: {query_text}")
-            logger.info(f"Document: {document_text}")
-            logger.info(f"Query {len(q_terms)} terms: {q_terms}")
-            logger.info(f"Document {len(d_terms)} terms: {d_terms}")
-            if log_dict["d_weight_intra"] is not None:
-                # TODO: Print document weights
-                raise NotImplementedError(
-                    "Analysis on document weights is not implemented yet"
-                )
-            # Show detailed scores
-            if log_dict["intra_qd_scores"] is not None:
-                qd_scores: torch.Tensor = log_dict["intra_qd_scores"]
-                # Find the max doc value and indices for each query term
-                max_doc_values, max_doc_indices = torch.max(qd_scores, dim=1)
-                # Print the mapping and value
-                for i, (term, max_doc_value, max_doc_index) in enumerate(
-                    zip(q_terms, max_doc_values, max_doc_indices)
-                ):
-                    suffix = "\n" if i == len(q_terms) - 1 else ""
-                    logger.info(
-                        f"Q Term ({i}th): {term}\t<-> {d_terms[max_doc_index.item()]} (Score: {max_doc_value.item():.4f}, d-idx: {max_doc_index.item()}){suffix}"
-                    )
-                # Print the score for each query term
-                for i, (term, score, weight) in enumerate(
-                    zip(q_terms, max_doc_values, q_weights)
-                ):
-                    suffix = "\n" if i == len(q_terms) - 1 else ""
-                    logger.info(
-                        f"Q Term ({i}th): {term}\t| Scores: {score:.4f} | Weight: {weight} | Weighted Score: {(score*weight):.4f}{suffix}"
-                    )
-        is_continue = input("Do you want to continue? (y/n): ")
-        if is_continue == "n":
-            break
+
+        # Print the document tokens with their indices
+        decoded_q_tokens = [
+            q_tokenizer.decode([token_id]) for token_id in preprocessed_query["tok_ids"]
+        ]
+        decoded_d_tokens = [
+            d_tokenizer.decode([token_id])
+            for token_id in preprocessed_document["tok_ids"]
+        ]
+        print("Query tokens:")
+        pretty_print_tokens_with_their_indices(
+            decoded_tokens=decoded_q_tokens, max_tokens_per_line=20
+        )
+        print("Document tokens:")
+        pretty_print_tokens_with_their_indices(
+            decoded_tokens=decoded_d_tokens, max_tokens_per_line=20
+        )
+        print("")
 
     return None
 

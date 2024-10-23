@@ -1,8 +1,7 @@
+import logging
 from typing import *
 
-import torch
 import tqdm
-import logging
 
 from eagle.phrase.constituency import ConstituencyParser, Phrase
 from eagle.phrase.utils import (

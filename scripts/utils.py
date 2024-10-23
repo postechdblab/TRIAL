@@ -207,3 +207,26 @@ def average_noun_scores(
                 )
                 break
     return input_values
+
+
+# Function to print tokens and indices with appropriate formatting
+def pretty_print_tokens_with_their_indices(
+    decoded_tokens: List[str], max_tokens_per_line: int = 20
+) -> None:
+    for start in range(0, len(decoded_tokens), max_tokens_per_line):
+        # Get the tokens for the current line (max 20 tokens)
+        tokens_chunk = decoded_tokens[start : start + max_tokens_per_line]
+
+        # Print tokens in a single line with two spaces between each token
+        tokens_line = "  ".join(tokens_chunk)
+        print(tokens_line)
+
+        # Calculate the position of each index and print the indices centered below the tokens
+        indices_line = ""
+        for idx, token in enumerate(tokens_chunk, start=start):
+            token_length = len(token)
+            # Center the index under the token by calculating the appropriate padding
+            padding = (token_length - len(str(idx))) // 2
+            indices_line += f"{' ' * padding}{idx}{' ' * (token_length - padding - len(str(idx)))}  "  # Two spaces after each token
+
+        print(indices_line)

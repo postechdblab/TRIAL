@@ -1,13 +1,55 @@
+import copy
 import os
 import string
 from typing import *
 
+import hkkang_utils.list as list_utils
 import torch
 
 from eagle.tokenization import Tokenizer
 
-
 SPLIT_DIR_NAME = "splitted"
+
+
+def combined_phrase_ranges_into_one_sentence(
+    phrase_ranges_list: List[List[Tuple[int, int]]]
+) -> List[Tuple[int, int]]:
+    phrase_ranges_list = copy.deepcopy(phrase_ranges_list)
+    SPECIAL_TOK_NUM = 2
+    # Figure out the number to add for each sentences
+    number_to_adds = []
+    for sent_idx, p_ranges in enumerate(phrase_ranges_list):
+        if sent_idx == 0:
+            number_to_adds.append(0)
+            continue
+        # Get the last number to have the cumulative number
+        base_number = number_to_adds[-1]
+        # Add the max value of the previous sentence
+        previous_token_cnt = phrase_ranges_list[sent_idx - 1][-1][-1]
+        # Remove the first two special tokens if the previous sentence is not the first sentence
+        if sent_idx > 0:
+            previous_token_cnt = previous_token_cnt - SPECIAL_TOK_NUM
+        number_to_adds.append(base_number + previous_token_cnt)
+
+    # Modify the token ranges
+    for sent_idx, (number_to_add, p_ranges) in enumerate(
+        zip(number_to_adds, phrase_ranges_list)
+    ):
+        # Create new p_ranges
+
+        # Remove the ranges for the first two tokens
+        if sent_idx != 0:
+            p_ranges = p_ranges[SPECIAL_TOK_NUM:]
+        # Modify the token idx
+        p_ranges = [(s + number_to_add, e + number_to_add) for s, e in p_ranges]
+
+        # update the data
+        phrase_ranges_list[sent_idx] = p_ranges
+
+    # Flatten list of list to list
+    phrase_ranges_list = list_utils.do_flatten_list(phrase_ranges_list)
+
+    return phrase_ranges_list
 
 
 def fix_bad_index_ranges(ranges: List[Tuple[int, int]]) -> List[Tuple[int, int]]:

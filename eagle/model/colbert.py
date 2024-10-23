@@ -75,17 +75,20 @@ class ColBERT(BaseModel):
             nway=nway,
         )
 
-        intra_scores, inter_scores, _, _ = self.compute_scores(
-            q_encoded=q_tok_projected,
-            d_encoded=d_tok_projected,
-            q_weight=None,
-            q_scale_factor=q_tok_scale_factor,
-            q_mask=q_tok_mask,
-            d_mask=doc_tok_mask,
-            d_weight_intra=None,
-            d_weight_inter=None,
-            nway=nway,
-            ib_nhard=ib_nhard,
+        intra_scores, inter_scores, intra_q_max_scores, intra_qd_scores = (
+            self.compute_scores(
+                q_encoded=q_tok_projected,
+                d_encoded=d_tok_projected,
+                q_weight=None,
+                q_scale_factor=q_tok_scale_factor,
+                q_mask=q_tok_mask,
+                d_mask=doc_tok_mask,
+                d_weight_intra=None,
+                d_weight_inter=None,
+                nway=nway,
+                ib_nhard=ib_nhard,
+                return_entire_scores=is_analyze,
+            )
         )
 
         # Compute loss
@@ -111,6 +114,9 @@ class ColBERT(BaseModel):
         }
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
+        elif is_analyze:
+            return_dict["intra_q_max_scores"] = intra_q_max_scores
+            return_dict["intra_qd_scores"] = intra_qd_scores
         return return_dict
 
     def encode_text(

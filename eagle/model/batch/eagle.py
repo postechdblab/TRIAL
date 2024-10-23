@@ -9,10 +9,14 @@ from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model.batch import BaseBatch
 from eagle.model.batch.utils import (
     collate_ranges,
-    combined_phrase_ranges_into_one_sentence,
     convert_range_to_scatter,
+    cut_off_phrase_ranges_by_max_len,
 )
-from eagle.phrase.utils import fill_in_missing_phrase_ranges, fix_bad_index_ranges
+from eagle.phrase.utils import (
+    fill_in_missing_phrase_ranges,
+    fix_bad_index_ranges,
+    combined_phrase_ranges_into_one_sentence,
+)
 
 
 class BatchForEAGLE(BaseBatch):
@@ -97,11 +101,11 @@ class BatchForEAGLE(BaseBatch):
         ]
 
         # Cut off phrase ranges if it exceeds the maximum length
-        q_phrase_ranges = self.cut_off_phrase_ranges_by_max_len(
+        q_phrase_ranges = cut_off_phrase_ranges_by_max_len(
             q_phrase_ranges, self.dataset.tokenizers.q_tokenizer.cfg.max_len
         )
         doc_phrase_ranges = [
-            self.cut_off_phrase_ranges_by_max_len(
+            cut_off_phrase_ranges_by_max_len(
                 item, self.dataset.tokenizers.d_tokenizer.cfg.max_len
             )
             for item in doc_phrase_ranges
@@ -120,20 +124,21 @@ class BatchForEAGLE(BaseBatch):
             convert_range_to_scatter(item) for item in doc_phrase_ranges
         ]
 
-        # Cut off phrase scatter indices if it exceeds the maximum length
-        q_phrase_scatter_indices = (
-            self.dataset.tokenizers.q_tokenizer.cutoff_by_max_len(
-                q_phrase_scatter_indices,
-                maintain_special_tokens=False,
-            )
-        )
-        doc_phrase_scatter_indices = [
-            self.dataset.tokenizers.d_tokenizer.cutoff_by_max_len(
-                item,
-                maintain_special_tokens=False,
-            )
-            for item in doc_phrase_scatter_indices
-        ]
+        # # Cut off phrase scatter indices if it exceeds the maximum length
+        # # TODO: Isn't this redundant as we already cut off by the max length in the phrase range creation?
+        # q_phrase_scatter_indices = (
+        #     self.dataset.tokenizers.q_tokenizer.cutoff_by_max_len(
+        #         q_phrase_scatter_indices,
+        #         maintain_special_tokens=False,
+        #     )
+        # )
+        # doc_phrase_scatter_indices = [
+        #     self.dataset.tokenizers.d_tokenizer.cutoff_by_max_len(
+        #         item,
+        #         maintain_special_tokens=False,
+        #     )
+        #     for item in doc_phrase_scatter_indices
+        # ]
 
         # Create mask
         # Create token masks
@@ -304,16 +309,3 @@ class BatchForEAGLE(BaseBatch):
             collate_method = getattr(BatchForEAGLE, collate_method_name)
             new_dict[key] = collate_method(self, [dic[key] for dic in input_dics])
         return new_dict
-
-    def cut_off_phrase_ranges_by_max_len(
-        self, phrase_ranges: List[Tuple[int, int]], max_len: int
-    ) -> List[Tuple[int, int]]:
-        new_phrase_ranges = []
-        for i, (start, end) in enumerate(phrase_ranges):
-            if start >= max_len:
-                break
-            if end > max_len:
-                new_phrase_ranges.append((start, max_len))
-                break
-            new_phrase_ranges.append((start, end))
-        return new_phrase_ranges

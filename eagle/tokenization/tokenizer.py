@@ -217,3 +217,6 @@ class Tokenizer:
         if isinstance(data, torch.Tensor):
             return self.pad_tensor_by_max_len(data)
         raise ValueError(f"Unsupported type: {type(data)}")
+
+    def decode(self, *args, **kwargs) -> Any:
+        return self.tokenizer.decode(*args, **kwargs)
