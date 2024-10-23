@@ -3,7 +3,7 @@ from typing import *
 import hkkang_utils.list as list_utils
 import torch
 
-from eagle.index.codecs.residual_embeddings_strided import ResidualEmbeddingsStrided
+from eagle.index.codecs.registry import CODEC_STRIDED_REGISTRY
 from eagle.index.index_loader import IndexLoader
 from eagle.search.algorithm import (
     compute_sum_maxsim,
@@ -16,6 +16,7 @@ class PLAID:
     def __init__(
         self,
         index_path: str,
+        indexer_name: str,
         ncells: int = 2,
         ndocs: int = 256,
         centroid_threshold: float = 0.45,
@@ -32,15 +33,12 @@ class PLAID:
         self.d_cross_attention_layer = d_cross_attention_layer
         self.d_weight_project_layer = d_weight_project_layer
         self.d_weight_layer_norm = d_weight_layer_norm
-        self._set_embeddings_strided()
+        self._set_embeddings_strided(indexer_name)
 
     def __call__(
         self,
-        query_cls: torch.Tensor,
         query_tok: torch.Tensor,
-        query_phrase: torch.Tensor,
         tok_weight: Optional[torch.Tensor] = None,
-        phrase_weight: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         gold_doc_ids: Optional[torch.Tensor] = None,
         return_intermediate_pids: bool = False,
@@ -67,11 +65,8 @@ class PLAID:
             )
         # Stage 4: Final ranking with decomposed embeddings
         result = self.rank_pids(
-            query_cls=query_cls,
             query_tok=query_tok,
-            query_phrase=query_phrase,
             q_tok_weight=tok_weight,
-            q_phrase_weight=phrase_weight,
             q_mask=mask,
             pids=pids,
             is_debug=is_debug,
@@ -82,32 +77,14 @@ class PLAID:
         if return_intermediate_pids:
             return final_pids, scores, (pids1, pids2, pids3)
 
-    def _set_embeddings_strided(self) -> None:
-        self.tok_embeddings_strided = ResidualEmbeddingsStrided(
+    def _set_embeddings_strided(self, indexer_name: str) -> None:
+        self.tok_embeddings_strided = CODEC_STRIDED_REGISTRY[indexer_name](
             self.index.codec,
             self.index.tok_embeddings,
             doclens=self.index.tok_lens,
             tok_ids=self.index.tok_ids,
         )
         self.tok_offsets = self.tok_embeddings_strided.codes_strided.offsets
-
-        if self.index.cls_embeddings is None:
-            self.cls_embeddings_strided = None
-            self.cls_offsets = None
-        else:
-            self.cls_embeddings_strided = ResidualEmbeddingsStrided(
-                self.index.codec, self.index.cls_embeddings, self.index.cls_lens
-            )
-            self.cls_offsets = self.cls_embeddings_strided.codes_strided.offsets
-
-        if self.index.phrase_embeddings is None:
-            self.phrase_embeddings_strided = None
-            self.phrase_offsets = None
-        else:
-            self.phrase_embeddings_strided = ResidualEmbeddingsStrided(
-                self.index.codec, self.index.phrase_embeddings, self.index.phrase_lens
-            )
-            self.phrase_offsets = self.phrase_embeddings_strided.codes_strided.offsets
 
     def get_top_centroids(
         self, query: torch.Tensor, mask: torch.Tensor, topk: int
@@ -300,11 +277,8 @@ class PLAID:
 
     def rank_pids(
         self,
-        query_cls: torch.Tensor,
         query_tok: torch.Tensor,
-        query_phrase: torch.Tensor,
         q_tok_weight: torch.Tensor,
-        q_phrase_weight: torch.Tensor,
         q_mask: torch.Tensor,
         pids: torch.Tensor,
         is_debug: bool = False,
@@ -326,11 +300,12 @@ class PLAID:
         # Apply weights
         if q_tok_weight is not None:
             query_tok = query_tok * q_tok_weight
-        if q_phrase_weight is not None:
-            query_phrase = query_phrase * q_phrase_weight
 
         # Apply mask
         if q_mask is not None:
+            # Reshape the mask if necessary
+            if len(query_tok.shape) > len(q_mask.shape):
+                q_mask = q_mask.unsqueeze(-1)
             query_tok.masked_fill_(q_mask, 0)
 
         # Extract document token embeddings
@@ -338,42 +313,9 @@ class PLAID:
             pids
         )
 
-        # Extract document cls embeddings
-        if self.cls_embeddings_strided is not None:
-            d_cls_packed, d_cls_length, _ = self.cls_embeddings_strided.lookup_pids(
-                pids
-            )
-
-        # Extract document phrase embeddings
-        if self.phrase_embeddings_strided is not None:
-            d_phrase_packed, d_phrase_length, _ = (
-                self.phrase_embeddings_strided.lookup_pids(pids)
-            )
-
-        # If use document weight, compute document weights and scale the embeddings
-        if self.d_cross_attention_layer is not None:
-            # Compute document token weights
-            cross_encoded_vectors, cross_attn_weights = self.d_cross_attention_layer(
-                query=d_tok_packed.unsqueeze(0).float(),
-                key=query_tok.unsqueeze(0).float(),
-                value=query_tok.unsqueeze(0).float(),
-                key_padding_mask=q_mask.unsqueeze(0).squeeze(-1),
-            )
-            # Add and normalize
-            cross_encoded_vectors = cross_encoded_vectors.squeeze(0) + d_tok_packed
-            # Compute weights
-            cross_encoded_vectors = self.d_weight_layer_norm(cross_encoded_vectors)
-            d_weights = self.d_weight_project_layer(cross_encoded_vectors)
-            # Scale embeddings
-            d_tok_packed = d_tok_packed * d_weights
-
         # Convert data type if necessary
         if query_tok.dtype != d_tok_packed.dtype:
             query_tok = query_tok.to(d_tok_packed.dtype)
-        if query_cls is not None and query_cls.dtype != d_cls_packed.dtype:
-            query_cls = query_cls.to(d_cls_packed.dtype)
-        if query_phrase is not None and query_phrase.dtype != d_phrase_packed.dtype:
-            query_phrase = query_phrase.to(d_phrase_packed.dtype)
 
         # Compute scores
         max_scores_by_token, max_sim_by_token, _, max_key_tok_ids = compute_sum_maxsim(
@@ -383,33 +325,7 @@ class PLAID:
             return_max_scores=is_debug,
             k_ids=d_tok_ids,
         )
-        max_scores_by_phrase = max_sim_by_phrase = None
-        if self.phrase_embeddings_strided is not None:
-            max_scores_by_phrase, max_sim_by_phrase, _, _ = compute_sum_maxsim(
-                q_encoded=query_phrase,
-                k_encoded=d_phrase_packed,
-                k_lengths=d_phrase_length,
-                return_max_scores=is_debug,
-            )
-        max_scores_by_cls = max_sim_by_cls = None
-        if self.cls_embeddings_strided is not None:
-            max_scores_by_cls, max_sim_by_cls, _, _ = compute_sum_maxsim(
-                q_encoded=query_cls,
-                k_encoded=d_cls_packed,
-                k_lengths=d_cls_length,
-                return_max_scores=is_debug,
-            )
-        if (
-            self.phrase_embeddings_strided is not None
-            and self.cls_embeddings_strided is not None
-        ):
-            max_scores = (
-                max_scores_by_token * 0
-                + max_scores_by_phrase * 0
-                + max_scores_by_cls * 1.0
-            )
-        else:
-            max_scores = max_scores_by_token
+        max_scores = max_scores_by_token
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)
         pids = pids[indices]
@@ -419,11 +335,7 @@ class PLAID:
                 pids,
                 max_scores,
                 max_scores_by_token[indices],
-                max_scores_by_phrase[indices],
-                max_scores_by_cls[indices],
                 max_sim_by_token[indices],
-                max_sim_by_phrase[indices],
-                max_sim_by_cls[indices],
                 max_key_tok_ids[indices],
             )
 

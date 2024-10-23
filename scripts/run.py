@@ -6,15 +6,9 @@ import hkkang_utils.slack as slack_utils
 import hydra
 import lightning as L
 import torch
-import torch.multiprocessing as mp
 from omegaconf import DictConfig
 
 from eagle.dataset import ContrastiveDataModule, InferenceDataModule
-from eagle.dataset.utils import (
-    add_doc_ranges_and_mask,
-    add_query_ranges_and_mask,
-    collate_fn,
-)
 from eagle.model import LightningNewModel
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenization import Tokenizer
@@ -177,6 +171,7 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
         devices=torch.cuda.device_count(),
         strategy="ddp",
     )
+    remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
 
@@ -194,8 +189,20 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
         devices=torch.cuda.device_count(),
         strategy="ddp",
     )
+    remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
+
+
+def remove_model_prefix_key_from_saved_dict(ckpt_path: str) -> None:
+    logger.info(f"Loding the checkpoint from {ckpt_path}")
+    tmp = torch.load(ckpt_path)
+    logger.info(f"Removing the prefix from the model state_dict")
+    tmp["state_dict"] = {
+        k.replace("._orig_mod.", "."): v for k, v in tmp["state_dict"].items()
+    }
+    logger.info(f"Saving the modified checkpoint to {ckpt_path}")
+    torch.save(tmp, ckpt_path)
 
 
 def run(

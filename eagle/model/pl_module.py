@@ -18,6 +18,7 @@ from eagle.metrics import (
 )
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
+from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.model.utils import (
     _sort_by_length,
     _split_into_batches,
@@ -29,6 +30,7 @@ from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
 from eagle.tokenization import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
+from eagle.search.base_searcher import BaseSearcher
 
 CAPABILITY = torch.cuda.get_device_capability()
 
@@ -49,8 +51,7 @@ class LightningNewModel(L.LightningModule):
             cfg.tokenizers.query, cfg.tokenizers.document, cfg.model.backbone_name
         )
         # Load model
-        model_module: BaseModel = MODEL_REGISTRY[cfg.model.name]
-        self.model = model_module(
+        self.model: BaseModel = MODEL_REGISTRY[cfg.model.name](
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
         if self.cfg.use_torch_compile and CAPABILITY[0] >= 7:
@@ -79,12 +80,8 @@ class LightningNewModel(L.LightningModule):
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
-        assert self.index_dir_path, "Index directory path is not provided!"
-        self.searcher = PLAID(
-            index_path=self.index_dir_path,
-            d_cross_attention_layer=self.model.cross_att_layer,
-            d_weight_project_layer=self.model.d_weight_layer,
-            d_weight_layer_norm=self.model.d_weight_layer_norm,
+        self.searcher: BaseSearcher = SEARCHER_REGISTRY[self.model.cfg.name](
+            cfg=self.cfg, model=self.model, index_dir_path=self.index_dir_path
         )
         return self.searcher
 
@@ -156,112 +153,20 @@ class LightningNewModel(L.LightningModule):
         return None
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
-        bsize = batch["q_tok_ids"].size(0)
-        is_debug = False
-
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
-        if is_debug and self.corpus is None:
-            print("Loading the corpus...")
-            self.corpus = Corpus(cfg=self.dataset_cfg)
 
-        # Extract query ids, mask, and scatter indices
-        q_tok_ids = batch["q_tok_ids"]
-        q_tok_att_mask = batch["q_tok_att_mask"]
-        q_tok_mask = batch["q_tok_mask"]
-        q_scatter_indices = batch["q_scatter_indices"]
-        q_phrase_mask = batch["q_phrase_mask"]
+        # Reverse the mask
+        batch["q_tok_mask"] = ~batch["q_tok_mask"].bool()
 
-        # Encode the query
-        (
-            encoded_tok_vectors,
-            projected_cls_vectors,
-            projected_tok_vectors,
-            projected_phrase_vectors,
-            tok_weights,
-            phrase_weights,
-            cls_scale_factor,
-            token_scale_factor,
-            phrase_scale_factor,
-        ) = self.model.encode_q_text(
-            tok_ids=q_tok_ids,
-            att_mask=q_tok_att_mask,
-            tok_mask=q_tok_mask,
-            phrase_mask=q_phrase_mask,
-            scatter_indices=q_scatter_indices,
-        )
+        all_pids, all_scores, all_intermediate_pids = self.searcher(**batch)
 
-        if tok_weights is not None:
-            tok_weights = tok_weights.half()
-        if phrase_weights is not None:
-            phrase_weights = phrase_weights.half()
-
-        # Get max positive document number
-        max_pos_doc_num = max(
-            [len(pos_doc_idxs) for pos_doc_idxs in batch["pos_doc_idxs"]]
-        )
-
-        # Search the corpus with indexed document corpus
-        all_pids: List = []
-        all_scores: List = []
-        all_labels: List = []
-        all_stage_1_accs: List = []
-        all_stage_3_accs: List = []
-        all_stage_2_accs: List = []
-        all_max_key_tok_ids: List = []
-        all_max_sim_by_token: List = []
-        all_max_scores_by_cls: List = []
-        all_max_scores_by_phrase: List = []
-        for bidx in range(bsize):
-            # Find the positive doc id
-            pos_doc_idxs = batch["pos_doc_idxs"][bidx]
-            # Retrieve pids and scores
-            query_cls = (
-                None if projected_cls_vectors is None else projected_cls_vectors[bidx]
-            )
-            query_tok = projected_tok_vectors[bidx]
-            query_phrase = (
-                None
-                if projected_phrase_vectors is None
-                else projected_phrase_vectors[bidx]
-            )
-            mask = q_tok_mask[bidx]
-            tok_weight = None if tok_weights is None else tok_weights[bidx]
-            phrase_weight = None if phrase_weights is None else phrase_weights[bidx]
-            result = self.searcher(
-                query_cls=query_cls,
-                query_tok=query_tok,
-                query_phrase=query_phrase,
-                mask=mask,
-                tok_weight=tok_weight,
-                phrase_weight=phrase_weight,
-                # gold_doc_ids=pos_doc_idxs,
-                return_intermediate_pids=True,
-                is_debug=is_debug,
-            )
-            if is_debug:
-                (
-                    pids,
-                    scores,
-                    intermediate_pids,
-                    (
-                        max_scores_by_token,
-                        max_scores_by_phrase,
-                        max_scores_by_cls,
-                        max_sim_by_token,
-                        max_sim_by_phrase,
-                        max_sim_by_cls,
-                        max_key_tok_ids,
-                    ),
-                ) = result
-                all_max_scores_by_cls.append(max_scores_by_cls)
-                all_max_scores_by_phrase.append(max_scores_by_phrase)
-                all_max_sim_by_token.append(max_sim_by_token)
-                all_max_key_tok_ids.append(max_key_tok_ids)
-            else:
-                pids, scores, intermediate_pids = result
-            if self.dataset_name == "beir-arguana":
+        # Post-process the results if the dataset is BEIR-ArguAna
+        if self.dataset_name == "beir-arguana":
+            new_pids = []
+            new_scores = []
+            for pids, scores in zip(all_pids, all_scores, strict=True):
                 # Remove the rank 1 document (i.e., the same text as the query)
                 pids = torch.cat([pids[1:], pids[0:1]], dim=0)
                 scores = torch.cat(
@@ -271,14 +176,28 @@ class LightningNewModel(L.LightningModule):
                     ],
                     dim=0,
                 )
-            # number of positive doc ids to append
-            num_pids_to_append = (
-                max_pos_doc_num + max(self.searcher.ndocs, len(pids)) - len(pids)
-            )
-            # Append the positive doc id if not found
+                new_pids.append(pids)
+                new_scores.append(scores)
+            all_pids = new_pids
+            all_scores = new_scores
+        # Prepare evaluation
+        # Get max positive document number
+        max_pos_doc_num = max(
+            [len(pos_doc_idxs) for pos_doc_idxs in batch["pos_doc_ids"]]
+        )
+        # number of positive doc ids to append
+        num_pids_to_append = (
+            max_pos_doc_num + max(self.searcher.plaid.ndocs, len(pids)) - len(pids)
+        )
+        # Append the positive doc id at the end if not found.
+        # This is for correctly format the input for the evaluation script)
+        new_pids = []
+        new_scores = []
+        all_labels = []
+        for b_idx, (pids, scores) in enumerate(zip(all_pids, all_scores, strict=True)):
             pids, pos_indices = append_dummy_pid(
                 pids=pids,
-                target_pids=pos_doc_idxs,
+                target_pids=[int(item) for item in batch["pos_doc_ids"][b_idx]],
                 max_num=num_pids_to_append,
             )
             scores = torch.cat(
@@ -290,157 +209,49 @@ class LightningNewModel(L.LightningModule):
                     ),
                 ]
             )
-            # Create labels
+            # Create label
             labels = torch.zeros_like(scores)
             labels[pos_indices] = 1
 
-            # Evaluate intermediate candidate documents
-            all_stage_1_accs.append(
-                pid_found_percentage(pos_doc_idxs, intermediate_pids[0])
-            )
-            all_stage_2_accs.append(
-                pid_found_percentage(pos_doc_idxs, intermediate_pids[1])
-            )
-            all_stage_3_accs.append(
-                pid_found_percentage(pos_doc_idxs, intermediate_pids[2])
-            )
-
-            # Append to the list
-            all_pids.append(pids)
-            all_scores.append(scores)
+            # Aggregate
+            new_pids.append(pids)
+            new_scores.append(scores)
             all_labels.append(labels)
 
-        # Stack the results
-        all_pids = torch.stack(all_pids)
-        all_scores = torch.stack(all_scores)
-        all_labels = torch.stack(all_labels)
+        all_pids = new_pids
+        all_scores = new_scores
 
+        # Evaluate the retrieved results
         # Evaluate individually so we can remove repeated quries at the end (due to DDP)
+        all_stage_1_accs: List = []
+        all_stage_3_accs: List = []
+        all_stage_2_accs: List = []
         metrics: List[Dict[str, float]] = []
-        for b_idx in range(bsize):
+        for b_idx in range(len(batch["pos_doc_ids"])):
+            # Evaluate the final results
             eval_preds = EvalPrediction(
-                all_scores[b_idx : b_idx + 1],
-                all_labels[b_idx : b_idx + 1],
-                all_pids[b_idx : b_idx + 1],
+                all_scores[b_idx].unsqueeze(0),
+                all_labels[b_idx].unsqueeze(0),
+                all_pids[b_idx].unsqueeze(0),
             )
             metrics.append(compute_metrics(eval_preds, prefix="test"))
+            # Evaluate the intermediate results
+            pos_doc_ids = [int(item) for item in batch["pos_doc_ids"][b_idx]]
+            all_stage_1_accs.append(
+                pid_found_percentage(pos_doc_ids, all_intermediate_pids[b_idx][0])
+            )
+            all_stage_2_accs.append(
+                pid_found_percentage(pos_doc_ids, all_intermediate_pids[b_idx][1])
+            )
+            all_stage_3_accs.append(
+                pid_found_percentage(pos_doc_ids, all_intermediate_pids[b_idx][2])
+            )
 
         # Log metrics
         self.final_eval_results.append(metrics)
         self.intermediate_eval_results.append(
             (all_stage_1_accs, all_stage_2_accs, all_stage_3_accs)
         )
-
-        if is_debug:
-            # Convert query ids back into tokens
-            q_toks_batch = [
-                self.tokenizers.q_tokenizer.tokenizer.convert_ids_to_tokens(
-                    q_toks, skip_special_tokens=False
-                )
-                for q_toks in q_tok_ids
-            ]
-            # Get Top-10 pids
-            for b_idx in range(bsize):
-                max_sim_by_cls = all_max_scores_by_cls[b_idx]
-                max_sim_by_phrase = all_max_scores_by_phrase[b_idx]
-                max_sim_by_token = all_max_sim_by_token[b_idx]
-                max_key_tok_ids = [
-                    self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
-                        item, skip_special_tokens=False
-                    )
-                    for item in all_max_key_tok_ids[b_idx]
-                ]
-                # Query
-                q_tok_ids = batch["q_tok_ids"][b_idx].tolist()
-                q_toks = q_toks_batch[b_idx]
-                # Document
-                top_10_scores = all_scores[b_idx, :10].tolist()
-                top_10_pids = all_pids[b_idx, :10].tolist()
-                gold_pids = batch["pos_doc_idxs"][b_idx]
-                gold_indics = [
-                    all_pids[b_idx].tolist().index(gold_pid) for gold_pid in gold_pids
-                ]
-                gold_scores = [
-                    all_scores[b_idx][gold_idx].item() for gold_idx in gold_indics
-                ]
-                gold_max_key_tok_ids = [
-                    max_key_tok_ids[gold_idx] for gold_idx in gold_indics
-                ]
-                gold_tok_scores = [
-                    max_sim_by_token[gold_idx].tolist() for gold_idx in gold_indics
-                ]
-                # Get the negative pids
-                negatives = []
-                negative_scores = []
-                if gold_pids[0] in top_10_pids:
-                    # Find the rank of the gold pid
-                    gold_pid_rank = top_10_pids.index(gold_pids[0])
-                    # Find negatives in front of the gold
-                    for idx in range(0, gold_pid_rank):
-                        negatives.append(top_10_pids[idx])
-                        negative_scores.append(top_10_scores[idx])
-                else:
-                    negatives = top_10_pids
-                    negative_scores = top_10_scores
-
-                # Get gold documents
-                gold_docs = [
-                    self.corpus.get_document_by_id(gold_pid + 1)[0]
-                    for gold_pid in gold_pids
-                ]
-                gold_docs_tok_ids = [
-                    self.tokenizers.d_tokenizer(str(gold_doc))["input_ids"][0]
-                    for gold_doc in gold_docs
-                ]
-                gold_doc_toks = [
-                    self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
-                        gold_doc_tok_ids, skip_special_tokens=False
-                    )
-                    for gold_doc_tok_ids in gold_docs_tok_ids
-                ]
-                # Get negative documents
-                negative_docs = []
-                negative_doc_toks = []
-                negative_doc_tok_ids = []
-                negative_max_key_tok_ids = []
-                negative_tok_scores = []
-                for n_pid in negatives:
-                    # Search document
-                    doc = self.corpus.get_document_by_id(n_pid + 1)[0]
-                    negative_docs.append(doc)
-                    # Tokenize the text
-                    tok_ids = self.tokenizers.d_tokenizer(str(doc))["input_ids"][0]
-                    negative_doc_tok_ids.append(tok_ids)
-                    negative_doc_toks.append(
-                        self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
-                            tok_ids, skip_special_tokens=False
-                        )
-                    )
-                    negative_max_key_tok_ids.append(
-                        max_key_tok_ids[all_pids[b_idx].tolist().index(n_pid)]
-                    )
-                    negative_tok_scores.append(
-                        max_sim_by_token[all_pids[b_idx].tolist().index(n_pid)].tolist()
-                    )
-                print("\n\n")
-                print(f"Query: {" ".join(q_toks)}")
-                for j in range(len(gold_docs)):
-                    print(
-                        f"Gold {j+1} (score: {gold_scores[j]:.2f}): {" ".join(gold_doc_toks[j])}"
-                    )
-                    print(
-                        f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, gold_max_key_tok_ids[j], gold_tok_scores[j])]}\n"
-                    )
-                for j in range(len(negative_docs)):
-                    print(
-                        f"\nNegative {j+1} (score: {negative_scores[j]:.2f}): {" ".join(negative_doc_toks[j])}"
-                    )
-                    print(
-                        f"Max key tokens: {[f"{q_token}-{d_max_sim_tok}: {d_max_tok_score:.2f}" for q_token, d_max_sim_tok, d_max_tok_score in zip(q_toks, negative_max_key_tok_ids[j], negative_tok_scores[j])]}\n"
-                    )
-
-                    # Show which query token is mapped with which document token
-                stop = 1
 
         return None
 
@@ -466,23 +277,24 @@ class LightningNewModel(L.LightningModule):
         file_path = "/root/EAGLE/tmp.json"
         file_utils.write_json_file(collected, file_path)
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
+        total_data_num = len(self.trainer.datamodule.val_dataset)
         # Aggregate the final results
         gathered_final_metrics = aggregate_final_metrics(
             gathered_final_results,
-            total_data_num=len(self.trainer.datamodule.val_dataset),
+            total_data_num=total_data_num,
         )
         # Aggregate the intermediate results
         gathered_stage1_prob = aggregate_intermediate_metrics(
             [_[0] for _ in gathered_intermediate_results],
-            total_data_num=len(self.trainer.datamodule.val_dataset),
+            total_data_num=total_data_num,
         )
         gathered_stage2_prob = aggregate_intermediate_metrics(
             [_[1] for _ in gathered_intermediate_results],
-            total_data_num=len(self.trainer.datamodule.val_dataset),
+            total_data_num=total_data_num,
         )
         gathered_stage3_prob = aggregate_intermediate_metrics(
             [_[2] for _ in gathered_intermediate_results],
-            total_data_num=len(self.trainer.datamodule.val_dataset),
+            total_data_num=total_data_num,
         )
         gathered_intermediate_metrics = {
             "stage1": gathered_stage1_prob,
@@ -493,9 +305,7 @@ class LightningNewModel(L.LightningModule):
         if self.trainer.is_global_zero:
             print("Intermediate results:")
             print(json.dumps(gathered_intermediate_metrics, indent=4))
-            print(
-                f"\nFinal results (Total data: {len(self.trainer.datamodule.val_dataset)}):"
-            )
+            print(f"\nFinal results (Total data: {total_data_num}):")
             print(json.dumps(gathered_final_metrics, indent=4))
         # self.trainer._logger_connector._logged_metrics = gathered_metrics
         self.trainer.strategy.barrier()

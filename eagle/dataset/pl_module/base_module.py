@@ -317,6 +317,7 @@ class BaseDataModule(L.LightningDataModule):
             add_kwargs["phrase_ranges_corpus"] = phrase_ranges_corpus
 
         # Create Dataset Batch
+        train_batch = None
         if not self.skip_train:
             train_batch = self.data_batching_cls(
                 dataset=train_dataset,
@@ -333,6 +334,9 @@ class BaseDataModule(L.LightningDataModule):
         )
 
         # Save datasets
+        self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
+        self.test_dataset = val_dataset
         self.train_batch = train_batch
         self.val_batch = val_batch
         self.test_batch = val_batch

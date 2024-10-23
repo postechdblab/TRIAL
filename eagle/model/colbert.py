@@ -66,7 +66,6 @@ class ColBERT(BaseModel):
         ), f"Batch size is not consistent: {q_tok_ids.shape[0]} vs {bsize}"
         # Encode
         (
-            q_encoded,
             q_tok_projected,
             q_tok_scale_factor,
         ) = self.encode_q_text(
@@ -163,7 +162,6 @@ class ColBERT(BaseModel):
             projected_tok_vectors = projected_tok_vectors.to(dtype)
 
         return (
-            encoded_tok_vectors,
             projected_tok_vectors,
             token_scale_factor,
         )

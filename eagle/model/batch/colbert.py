@@ -66,6 +66,9 @@ class BatchForColBERT(BaseBatch):
     def _collate_distillation_scores(self, data: List[Any]) -> List[Any]:
         return torch.stack(data)
 
+    def _collate_pos_doc_ids(self, data: List[List[str]]) -> List[List[str]]:
+        return data
+
     def collate_fn(
         self,
         input_dics: List[Dict[str, Any]],
@@ -95,24 +98,29 @@ class BatchForColBERT(BaseBatch):
 
         qid = data["q_id"]
         q_tok_ids = data["q_tok_ids"]
-        doc_tok_ids = data["doc_tok_ids"]
         pos_doc_ids = data["pos_doc_ids"]
-        neg_doc_ids = data["neg_doc_ids"]
+        doc_tok_ids = data.get("doc_tok_ids", None)
+        neg_doc_ids = data.get("neg_doc_ids", None)
 
         # Pad the input ids to the maximum length
         if self.pad_to_max_length:
             q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
                 q_tok_ids
             )
-            doc_tok_ids = self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
-                doc_tok_ids
-            )
+            if doc_tok_ids is not None:
+                doc_tok_ids = (
+                    self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
+                        doc_tok_ids
+                    )
+                )
 
         # Get token masks
         q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
         q_tok_att_mask = get_mask(input_ids=q_tok_ids, skip_ids=[0])
-        doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
-        doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
+        doc_tok_mask = doc_tok_att_mask = None
+        if doc_tok_ids is not None:
+            doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
+            doc_tok_att_mask = get_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         return {
             "q_tok_ids": q_tok_ids,
@@ -123,4 +131,5 @@ class BatchForColBERT(BaseBatch):
             "doc_tok_mask": doc_tok_mask,
             "labels": labels,
             "distillation_scores": distillation_scores,
+            "pos_doc_ids": pos_doc_ids,
         }

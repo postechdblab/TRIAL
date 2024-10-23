@@ -1,6 +1,7 @@
 import logging
 from typing import *
 
+import torch
 from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
@@ -49,9 +50,7 @@ class InferenceDataset(BaseDataset):
 
         # Cut off by max length
         q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
-        d_tok_ids = [
-            self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
-        ]
+        q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")
 
         return {
             "q_id": qid,

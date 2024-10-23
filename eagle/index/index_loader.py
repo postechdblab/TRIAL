@@ -10,10 +10,9 @@ from eagle.search.strided_tensor import StridedTensor
 
 
 class IndexLoader:
-    def __init__(self, index_path, use_gpu=True, load_index_with_mmap=False):
+    def __init__(self, index_path, use_gpu=True):
         self.index_path = index_path
         self.use_gpu = use_gpu
-        self.load_index_with_mmap = load_index_with_mmap
 
         self._load_codec()  # Centroids information
 
@@ -21,17 +20,11 @@ class IndexLoader:
         self.tok_ids = self._load_tok_ids()
 
         # Load ivfs
-        self.cls_ivf = self._load_ivf(granularity="cls", must_exists=False)
         self.tok_ivf = self._load_ivf(
             granularity="tok", tok_ids=self.tok_ids, must_exists=True
         )
-        self.phrase_ivf = self._load_ivf(granularity="phrase", must_exists=False)
 
-        self.cls_lens = self._load_item_lens(granularity="cls", must_exists=False)
         self.tok_lens = self._load_item_lens(granularity="tok", must_exists=True)
-        self.phrase_lens = self._load_item_lens(
-            granularity="phrase", must_exists=False
-        )  # Document lengths
         self._load_embeddings()  # Document embeddings
 
     def _load_tok_ids(self) -> torch.Tensor:
@@ -93,19 +86,12 @@ class IndexLoader:
         return torch.tensor(doclens)
 
     def _load_embeddings(self) -> None:
-        cls_embeddings, tok_embeddings, phrase_embeddings = (
-            ResidualCodec.Embeddings.load_chunks(
-                index_path=self.index_path,
-                chunk_idxs=range(self.num_chunks),
-                num_cls_embeddings=self.num_cls_embeddings,
-                num_tok_embeddings=self.num_tok_embeddings,
-                num_phrase_embeddings=self.num_phrase_embeddings,
-                load_index_with_mmap=self.load_index_with_mmap,
-            )
+        tok_embeddings = ResidualCodec.Embeddings.load_chunks(
+            index_path=self.index_path,
+            chunk_idxs=range(self.num_chunks),
+            num_tok_embeddings=self.num_tok_embeddings,
         )
-        self.cls_embeddings = cls_embeddings
         self.tok_embeddings = tok_embeddings
-        self.phrase_embeddings = phrase_embeddings
 
     @property
     def metadata(self):
@@ -127,16 +113,6 @@ class IndexLoader:
         return self.metadata["num_chunks"]
 
     @property
-    def num_cls_embeddings(self):
-        # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
-        return self.metadata["num_cls_embeddings"]
-
-    @property
     def num_tok_embeddings(self):
         # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
         return self.metadata["num_tok_embeddings"]
-
-    @property
-    def num_phrase_embeddings(self):
-        # EVENTUALLY: If num_embeddings doesn't exist (i.e., old index), sum the values in doclens.*.json files.
-        return self.metadata["num_phrase_embeddings"]
