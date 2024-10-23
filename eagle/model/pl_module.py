@@ -278,8 +278,8 @@ class LightningNewModel(L.LightningModule):
         for list_of_eval_results in copied_gathered_final_results:
             for eval_result in list_of_eval_results:
                 collected.append(eval_result["test_NDCG@10"].tolist())
-        file_path = "/root/EAGLE/eval_result.json"
-        file_utils.write_json_file(collected, file_path)
+        FILE_PATH = "/root/EAGLE/eval_result.json"
+        file_utils.write_json_file(collected, FILE_PATH)
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
         total_data_num = len(self.trainer.datamodule.val_dataset)
         # Aggregate the final results
@@ -288,23 +288,26 @@ class LightningNewModel(L.LightningModule):
             total_data_num=total_data_num,
         )
         # Aggregate the intermediate results
-        gathered_stage1_prob = aggregate_intermediate_metrics(
-            [_[0] for _ in gathered_intermediate_results],
-            total_data_num=total_data_num,
-        )
-        gathered_stage2_prob = aggregate_intermediate_metrics(
-            [_[1] for _ in gathered_intermediate_results],
-            total_data_num=total_data_num,
-        )
-        gathered_stage3_prob = aggregate_intermediate_metrics(
-            [_[2] for _ in gathered_intermediate_results],
-            total_data_num=total_data_num,
-        )
-        gathered_intermediate_metrics = {
-            "stage1": gathered_stage1_prob,
-            "stage2": gathered_stage2_prob,
-            "stage3": gathered_stage3_prob,
-        }
+        if len(gathered_intermediate_results) == 0:
+            gathered_intermediate_metrics = {}
+        else:
+            gathered_stage1_prob = aggregate_intermediate_metrics(
+                [_[0] for _ in gathered_intermediate_results],
+                total_data_num=total_data_num,
+            )
+            gathered_stage2_prob = aggregate_intermediate_metrics(
+                [_[1] for _ in gathered_intermediate_results],
+                total_data_num=total_data_num,
+            )
+            gathered_stage3_prob = aggregate_intermediate_metrics(
+                [_[2] for _ in gathered_intermediate_results],
+                total_data_num=total_data_num,
+            )
+            gathered_intermediate_metrics = {
+                "stage1": gathered_stage1_prob,
+                "stage2": gathered_stage2_prob,
+                "stage3": gathered_stage3_prob,
+            }
 
         if self.trainer.is_global_zero:
             print("Intermediate results:")
@@ -503,58 +506,58 @@ class LightningNewModel(L.LightningModule):
         return optimizers, schedulers
 
     # Custom methods for indexing corpus
-    def docFromText(
-        self,
-        docs: List[str],
-        bsize: Optional[int] = None,
-        keep_dims="flatten",
-        showprogress=False,
-    ) -> Tuple[torch.Tensor, List[int]]:
-        assert keep_dims == "flatten", "Only 'flatten' is supported for keep_dims."
-        assert bsize, "Please provide the batch size for the indexing."
+    # def docFromText(
+    #     self,
+    #     docs: List[str],
+    #     bsize: Optional[int] = None,
+    #     keep_dims="flatten",
+    #     showprogress=False,
+    # ) -> Tuple[torch.Tensor, List[int]]:
+    #     assert keep_dims == "flatten", "Only 'flatten' is supported for keep_dims."
+    #     assert bsize, "Please provide the batch size for the indexing."
 
-        # Tokenize
-        result = self.tokenizers.d_tokenizer(docs, padding=True, return_tensors="pt")
-        ids, att_mask = result["input_ids"], result["attention_mask"]
-        ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
+    #     # Tokenize
+    #     result = self.tokenizers.d_tokenizer(docs, padding=True, return_tensors="pt")
+    #     ids, att_mask = result["input_ids"], result["attention_mask"]
+    #     ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
 
-        # Create mask
-        # TODO: Need to align this with the trained model
-        tok_mask = get_mask(
-            input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
-        ).unsqueeze(-1)
+    #     # Create mask
+    #     # TODO: Need to align this with the trained model
+    #     tok_mask = get_mask(
+    #         input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
+    #     ).unsqueeze(-1)
 
-        # Create batch
-        text_batches = _split_into_batches(ids, att_mask, tok_mask, bsize=bsize)
+    #     # Create batch
+    #     text_batches = _split_into_batches(ids, att_mask, tok_mask, bsize=bsize)
 
-        # Encode
-        result_batches = [
-            self.model.encode_d_text(
-                tok_ids=input_ids.to(self.device),
-                att_mask=attention_mask.to(self.device),
-                is_encoding=True,
-            )
-            for input_ids, attention_mask, token_mask in tqdm.tqdm(
-                text_batches, disable=not showprogress
-            )
-        ]
+    #     # Encode
+    #     result_batches = [
+    #         self.model.encode_d_text(
+    #             tok_ids=input_ids.to(self.device),
+    #             att_mask=attention_mask.to(self.device),
+    #             is_encoding=True,
+    #         )
+    #         for input_ids, attention_mask, token_mask in tqdm.tqdm(
+    #             text_batches, disable=not showprogress
+    #         )
+    #     ]
 
-        # Flatten
-        D, mask = [], []
-        for i in range(len(result_batches)):
-            D_ = result_batches[i][1].half()
-            mask_ = text_batches[i][2].bool()
-            D.append(D_)
-            mask.append(mask_)
+    #     # Flatten
+    #     D, mask = [], []
+    #     for i in range(len(result_batches)):
+    #         D_ = result_batches[i][1].half()
+    #         mask_ = text_batches[i][2].bool()
+    #         D.append(D_)
+    #         mask.append(mask_)
 
-        D, mask = torch.cat(D)[reverse_indices], torch.cat(mask)[reverse_indices]
-        doclens = mask.squeeze(-1).sum(-1).tolist()
+    #     D, mask = torch.cat(D)[reverse_indices], torch.cat(mask)[reverse_indices]
+    #     doclens = mask.squeeze(-1).sum(-1).tolist()
 
-        # Serialize and remove the masked tokens
-        D = D.view(-1, D.shape[-1])
-        D = D[mask.bool().flatten()].cpu()
+    #     # Serialize and remove the masked tokens
+    #     D = D.view(-1, D.shape[-1])
+    #     D = D[mask.bool().flatten()].cpu()
 
-        # Check if flatten is correct
-        assert len(D) == sum(doclens), f"len(D)={len(D)} != sum(doclens)={sum(doclens)}"
+    #     # Check if flatten is correct
+    #     assert len(D) == sum(doclens), f"len(D)={len(D)} != sum(doclens)={sum(doclens)}"
 
-        return D, doclens
+    #     return D, doclens
