@@ -22,7 +22,7 @@ class BatchForColBERT(BaseBatch):
     def _collate_q_tok_mask(self, data: List[torch.Tensor]) -> torch.Tensor:
         if self.pad_to_max_length:
             return torch.stack(data)
-        return pad_sequence(data, batch_first=True)
+        return pad_sequence(data, batch_first=True, padding_value=1.0)
 
     def _collate_doc_tok_ids(self, data: List[torch.Tensor]) -> torch.Tensor:
         """Data shape: [bsize, num_docs, num_toks]"""
@@ -56,7 +56,7 @@ class BatchForColBERT(BaseBatch):
         # Convert to list of list of tensors
         flattened_data = list_utils.do_flatten_list([item for item in data])
         # Pad the sequence to the maximum length
-        padded_data = pad_sequence(flattened_data, batch_first=True)
+        padded_data = pad_sequence(flattened_data, batch_first=True, padding_value=1.0)
         # Convert to the original shape
         return padded_data.reshape(bsize, num_docs, -1)
 
