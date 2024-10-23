@@ -189,7 +189,7 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
         devices=torch.cuda.device_count(),
         strategy="ddp",
     )
-    remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
+    # remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
 
@@ -203,6 +203,7 @@ def remove_model_prefix_key_from_saved_dict(ckpt_path: str) -> None:
     }
     logger.info(f"Saving the modified checkpoint to {ckpt_path}")
     torch.save(tmp, ckpt_path)
+    return None
 
 
 def run(

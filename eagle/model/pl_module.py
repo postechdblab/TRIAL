@@ -1,7 +1,9 @@
+import copy
 import json
 from typing import *
 
 import bitsandbytes as bnb
+import hkkang_utils.file as file_utils
 import lightning as L
 import torch
 import tqdm
@@ -86,16 +88,22 @@ class LightningNewModel(L.LightningModule):
         return self.searcher
 
     def _test_reranking(self, batch: Dict, batch_idx: int) -> None:
+        bsize = len(batch["q_tok_ids"])
+
         _, scores = self.model(**batch, is_analyze=True)
 
-        # Compute accuracy
-        eval_preds = EvalPrediction(scores, batch["labels"])
-        metrics = compute_metrics(eval_preds, prefix="test")
+        # Compute accuracy for each item in the batch (for DDP)
+        metrics: List[Dict[str, float]] = []
+        for b_idx in range(bsize):
+            eval_preds = EvalPrediction(
+                scores[b_idx : b_idx + 1], batch["labels"][b_idx : b_idx + 1]
+            )
+            tmp = compute_metrics(eval_preds, prefix="test")
+            metrics.append(tmp)
 
         # Log metrics
-        bsize = batch["q_tok_ids"].size(0)
         # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
-        self.final_eval_results.append((metrics, bsize))
+        self.final_eval_results.append(metrics)
         is_analyze = False
         if is_analyze:
             assert (
@@ -153,6 +161,7 @@ class LightningNewModel(L.LightningModule):
         return None
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
+        bsize = len(batch["pos_doc_ids"])
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
@@ -225,7 +234,7 @@ class LightningNewModel(L.LightningModule):
         all_stage_3_accs: List = []
         all_stage_2_accs: List = []
         metrics: List[Dict[str, float]] = []
-        for b_idx in range(len(batch["pos_doc_ids"])):
+        for b_idx in range(bsize):
             # Evaluate the final results
             eval_preds = EvalPrediction(
                 all_scores[b_idx].unsqueeze(0),
@@ -262,17 +271,14 @@ class LightningNewModel(L.LightningModule):
     def on_test_epoch_end(self) -> Dict:
         # Print the result
         gathered_final_results = self.all_gather(self.final_eval_results)
+
         # Write results
-        import copy
-
-        import hkkang_utils.file as file_utils
-
-        tmp = copy.deepcopy(gathered_final_results)
+        copied_gathered_final_results = copy.deepcopy(gathered_final_results)
         collected = []
-        for item1 in tmp:
-            for item2 in item1:
-                collected.append(item2["test_NDCG@10"].tolist())
-        file_path = "/root/EAGLE/tmp.json"
+        for list_of_eval_results in copied_gathered_final_results:
+            for eval_result in list_of_eval_results:
+                collected.append(eval_result["test_NDCG@10"].tolist())
+        file_path = "/root/EAGLE/eval_result.json"
         file_utils.write_json_file(collected, file_path)
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
         total_data_num = len(self.trainer.datamodule.val_dataset)
