@@ -18,7 +18,6 @@ from eagle.metrics import (
 )
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
-from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.model.utils import (
     _sort_by_length,
     _split_into_batches,
@@ -28,9 +27,10 @@ from eagle.model.utils import (
 )
 from eagle.phrase.noun import SpacyModel
 from eagle.search import PLAID
+from eagle.search.base_searcher import BaseSearcher
+from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.tokenization import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
-from eagle.search.base_searcher import BaseSearcher
 
 CAPABILITY = torch.cuda.get_device_capability()
 
@@ -76,7 +76,7 @@ class LightningNewModel(L.LightningModule):
         self.intermediate_eval_results: List[Dict[str, float]] = []
         # For debugging
         self.dataset_cfg = cfg
-        self.corpus = None
+        self.corpus: Optional[Corpus] = None
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
