@@ -67,6 +67,10 @@ class ColBERTIndxer(BaseIndexer):
         )
 
     def _sample_embeddings(self, sampled_pids: List[int]) -> Tuple[torch.Tensor, float]:
+        """
+        Encode sampled passages and save them temporarily.
+        This is called on all the processes parallelly.
+        """
         # Extract documents
         local_samples: List[str] = []
         for pid, passage in self.corpus.enumerate(
@@ -80,7 +84,7 @@ class ColBERTIndxer(BaseIndexer):
             local_sample_tok_ids,
             local_sample_tok_embs,
             local_sample_tok_masks,
-        ) = self.model.module.encode_passages(
+        ) = self.model.encode_passages(
             local_samples,
             show_progress=self.is_main_thread,
         )
@@ -246,7 +250,7 @@ class ColBERTIndxer(BaseIndexer):
                 # Convert Document to string
                 passages: List[str] = [str(passage) for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
-                tok_ids, tok_embs, tok_masks = self.model.module.encode_passages(
+                tok_ids, tok_embs, tok_masks = self.model.encode_passages(
                     passages,
                     show_progress=self.is_main_thread,
                 )

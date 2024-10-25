@@ -158,6 +158,7 @@ class EAGLE(BaseModel):
         labels: Optional[torch.Tensor] = None,
         distillation_scores: Optional[torch.Tensor] = None,
         is_inference: Optional[bool] = False,
+        is_analyze: Optional[bool] = False,
         **kwargs,
     ) -> Dict[str, Any]:
         # Configs
@@ -213,26 +214,29 @@ class EAGLE(BaseModel):
             is_inference=is_inference,
         )
 
-        intra_scores, inter_scores = self.multi_granularity_interaction(
-            q_sent=q_sent_projected,
-            q_phrase=q_phrase_projected,
-            q_tok=q_tok_projected,
-            d_sent=d_sent_projected,
-            d_phrase=d_phrase_projected,
-            d_tok=d_tok_projected,
-            q_tok_weight=q_tok_weight,
-            q_phrase_weight=q_phrase_weight,
-            d_tok_weight_intra=d_tok_weight_intra,
-            d_tok_weight_inter=d_tok_weight_inter,
-            d_phrase_weight_intra=d_phrase_weight_intra,
-            d_phrase_weight_inter=d_phrase_weight_inter,
-            d_sent_weight_inter=d_sent_weight_inter,
-            d_sent_weight_intra=d_sent_weight_intra,
-            q_scatter_indices=q_phrase_scatter_indices,
-            q_tok_scale_factor=q_tok_scale_factor,
-            q_phrase_scale_factor=q_phrase_scale_factor,
-            q_sent_scale_factor=q_sent_scale_factor,
-            is_inference=is_inference,
+        intra_scores, inter_scores, intra_qd_inner_scores, intra_qd_outer_scores = (
+            self.multi_granularity_interaction(
+                q_sent=q_sent_projected,
+                q_phrase=q_phrase_projected,
+                q_tok=q_tok_projected,
+                d_sent=d_sent_projected,
+                d_phrase=d_phrase_projected,
+                d_tok=d_tok_projected,
+                q_tok_weight=q_tok_weight,
+                q_phrase_weight=q_phrase_weight,
+                d_tok_weight_intra=d_tok_weight_intra,
+                d_tok_weight_inter=d_tok_weight_inter,
+                d_phrase_weight_intra=d_phrase_weight_intra,
+                d_phrase_weight_inter=d_phrase_weight_inter,
+                d_sent_weight_inter=d_sent_weight_inter,
+                d_sent_weight_intra=d_sent_weight_intra,
+                q_scatter_indices=q_phrase_scatter_indices,
+                q_tok_scale_factor=q_tok_scale_factor,
+                q_phrase_scale_factor=q_phrase_scale_factor,
+                q_sent_scale_factor=q_sent_scale_factor,
+                is_inference=is_inference,
+                return_element_wise_scores=is_analyze,
+            )
         )
 
         # Compute loss
@@ -332,6 +336,9 @@ class EAGLE(BaseModel):
         # Append weights
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
+        elif is_analyze:
+            return_dict["intra_qd_inner_scores"] = intra_qd_inner_scores
+            return_dict["intra_qd_outer_scores"] = intra_qd_outer_scores
         return return_dict
 
     def encode_text(
@@ -681,6 +688,7 @@ class EAGLE(BaseModel):
         q_phrase_scale_factor: Optional[torch.Tensor] = None,
         q_sent_scale_factor: Optional[torch.Tensor] = None,
         is_inference: bool = False,
+        return_element_wise_scores: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Configs
         bsize, q_tok_len, q_dim = q_tok.shape
@@ -739,24 +747,30 @@ class EAGLE(BaseModel):
                 selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
 
             # Compute intra query scores through outer aggregation (i.e., token-level vector similarity)
-            intra_sim_scores_outer = self.compute_outer_sim(
-                q_vecs=q_vecs_intra,
-                q_weights=q_weight_intra,
-                q_scatter_indices=q_scatter_indices_intra,
-                q_scale_factors=q_scale_factors_intra,
-                d_vecs=d_vecs_intra,
-                d_weights=d_weights_intra,
+            intra_sim_scores_outer, intra_sim_outer_elementwise_scores = (
+                self.compute_outer_sim(
+                    q_vecs=q_vecs_intra,
+                    q_weights=q_weight_intra,
+                    q_scatter_indices=q_scatter_indices_intra,
+                    q_scale_factors=q_scale_factors_intra,
+                    d_vecs=d_vecs_intra,
+                    d_weights=d_weights_intra,
+                    return_element_wise_scores=return_element_wise_scores,
+                )
             )
 
             # Compute inter query scores through outer aggregation (i.e., token-level vector similarity)
             if not is_inference:
-                inter_sim_scores_outer = self.compute_outer_sim(
-                    q_vecs=q_vecs_inter,
-                    q_weights=q_weight_inter,
-                    q_scatter_indices=q_scatter_indices_inter,
-                    q_scale_factors=q_scale_factors_inter,
-                    d_vecs=selected_d_vecs_inter,
-                    d_weights=d_weights_inter,
+                inter_sim_scores_outer, inter_sim_outer_elementwise_scores = (
+                    self.compute_outer_sim(
+                        q_vecs=q_vecs_inter,
+                        q_weights=q_weight_inter,
+                        q_scatter_indices=q_scatter_indices_inter,
+                        q_scale_factors=q_scale_factors_inter,
+                        d_vecs=selected_d_vecs_inter,
+                        d_weights=d_weights_inter,
+                        return_element_wise_scores=return_element_wise_scores,
+                    )
                 )
 
         if self.sim_type in ["combination", "inner_agg"]:
@@ -777,22 +791,28 @@ class EAGLE(BaseModel):
                 selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
 
             # Compute intra query scores through inner aggregation (i.e., phrase-level vector similarity)
-            intra_sim_scores_inner = self.compute_inner_sim(
-                q_vecs=q_vecs_intra,
-                q_weights=q_weight_intra,
-                q_scale_factors=q_scale_factors_intra,
-                d_vecs=d_vecs_intra,
-                d_weights=d_weights_intra,
+            intra_sim_scores_inner, intra_sim_inner_elementwise_scores = (
+                self.compute_inner_sim(
+                    q_vecs=q_vecs_intra,
+                    q_weights=q_weight_intra,
+                    q_scale_factors=q_scale_factors_intra,
+                    d_vecs=d_vecs_intra,
+                    d_weights=d_weights_intra,
+                    return_element_wise_scores=return_element_wise_scores,
+                )
             )
 
             # Compute inter query scores through inner aggregation (i.e., phrase-level vector similarity)
             if not is_inference:
-                inter_sim_scores_inner = self.compute_inner_sim(
-                    q_vecs=q_vecs_inter,
-                    q_weights=q_weight_inter,
-                    q_scale_factors=q_scale_factors_inter,
-                    d_vecs=selected_d_vecs_inter,
-                    d_weights=d_weights_inter,
+                inter_sim_scores_inner, inter_sim_inner_elementwise_scores = (
+                    self.compute_inner_sim(
+                        q_vecs=q_vecs_inter,
+                        q_weights=q_weight_inter,
+                        q_scale_factors=q_scale_factors_inter,
+                        d_vecs=selected_d_vecs_inter,
+                        d_weights=d_weights_inter,
+                        return_element_wise_scores=return_element_wise_scores,
+                    )
                 )
 
         # Compute the final scores
@@ -812,7 +832,12 @@ class EAGLE(BaseModel):
             if not is_inference:
                 inter_sim_scores = inter_sim_scores_inner
 
-        return intra_sim_scores, inter_sim_scores
+        return (
+            intra_sim_scores,
+            inter_sim_scores,
+            intra_sim_inner_elementwise_scores,
+            intra_sim_outer_elementwise_scores,
+        )
 
     def compute_outer_sim(
         self,
@@ -822,15 +847,17 @@ class EAGLE(BaseModel):
         q_scale_factors: torch.Tensor,
         d_vecs: torch.Tensor,
         d_weights: torch.Tensor,
+        return_element_wise_scores: bool = False,
     ) -> torch.Tensor:
         """Compute vector similarity in token-level, and then aggregate to phrase-level"""
 
         # Compute maxsim
-        max_q_scores = self.compute_maxsim(
+        max_q_scores, element_wise_scores = self.compute_maxsim(
             q_vecs=q_vecs,
             q_weights=q_weights,
             d_vecs=d_vecs,
             d_weights=d_weights,
+            return_element_wise_scores=return_element_wise_scores,
         )
 
         # Aggregate token-level vector similarity to phrase-level
@@ -846,7 +873,7 @@ class EAGLE(BaseModel):
         # Scale the query scores
         q_scores = q_scores * q_scale_factors
 
-        return q_scores
+        return q_scores, element_wise_scores
 
     def compute_inner_sim(
         self,
@@ -855,15 +882,17 @@ class EAGLE(BaseModel):
         q_scale_factors: torch.Tensor,
         d_vecs: torch.Tensor,
         d_weights: torch.Tensor,
+        return_element_wise_scores: bool = False,
     ) -> torch.Tensor:
         """Compute vector similarity in phrase-level"""
 
         # Compute maxsim
-        max_q_scores = self.compute_maxsim(
+        max_q_scores, element_wise_scores = self.compute_maxsim(
             q_vecs=q_vecs,
             q_weights=q_weights,
             d_vecs=d_vecs,
             d_weights=d_weights,
+            return_element_wise_scores=return_element_wise_scores,
         )
 
         # Aggregate phrase-level scores to query-level scores
@@ -872,7 +901,7 @@ class EAGLE(BaseModel):
         # Scale the query scores
         q_scores = q_scores * q_scale_factors
 
-        return q_scores
+        return q_scores, element_wise_scores
 
     def compute_maxsim(
         self,
@@ -880,6 +909,7 @@ class EAGLE(BaseModel):
         d_vecs: torch.Tensor,
         q_weights: torch.Tensor = None,
         d_weights: torch.Tensor = None,
+        return_element_wise_scores: bool = False,
     ) -> torch.Tensor:
         # Apply d weights
         if d_weights is not None:
@@ -890,4 +920,6 @@ class EAGLE(BaseModel):
         # Apply q weights
         if q_weights is not None:
             max_q_scores = max_q_scores * q_weights.squeeze()
-        return max_q_scores
+        if not return_element_wise_scores:
+            element_wise_scores = None
+        return max_q_scores, element_wise_scores

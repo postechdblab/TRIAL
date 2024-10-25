@@ -128,9 +128,13 @@ class ResidualCodec:
         buckets_path = os.path.join(index_path, "buckets.pt")
 
         plan = OmegaConf.create(file_utils.read_json_file(plan_path))
-        centroids = torch.load(centroids_path, map_location="cpu")
-        avg_residual = torch.load(avgresidual_path, map_location="cpu")
-        bucket_cutoffs, bucket_weights = torch.load(buckets_path, map_location="cpu")
+        centroids = torch.load(centroids_path, map_location="cpu", weights_only=True)
+        avg_residual = torch.load(
+            avgresidual_path, map_location="cpu", weights_only=True
+        )
+        bucket_cutoffs, bucket_weights = torch.load(
+            buckets_path, map_location="cpu", weights_only=True
+        )
 
         if avg_residual.dim() == 0:
             avg_residual = avg_residual.item()

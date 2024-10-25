@@ -60,11 +60,14 @@ def preprocess(text: str, tokenizer: Tokenizer) -> Any:
     # scatter_indices = tokenizer.cutoff_by_max_len(
     #     scatter_indices, maintain_special_tokens=False
     # )
+    scatter_indices = torch.tensor(scatter_indices, dtype=torch.long)
     # Convert list to tensor
     tok_ids_tensor = torch.tensor(tok_ids)
     # Create token mask
     tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids)
     tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
+    phrase_mask = torch.zeros(len(phrase_ranges), dtype=torch.bool).float()
+    sent_mask = torch.zeros(len(sent_start_indices), dtype=torch.bool).float()
 
     return {
         "tok_ids": tok_ids_tensor,
@@ -72,6 +75,9 @@ def preprocess(text: str, tokenizer: Tokenizer) -> Any:
         "tok_mask": tok_mask,
         "sent_start_indices": sent_start_indices,
         "phrase_scatter_indices": scatter_indices,
+        "phrase_mask": phrase_mask,
+        "sent_mask": sent_mask,
+        "phrase_ranges": phrase_ranges,
     }
 
 
@@ -116,6 +122,22 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
             "distillation_scores": None,
             "pos_doc_ids": None,
             "is_analyze": True,
+            "q_sent_start_indices": [[preprocessed_query["sent_start_indices"]]],
+            "doc_sent_start_indices": [[preprocessed_document["sent_start_indices"]]],
+            "q_phrase_scatter_indices": preprocessed_query[
+                "phrase_scatter_indices"
+            ].unsqueeze(0),
+            "doc_phrase_scatter_indices": preprocessed_document[
+                "phrase_scatter_indices"
+            ].unsqueeze(0),
+            "q_phrase_mask": preprocessed_query["phrase_mask"].unsqueeze(0),
+            "doc_phrase_mask": preprocessed_document["phrase_mask"]
+            .unsqueeze(0)
+            .unsqueeze(0),
+            "q_sent_mask": preprocessed_query["sent_mask"].unsqueeze(0),
+            "doc_sent_mask": preprocessed_document["sent_mask"]
+            .unsqueeze(0)
+            .unsqueeze(0),
         }
         # Move the tensors to the device same as the model
         preprocessed_batch = {
@@ -132,7 +154,26 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
         }
 
         # Get the query-doc token similarity scores
-        qd_scores = results["intra_qd_scores"].squeeze().transpose(0, 1)
+        if "intra_qd_scores" in results:
+            qd_scores = results["intra_qd_scores"].squeeze().transpose(0, 1)
+            decoded_d_tokens = [
+                d_tokenizer.decode(item) for item in preprocessed_document["tok_ids"]
+            ]
+        else:
+            qd_scores = results["intra_qd_outer_scores"].squeeze().transpose(0, 1)
+            # Concate tok, phrase, sent
+            # Get sentence indices
+            doc_toks = [
+                d_tokenizer.decode(item) for item in preprocessed_document["tok_ids"]
+            ]
+            sent_start_toks = [
+                doc_toks[idx] for idx in preprocessed_document["sent_start_indices"]
+            ]
+            phrases = [
+                "_".join(doc_toks[s:e])
+                for s, e in preprocessed_document["phrase_ranges"]
+            ]
+            decoded_d_tokens = sent_start_toks + phrases + doc_toks
 
         # Find the max scores for each token
         max_scores, max_indices = qd_scores.max(1)
@@ -145,7 +186,7 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
         logger.info(f"Total score: {total_score}")
         for i, (max_score, max_idx) in enumerate(zip(max_scores, max_indices)):
             query_token = q_tokenizer.decode([preprocessed_query["tok_ids"][i]])
-            doc_token = d_tokenizer.decode([preprocessed_document["tok_ids"][max_idx]])
+            doc_token = decoded_d_tokens[max_idx]
             logger.info(
                 f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
             )
@@ -153,10 +194,6 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
         # Print the document tokens with their indices
         decoded_q_tokens = [
             q_tokenizer.decode([token_id]) for token_id in preprocessed_query["tok_ids"]
-        ]
-        decoded_d_tokens = [
-            d_tokenizer.decode([token_id])
-            for token_id in preprocessed_document["tok_ids"]
         ]
         print("Query tokens:")
         pretty_print_tokens_with_their_indices(
@@ -216,7 +253,7 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
 
 def remove_model_prefix_key_from_saved_dict(ckpt_path: str) -> None:
     logger.info(f"Loding the checkpoint from {ckpt_path}")
-    tmp = torch.load(ckpt_path)
+    tmp = torch.load(ckpt_path, weights_only=True)
     logger.info(f"Removing the prefix from the model state_dict")
     tmp["state_dict"] = {
         k.replace("._orig_mod.", "."): v for k, v in tmp["state_dict"].items()

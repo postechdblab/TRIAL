@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import timedelta
 from typing import *
 
 import hkkang_utils.slack as slack_utils
@@ -34,6 +35,7 @@ def multi_process_indexing(
         backend="nccl" if torch.cuda.is_available() else "gloo",
         init_method="env://",
         world_size=world_size,
+        timeout=timedelta(hours=5),
     )
 
     # Set default device

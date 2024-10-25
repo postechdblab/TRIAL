@@ -34,7 +34,7 @@ class IndexLoader:
             # Skip if file doesn't exist
             if not os.path.exists(file_path):
                 continue
-            tok_ids_ = torch.load(file_path, map_location="cpu")
+            tok_ids_ = torch.load(file_path, map_location="cpu", weights_only=True)
             tok_ids.append(tok_ids_)
 
         return torch.cat(tok_ids)
@@ -51,12 +51,16 @@ class IndexLoader:
         ivf_path = os.path.join(self.index_path, f"{granularity}-ivf.pt")
         ivf_pid_path = os.path.join(self.index_path, f"{granularity}-ivf.pid.pt")
         if os.path.exists(ivf_pid_path):
-            ivf, ivf_lengths = torch.load(ivf_pid_path, map_location="cpu")
+            ivf, ivf_lengths = torch.load(
+                ivf_pid_path, map_location="cpu", weights_only=True
+            )
         else:
             if not must_exists:
                 return None
             assert os.path.exists(ivf_path)
-            ivf, ivf_lengths = torch.load(ivf_path, map_location="cpu")
+            ivf, ivf_lengths = torch.load(
+                ivf_path, map_location="cpu", weights_only=True
+            )
             ivf, ivf_lengths = optimize_ivf(ivf, ivf_lengths, self.index_path)
 
         # ivf, ivf_lengths = ivf.cuda(), torch.LongTensor(ivf_lengths).cuda()  # FIXME: REMOVE THIS LINE!

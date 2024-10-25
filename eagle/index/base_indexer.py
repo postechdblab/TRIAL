@@ -14,7 +14,6 @@ import numpy as np
 import torch
 import ujson
 from omegaconf import DictConfig
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.codecs.residual_embeddings import BaseResidualEmbeddings
@@ -53,9 +52,8 @@ class BaseIndexer:
         # Set model
         assert cfg.model.ckpt_path, "model ckpt_path is not provided."
         model_module: BaseModel = MODEL_REGISTRY[cfg.model.name]
-        self.model = DDP(
-            model_module(cfg=cfg.model, tokenizers=self.tokenizers).to(self.device),
-            device_ids=[self.rank],
+        self.model = model_module(cfg=cfg.model, tokenizers=self.tokenizers).to(
+            self.device
         )
         # Sample embeddings
         self.sample_embs = None
@@ -72,6 +70,7 @@ class BaseIndexer:
         # Plan indexing
         self._log_info_main_thread_only("Begin Index planning")
         self.plan()
+        self._distributed_barrier()
 
         # Train kmeans
         self._log_info_main_thread_only(
@@ -226,7 +225,7 @@ class BaseIndexer:
         offset = 0
         for r in range(self.world_size):
             sub_sample_path = os.path.join(self.dir_path, f"tok_sample.{r}.pt")
-            sub_sample = torch.load(sub_sample_path)
+            sub_sample = torch.load(sub_sample_path, weights_only=True)
             os.remove(sub_sample_path)
 
             endpos = offset + sub_sample.size(0)
@@ -281,7 +280,7 @@ class BaseIndexer:
             niter=self.cfg.kmeans_niters,
             gpu=True,
             verbose=True,
-            seed=123,
+            seed=self.cfg.seed,
         )
         kmeans.train(sample)
 

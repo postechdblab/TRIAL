@@ -70,7 +70,7 @@ class BaseResidualEmbeddings:
         tok_codes_path = os.path.join(index_path, f"{chunk_idx}-tok.codes.pt")
 
         # Load codes
-        tok_codes = torch.load(tok_codes_path, map_location="cpu")
+        tok_codes = torch.load(tok_codes_path, map_location="cpu", weights_only=True)
 
         return tok_codes
 
@@ -79,7 +79,9 @@ class BaseResidualEmbeddings:
         self, index_path, chunk_idx
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         tok_residuals_path = os.path.join(index_path, f"{chunk_idx}-tok.residuals.pt")
-        tok_residuals = torch.load(tok_residuals_path, map_location="cpu")
+        tok_residuals = torch.load(
+            tok_residuals_path, map_location="cpu", weights_only=True
+        )
         return tok_residuals
 
     def save(self, path_prefix):

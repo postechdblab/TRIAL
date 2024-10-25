@@ -4,10 +4,17 @@ from typing import *
 
 import torch
 from omegaconf import DictConfig
+from omegaconf.base import ContainerMetadata, Metadata
+from omegaconf.nodes import AnyNode
 from transformers import AutoModel
-
+from collections import defaultdict
 from eagle.tokenization import Tokenizer
 from eagle.utils import add_config
+
+# Add DictConfig to the safe globals for torch serialization
+torch.serialization.add_safe_globals(
+    [DictConfig, ContainerMetadata, Any, dict, defaultdict, AnyNode, Metadata]
+)
 
 logger = logging.getLogger("BaseModel")
 
@@ -46,9 +53,9 @@ class BaseModel(torch.nn.Module):
     def load_checkpoint(self) -> None:
         if self.cfg.ckpt_path:
             logger.info(f"Loading model checkpoint from {self.cfg.ckpt_path}")
-            loaded_params = torch.load(self.cfg.ckpt_path, map_location="cpu")[
-                "state_dict"
-            ]
+            loaded_params = torch.load(
+                self.cfg.ckpt_path, map_location="cpu", weights_only=True
+            )["state_dict"]
             # Remove "model." from the keys
             renamed_params = {}
             prefix_to_remove = "model."
