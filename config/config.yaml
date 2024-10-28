@@ -9,3 +9,4 @@ defaults:
     - dataset: default
     - training: default
     - indexing: default
+    # - _self_: default

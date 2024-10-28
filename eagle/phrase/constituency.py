@@ -8,15 +8,18 @@ import spacy
 import tqdm
 from transformers import T5TokenizerFast
 
-# Initialize the BERT tokenizer
-t5_tokenizer = T5TokenizerFast.from_pretrained("t5-base")
-
 MAX_TOKEN_LENGTH = 512
 MIN_SPACY_TOKEN_LENGTH_TO_CHECK = 100
 
 logger = logging.getLogger("Constituency")
+
 nlp = spacy.blank("en")
 nlp.add_pipe("sentencizer")
+
+# Initialize the BERT tokenizer
+t5_tokenizer = T5TokenizerFast.from_pretrained(
+    "t5-base", model_max_length=MAX_TOKEN_LENGTH
+)
 
 
 @spacy.language.Language.component("truncate_exceeding_tokens")

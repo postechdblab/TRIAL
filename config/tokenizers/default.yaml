@@ -1,3 +1,4 @@
 defaults:
   - query: default
   - document: default
+  # - _self_: default

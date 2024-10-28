@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 
 from eagle.index.base_indexer import BaseIndexer, main_thread_only
 from eagle.index.codecs.residual import ResidualCodec
+from eagle.index.corpus import Document
 from eagle.index.utils import flatten_items_with_mask, optimize_ivf
 
 logger = logging.getLogger("ColBERTIndexer")
@@ -72,19 +73,19 @@ class ColBERTIndxer(BaseIndexer):
         This is called on all the processes parallelly.
         """
         # Extract documents
-        local_samples: List[str] = []
-        for pid, passage in self.corpus.enumerate(
+        local_samples: List[Document] = []
+        for pid, documents in self.corpus.enumerate(
             rank=self.rank, world_size=self.world_size
         ):
             if pid in sampled_pids:
-                local_samples.append(str(passage))
+                local_samples.append(documents)
 
         self._log_info(f"Encoding {len(local_samples)} sampled passages...")
         (
             local_sample_tok_ids,
             local_sample_tok_embs,
             local_sample_tok_masks,
-        ) = self.model.encode_passages(
+        ) = self.model.encode_documents(
             local_samples,
             show_progress=self.is_main_thread,
         )
@@ -243,15 +244,13 @@ class ColBERTIndxer(BaseIndexer):
         """
         self._log_info_main_thread_only("Encoding documents...")
         with self.thread():
-            for chunk_idx, offset, passages in tqdm.tqdm(
+            for chunk_idx, offset, documents in tqdm.tqdm(
                 self.corpus.enumerate_chunk(rank=self.rank, world_size=self.world_size),
                 disable=not self.is_main_thread,
             ):
-                # Convert Document to string
-                passages: List[str] = [str(passage) for passage in passages]
                 # Encode passages into embeddings with the checkpoint model
-                tok_ids, tok_embs, tok_masks = self.model.encode_passages(
-                    passages,
+                tok_ids, tok_embs, tok_masks = self.model.encode_documents(
+                    documents,
                     show_progress=self.is_main_thread,
                 )
                 # Flatten tok_embs
@@ -262,7 +261,7 @@ class ColBERTIndxer(BaseIndexer):
                 )
                 tok_embs = tok_embs.half()
                 self._log_info_main_thread_only(
-                    f"#> Saving chunk {chunk_idx}: \t {len(passages):,} passages "
+                    f"#> Saving chunk {chunk_idx}: \t {len(documents):,} passages "
                     f"and {tok_embs.size(0):,} embeddings. From #{offset:,} onward."
                 )
 

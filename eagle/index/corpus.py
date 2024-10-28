@@ -15,11 +15,12 @@ logger = logging.getLogger("Corpus")
 @data_utils.dataclass
 class Document:
     _id: int
-    text: str
+    text: List[str]
     title: str
 
     def __str__(self) -> str:
-        return f"{self.title} | {self.text}"
+        assert type(self.text) == list, f"Text is not a list: {self.text}"
+        return f"{self.title} | {" ".join(self.text)}"
 
 
 class Corpus:
@@ -64,17 +65,19 @@ class Corpus:
     def enumerate(
         self, rank: int = 0, world_size: int = 1
     ) -> Iterator[Tuple[int, Document]]:
-        for _, doc_idx, docs in self.enumerate_chunk(rank=rank, world_size=world_size):
+        for _, start_doc_idx, docs in self.enumerate_chunk(
+            rank=rank, world_size=world_size
+        ):
             for local_idx, doc in enumerate(docs):
-                yield (doc_idx + local_idx, doc)
+                yield (start_doc_idx + local_idx, doc)
 
     def enumerate_chunk(
         self, rank: int = 0, world_size: int = 1
     ) -> Iterator[Tuple[int, List[Document]]]:
         chunk_size = self.get_chunk_size(world_size)
-        for doc_idx in range(0, len(self.data), chunk_size):
-            chunk_idx = doc_idx // chunk_size
+        for start_doc_idx in range(0, len(self.data), chunk_size):
+            chunk_idx = start_doc_idx // chunk_size
             # yield if the chunk index is the same as the rank
             if chunk_idx % world_size == rank:
-                docs = self.data[doc_idx : doc_idx + chunk_size]
-                yield (chunk_idx, doc_idx, docs)
+                docs = self.data[start_doc_idx : start_doc_idx + chunk_size]
+                yield (chunk_idx, start_doc_idx, docs)

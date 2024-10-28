@@ -27,7 +27,7 @@ class Tokenizer:
     def __init__(self, cfg: DictConfig, model_name: str) -> None:
         self.cfg = cfg
         self.name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=512)
         new_tok_offset = handle_old_ckpt(self.cfg, "new_tok_offset")
         self.tokenizer.add_special_tokens(
             {

@@ -8,6 +8,7 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.utils import get_mask
+from eagle.index.corpus import Document
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
 from eagle.model.utils import _sort_by_length, _split_into_batches, get_scale_factor
@@ -331,16 +332,16 @@ class ColBERT(BaseModel):
             return_element_wise_scores=return_entire_scores,
         )
 
-    def encode_passages(
-        self, passages: List[str], bsize: int = 128, show_progress: bool = False
+    def encode_documents(
+        self, documents: List[Document], bsize: int = 512, show_progress: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.inference_mode():
             # Configs
             device = self.llm.device
 
-            # Tokenize the passages
+            # Tokenize the documents
             result = self.tokenizers.d_tokenizer(
-                passages, padding=True, return_tensors="pt"
+                documents, padding=True, return_tensors="pt"
             )
             ids, att_mask = result["input_ids"], result["attention_mask"]
 
@@ -358,7 +359,7 @@ class ColBERT(BaseModel):
                 ids, att_mask, descending=True
             )
 
-            # Encode the passages
+            # Encode the documents
             all_tok_embs: List[torch.Tensor] = []
             for input_ids, attention_mask in tqdm.tqdm(
                 _split_into_batches(ids, att_mask, bsize=bsize),
