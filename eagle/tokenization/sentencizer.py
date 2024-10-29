@@ -18,7 +18,9 @@ class Sentencizer(metaclass=pattern_utils.SingletonMetaWithArgs):
             self.spacy_model = spacy.load(model_name)
         self.spacy_model.add_pipe("sentencizer")
 
-    def __call__(self, text_or_texts: Union[str, List[str]]):
+    def __call__(
+        self, text_or_texts: Union[str, List[str]]
+    ) -> Union[List[str], List[List[str]]]:
         if isinstance(text_or_texts, str):
             return self.split_into_sentences(text_or_texts)
         elif isinstance(text_or_texts, list):

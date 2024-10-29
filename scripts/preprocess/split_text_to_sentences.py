@@ -7,9 +7,10 @@ import hkkang_utils.file as file_utils
 import hkkang_utils.list as list_utils
 import hkkang_utils.slack as slack_utils
 import hydra
-import spacy
 import tqdm
 from omegaconf import DictConfig
+
+from eagle.tokenization.sentencizer import Sentencizer
 
 logger = logging.getLogger("SplitSentences")
 
@@ -100,10 +101,8 @@ def split_text_to_sentences(
     total_process_num: int,
     process_idx: int,
 ) -> None:
-    # Load spacy model
-    spacy.require_gpu()
-    spacy_model = spacy.load("en_core_web_trf", disable=["tagger", "parser", "ner"])
-    spacy_model.add_pipe("sentencizer")
+    # Load model
+    sentencizer = Sentencizer()
 
     # Read in the data
     logger.info(f"Reading data from {dataset_path}")
@@ -121,10 +120,9 @@ def split_text_to_sentences(
     for chunk in tqdm.tqdm(
         list_utils.chunks(target_chunk, CHUNK_SIZE), total=num_of_chunks
     ):
-        texts = [item["text"] for item in chunk]
-        all_sentences = spacy_model.pipe(texts)
+        texts: List[str] = [item["text"] for item in chunk]
+        all_sentences: List[List[str]] = sentencizer(texts)
         for i, sentences in enumerate(all_sentences):
-            sentences = [sent.text for sent in sentences.sents]
             chunk[i]["text"] = sentences
 
     # Save the parsed data
@@ -134,7 +132,7 @@ def split_text_to_sentences(
     )
     logger.info(f"Saving the parsed data to {output_file_path}")
 
-    file_utils.write_jsonl_file(target_chunk, output_file_path)
+    file_utils.write_jsonl_file(target_chunk, output_file_path, encoding="utf-8")
 
     return None
 
