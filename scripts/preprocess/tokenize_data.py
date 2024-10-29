@@ -186,12 +186,12 @@ def merge(
     save_compressed(merged_tokenized_dataset_path, all_tokenized_data)
 
     # Remove the splitted tokenized dataset
-    logger.info(f"Removing {total_proc_num} splitted tokenized chunks...")
-    for i in range(total_proc_num):
-        tokenized_dataset_path = get_partial_data_name(
-            dir_path, file_name, total_proc_num=total_proc_num, i=i
-        )
-        os.remove(tokenized_dataset_path)
+    # logger.info(f"Removing {total_proc_num} splitted tokenized chunks...")
+    # for i in range(total_proc_num):
+    #     tokenized_dataset_path = get_partial_data_name(
+    #         dir_path, file_name, total_proc_num=total_proc_num, i=i
+    #     )
+    #     os.remove(tokenized_dataset_path)
 
     return all_tokenized_data
 
