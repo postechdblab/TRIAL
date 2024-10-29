@@ -1,17 +1,15 @@
-import copy
 import functools
 import logging
 import string
 from typing import *
 
-import hkkang_utils.concurrent as concurrent_utils
-import hkkang_utils.list as list_utils
 import torch
-import tqdm
 from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
+from eagle.dataset.corpus import Document
+from eagle.tokenization.utils import combine_splitted_tok_ids
 from eagle.utils import handle_old_ckpt
 
 logger = logging.getLogger("NewTokenizesr")
@@ -98,10 +96,83 @@ class Tokenizer:
     def _preprocess_text(self, text: str) -> str:
         return self.cfg.special_tok + " " + text
 
-    def tokenize(self, text: str, **kwargs) -> torch.Tensor:
-        return self.tokenize_batch(texts=[text], **kwargs)[0]
+    def tokenize(
+        self, input_data: Union[str, Document], **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        if type(input_data) == str:
+            return self.tokenize_str(input_data, **kwargs)
+        elif isinstance(input_data, Document):
+            return self.tokenize_document(input_data, **kwargs)
+        raise ValueError(f"Unsupported type: {type(input_data)}")
 
     def tokenize_batch(
+        self, input_datas: Union[List[str], List[Document]], **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        if type(input_datas[0]) == str:
+            return self.tokenize_batch_str(input_datas, **kwargs)
+        elif isinstance(input_datas[0], Document):
+            return self.tokenize_batch_document(input_datas, **kwargs)
+        raise ValueError(f"Unsupported type: {type(input_datas[0])}")
+
+    def tokenize_document(self, doc: Document, **kwargs) -> Dict[str, torch.Tensor]:
+        return self.tokenize_batch_document(docs=[doc], **kwargs)[0]
+
+    def tokenize_batch_document(
+        self,
+        docs: List[Document],
+        padding=False,
+        return_tensors: str = None,
+        truncation=True,
+    ) -> Dict[str, torch.Tensor]:
+        # Aggregate all sentences
+        all_sentences = []
+        all_sent_num = []
+        for doc in docs:
+            all_sent_num.append(len(doc.sents))
+            for sent_idx, sent in enumerate(doc.sents):
+                if sent_idx == 0:
+                    sent = self._preprocess_text(sent)
+                all_sentences.append(sent)
+
+        # Tokenize by sentences
+        tokenized_texts = self.tokenizer(all_sentences)
+        tok_ids = tokenized_texts["input_ids"]
+
+        # Concatenate the tokenized sentences into one sequence per document
+        all_combined_tok_ids: List[List[int]] = []
+        accumulated_idx = 0
+        for idx, sent_num in enumerate(all_sent_num):
+            combined_tok_ids, sent_start_indices = combine_splitted_tok_ids(
+                tok_ids[accumulated_idx : accumulated_idx + sent_num]
+            )
+            all_combined_tok_ids.append(combined_tok_ids)
+            accumulated_idx += sent_num
+
+        # Cut off by the max length if truncation is set
+        if truncation:
+            all_combined_tok_ids = [
+                self.cutoff_by_max_len(tok_ids, maintain_special_tokens=True)
+                for tok_ids in all_combined_tok_ids
+            ]
+
+        # Pad the sequences
+        all_combined_tok_ids = pad_sequence(
+            [torch.tensor(tok_ids) for tok_ids in all_combined_tok_ids],
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
+        )
+
+        # Create attention mask for all_combined_tok_ids
+        # Create attention mask: 1 for tokens, 0 for padding
+        attention_mask = (all_combined_tok_ids != self.tokenizer.pad_token_id).long()
+
+        # Return results based on the return_tensors argument
+        return {"input_ids": all_combined_tok_ids, "attention_mask": attention_mask}
+
+    def tokenize_str(self, text: str, **kwargs) -> torch.Tensor:
+        return self.tokenize_batch_str(texts=[text], **kwargs)[0]
+
+    def tokenize_batch_str(
         self,
         texts: List[str],
         padding=False,

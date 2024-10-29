@@ -12,7 +12,7 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.utils import get_mask
-from eagle.index.corpus import Corpus
+from eagle.dataset.corpus import Corpus
 from eagle.metrics import (
     aggregate_final_metrics,
     aggregate_intermediate_metrics,

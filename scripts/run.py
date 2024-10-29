@@ -9,7 +9,7 @@ import torch
 from omegaconf import DictConfig
 
 from eagle.dataset import ContrastiveDataModule, InferenceDataModule
-from eagle.dataset.utils import combine_splitted_tok_ids, get_att_mask, get_mask
+from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model import LightningNewModel
 from eagle.model.batch.utils import (
     convert_range_to_scatter,
@@ -21,6 +21,7 @@ from eagle.phrase import (
     fix_bad_index_ranges,
 )
 from eagle.tokenization import Sentencizer, Tokenizer
+from eagle.tokenization.utils import combine_splitted_tok_ids
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, pretty_print_tokens_with_their_indices
 

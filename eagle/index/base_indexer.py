@@ -17,7 +17,7 @@ from omegaconf import DictConfig
 
 from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.codecs.residual_embeddings import BaseResidualEmbeddings
-from eagle.index.corpus import Corpus
+from eagle.dataset.corpus import Corpus
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
 from eagle.tokenization import Tokenizers

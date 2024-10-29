@@ -6,8 +6,8 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.base_dataset import BaseDataset
-from eagle.dataset.utils import combine_splitted_tok_ids
 from eagle.tokenization import Tokenizers
+from eagle.tokenization.utils import combine_splitted_tok_ids
 
 logger = logging.getLogger("ContrastiveDataset")
 

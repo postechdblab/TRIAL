@@ -8,7 +8,7 @@ from omegaconf.base import ContainerMetadata, Metadata
 from omegaconf.nodes import AnyNode
 from transformers import AutoModel
 from collections import defaultdict
-from eagle.tokenization import Tokenizer
+from eagle.tokenization import Tokenizers
 from eagle.utils import add_config
 
 # Add DictConfig to the safe globals for torch serialization
@@ -20,7 +20,7 @@ logger = logging.getLogger("BaseModel")
 
 
 class BaseModel(torch.nn.Module):
-    def __init__(self, cfg: DictConfig, tokenizers: Tokenizer) -> None:
+    def __init__(self, cfg: DictConfig, tokenizers: Tokenizers) -> None:
         super().__init__()
         self.cfg = cfg
         self.tokenizers = tokenizers

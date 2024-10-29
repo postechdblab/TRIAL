@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 
 from eagle.index.base_indexer import BaseIndexer, main_thread_only
 from eagle.index.codecs.residual import ResidualCodec
-from eagle.index.corpus import Document
+from eagle.dataset.corpus import Document
 from eagle.index.utils import flatten_items_with_mask, optimize_ivf
 
 logger = logging.getLogger("ColBERTIndexer")

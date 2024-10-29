@@ -8,7 +8,7 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.utils import get_mask
-from eagle.index.corpus import Document
+from eagle.dataset.corpus import Document
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
 from eagle.model.utils import _sort_by_length, _split_into_batches, get_scale_factor
@@ -340,7 +340,7 @@ class ColBERT(BaseModel):
             device = self.llm.device
 
             # Tokenize the documents
-            result = self.tokenizers.d_tokenizer(
+            result = self.tokenizers.d_tokenizer.tokenize_batch(
                 documents, padding=True, return_tensors="pt"
             )
             ids, att_mask = result["input_ids"], result["attention_mask"]

@@ -15,12 +15,12 @@ logger = logging.getLogger("Corpus")
 @data_utils.dataclass
 class Document:
     _id: int
-    text: List[str]
+    sents: List[str]
     title: str
 
     def __str__(self) -> str:
-        assert type(self.text) == list, f"Text is not a list: {self.text}"
-        return f"{self.title} | {" ".join(self.text)}"
+        assert type(self.sents) == list, f"Text is not a list: {self.sents}"
+        return f"{self.title} | {" ".join(self.sents)}"
 
 
 class Corpus:
@@ -36,7 +36,10 @@ class Corpus:
         logger.info(f"Loading corpus data from {self.corpus_path}..")
         corpus = file_utils.read_jsonl_file(self.corpus_path)
         logger.info(f"Loaded {len(corpus)} documents. Converting to Document objects..")
-        self.data = [Document(**item) for item in tqdm.tqdm(corpus)]
+        self.data = [
+            Document(_id=item["_id"], sents=item["text"], title=item["title"])
+            for item in tqdm.tqdm(corpus)
+        ]
 
         return None
 
