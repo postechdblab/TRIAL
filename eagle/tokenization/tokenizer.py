@@ -218,6 +218,10 @@ class Tokenizer:
             tok_ids = torch.tensor(tok_ids, dtype=dtype, device=device)
         return tok_ids
 
+    def cut_off_sent_indices_by_max_len(self, sent_start_indices: List[int]) -> List[int]:
+        sent_start_indices = [idx for idx in sent_start_indices if idx < self.cfg.max_len]
+        return sent_start_indices
+
     def pad_1d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
         if len(data) >= self.cfg.max_len:
             return data

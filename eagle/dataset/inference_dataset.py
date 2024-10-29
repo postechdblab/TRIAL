@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.tokenization.tokenizers import Tokenizers
+from eagle.tokenization.utils import combine_splitted_tok_ids
 
 logger = logging.getLogger("InferenceDataset")
 
@@ -48,8 +49,14 @@ class InferenceDataset(BaseDataset):
         else:
             raise ValueError(f"Invalid data type: {type(self.data[idx])}")
 
+        # Combine multiple sentences into single text
+        q_tok_ids, q_sent_start_indices = combine_splitted_tok_ids(q_tok_ids)
+
         # Cut off by max length
-        q_tok_ids = [self.tokenizers.q_tokenizer.cutoff_by_max_len(item) for item in q_tok_ids]
+        q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
+        q_sent_start_indices = self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(q_sent_start_indices)
+
+        # Convert list to tensor
         q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")
 
         return {

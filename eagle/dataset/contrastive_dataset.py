@@ -64,13 +64,8 @@ class ContrastiveDataset(BaseDataset):
         d_tok_ids = [
             self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
         ]
-        q_sent_start_indices = self.cut_off_sent_indices_by_max_len(
-            q_sent_start_indices, self.tokenizers.q_tokenizer.cfg.max_len
-        )
-        d_sent_start_indices = [
-            self.cut_off_sent_indices_by_max_len(
-                item, self.tokenizers.d_tokenizer.cfg.max_len
-            )
+        q_sent_start_indices = self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(q_sent_start_indices)
+        d_sent_start_indices = [self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(item)
             for item in d_sent_start_indices
         ]
 
@@ -99,9 +94,3 @@ class ContrastiveDataset(BaseDataset):
         )
 
         return result
-
-    def cut_off_sent_indices_by_max_len(
-        self, sent_start_indices: List[int], max_len: int
-    ) -> List[int]:
-        sent_start_indices = [idx for idx in sent_start_indices if idx < max_len]
-        return sent_start_indices

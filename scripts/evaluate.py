@@ -11,8 +11,8 @@ import lightning as L
 import torch
 from omegaconf import DictConfig
 
-from eagle.dataset.contrastive_dataset import ContrastiveDataModule
-from eagle.dataset.inference_dataset import InferenceDataModule
+from eagle.dataset.pl_module.contrastive_module import ContrastiveDataModule
+from eagle.dataset.pl_module.inference_module import InferenceDataModule
 from eagle.model import LightningNewModel
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, remove_model_prefix_key_from_saved_dict
@@ -40,7 +40,6 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
         devices=torch.cuda.device_count(),
         strategy="ddp",
     )
-    remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
 
@@ -58,7 +57,6 @@ def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
         devices=torch.cuda.device_count(),
         strategy="ddp",
     )
-    # remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
 
