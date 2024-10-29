@@ -25,6 +25,8 @@ def flatten_items_with_mask(
     assert mask.dtype == torch.bool, f"Type mismatch: {mask.dtype}"
     assert items.dim() in [2, 3], f"Expected 2D or 3D tensor, got {items.dim()}D tensor"
 
+    # Reverse the mask
+    mask = ~mask
     lengths = mask.sum(dim=1).tolist()
     items = items[mask]
 
