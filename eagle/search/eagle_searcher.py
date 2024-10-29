@@ -3,8 +3,8 @@ from typing import *
 from omegaconf import DictConfig
 
 from eagle.model.base_model import BaseModel
-from eagle.search import PLAID
 from eagle.search.base_searcher import BaseSearcher
+from eagle.search.plaid import PLAID
 
 
 class EAGLESearcher(BaseSearcher):

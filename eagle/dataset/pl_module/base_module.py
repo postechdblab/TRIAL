@@ -16,7 +16,7 @@ from eagle.dataset.utils import (
     read_queries,
     save_compressed,
 )
-from eagle.model.batch import BatchForColBERT, BatchForDPR, BatchForEAGLE
+from eagle.model.batch import BaseBatch, BatchForColBERT, BatchForDPR, BatchForEAGLE
 from eagle.tokenization import Tokenizers
 
 logger = logging.getLogger("DataModule")
@@ -115,7 +115,7 @@ class BaseDataModule(L.LightningDataModule):
         return self.d_phrase_range_path
 
     @property
-    def data_batching_cls(self) -> Type[BaseDataset]:
+    def data_batching_cls(self) -> Type[BaseBatch]:
         if self.cfg_global.model.name == "eagle":
             return BatchForEAGLE
         elif self.cfg_global.model.name == "dpr":

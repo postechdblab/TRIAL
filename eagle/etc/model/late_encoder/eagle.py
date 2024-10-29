@@ -1,12 +1,11 @@
 from typing import *
 
-import torch
+from model import BaseRetriever, RetrievalResult
 from omegaconf import DictConfig
 
 from eagle.model.eagle import EAGLE
-from eagle.search import PLAID
+from eagle.search.plaid import PLAID
 from eagle.tokenization import Tokenizers
-from model import BaseRetriever, RetrievalResult
 
 
 class EAGLERetriever(BaseRetriever):

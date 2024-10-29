@@ -4,8 +4,8 @@ import torch
 from omegaconf import DictConfig
 
 from eagle.model.colbert import ColBERT
-from eagle.search import PLAID
 from eagle.search.base_searcher import BaseSearcher
+from eagle.search.plaid import PLAID
 
 
 class ColBERTSearcher(BaseSearcher):

@@ -11,9 +11,9 @@ from omegaconf import DictConfig
 from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
-from eagle.dataset.utils import get_mask
 from eagle.dataset.corpus import Corpus
-from eagle.metrics import (
+from eagle.dataset.utils import get_mask
+from eagle.metrics.utils import (
     aggregate_final_metrics,
     aggregate_intermediate_metrics,
     compute_metrics,
@@ -28,8 +28,8 @@ from eagle.model.utils import (
     unwrap_logging_items,
 )
 from eagle.phrase.noun import SpacyModel
-from eagle.search import PLAID
 from eagle.search.base_searcher import BaseSearcher
+from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.tokenization import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
