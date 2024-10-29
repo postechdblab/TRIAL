@@ -12,11 +12,9 @@ import tqdm
 from omegaconf import DictConfig
 
 from eagle.dataset.utils import save_compressed
-from eagle.tokenization import Tokenizer, Tokenizers
-from eagle.phrase.utils import (
-    SPLIT_DIR_NAME,
-    get_partial_data_name,
-)
+from eagle.phrase.utils import SPLIT_DIR_NAME, get_partial_data_name
+from eagle.tokenization.tokenizer import Tokenizer
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("TokenizeData")
 

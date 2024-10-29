@@ -5,7 +5,7 @@ import torch
 from omegaconf import DictConfig
 
 from eagle.dataset.base_dataset import BaseDataset
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("InferenceDataset")
 

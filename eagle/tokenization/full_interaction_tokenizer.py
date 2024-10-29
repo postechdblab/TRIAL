@@ -1,6 +1,6 @@
 from typing import *
 
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 
 class FullInteractionTokenizer(Tokenizers):

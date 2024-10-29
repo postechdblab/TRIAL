@@ -31,7 +31,7 @@ from eagle.phrase.noun import SpacyModel
 from eagle.search.base_searcher import BaseSearcher
 from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
 
 CAPABILITY = torch.cuda.get_device_capability()

@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 logger = logging.getLogger("DPR")
 

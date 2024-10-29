@@ -6,7 +6,7 @@ from typing import *
 import hkkang_utils.list as list_utils
 import torch
 
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 SPLIT_DIR_NAME = "splitted"
 

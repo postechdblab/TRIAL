@@ -1,7 +1,7 @@
 import logging
 from typing import *
 
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("Tokenizers")
 

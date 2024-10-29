@@ -8,7 +8,7 @@ from eagle.phrase.utils import (
     get_range_of_phrases_in_token_level,
     get_range_of_tokens_in_char_level,
 )
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 logger = logging.getLogger("PhraseExtractor")
 

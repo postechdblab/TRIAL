@@ -3,7 +3,7 @@ from typing import *
 
 from omegaconf import DictConfig
 
-from eagle.dataset import InferenceDataset
+from eagle.dataset.inference_dataset import InferenceDataset
 from eagle.dataset.pl_module.base_module import BaseDataModule
 
 logger = logging.getLogger("ContrastiveDataModule")

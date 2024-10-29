@@ -2,7 +2,8 @@ import logging
 import os
 from typing import *
 
-from eagle.dataset import ContrastiveDataset, DistillationDataset
+from eagle.dataset.contrastive_dataset import ContrastiveDataset
+from eagle.dataset.distillation_dataset import DistillationDataset
 from eagle.dataset.pl_module.base_module import BaseDataModule
 
 logger = logging.getLogger("DistillationDataModule")

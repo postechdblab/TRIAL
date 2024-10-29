@@ -10,14 +10,11 @@ from torch.utils.data import DataLoader
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
-from eagle.dataset.utils import (
-    read_compressed,
-    read_corpus,
-    read_queries,
-    save_compressed,
-)
-from eagle.model.batch import BaseBatch, BatchForColBERT, BatchForDPR, BatchForEAGLE
-from eagle.tokenization import Tokenizers
+from eagle.dataset.utils import (read_compressed, read_corpus, read_queries,
+                                 save_compressed)
+from eagle.model.batch import (BaseBatch, BatchForColBERT, BatchForDPR,
+                               BatchForEAGLE)
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("DataModule")
 

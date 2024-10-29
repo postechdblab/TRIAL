@@ -11,7 +11,8 @@ import lightning as L
 import torch
 from omegaconf import DictConfig
 
-from eagle.dataset import ContrastiveDataModule, InferenceDataModule
+from eagle.dataset.contrastive_dataset import ContrastiveDataModule
+from eagle.dataset.inference_dataset import InferenceDataModule
 from eagle.model import LightningNewModel
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, remove_model_prefix_key_from_saved_dict

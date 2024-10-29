@@ -7,13 +7,13 @@ import tqdm
 from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
-from eagle.dataset.utils import get_mask
 from eagle.dataset.corpus import Document
+from eagle.dataset.utils import get_mask
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
 from eagle.model.utils import _sort_by_length, _split_into_batches, get_scale_factor
 from eagle.search.algorithm import compute_sum_maxsim
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 logger = logging.getLogger("ColBERT")
 

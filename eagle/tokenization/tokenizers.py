@@ -3,7 +3,7 @@ import logging
 from typing import *
 
 from omegaconf import DictConfig
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 logger = logging.getLogger("Tokenizers")
 

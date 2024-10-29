@@ -1,5 +1,6 @@
 import abc
 import logging
+from collections import defaultdict
 from typing import *
 
 import torch
@@ -7,8 +8,8 @@ from omegaconf import DictConfig
 from omegaconf.base import ContainerMetadata, Metadata
 from omegaconf.nodes import AnyNode
 from transformers import AutoModel
-from collections import defaultdict
-from eagle.tokenization import Tokenizers
+
+from eagle.tokenization.tokenizers import Tokenizers
 from eagle.utils import add_config
 
 # Add DictConfig to the safe globals for torch serialization

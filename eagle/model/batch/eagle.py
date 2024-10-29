@@ -4,7 +4,7 @@ import hkkang_utils.list as list_utils
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-from eagle.dataset import BaseDataset
+from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model.batch import BaseBatch
 from eagle.model.batch.utils import (
@@ -13,9 +13,9 @@ from eagle.model.batch.utils import (
     cut_off_phrase_ranges_by_max_len,
 )
 from eagle.phrase.utils import (
+    combined_phrase_ranges_into_one_sentence,
     fill_in_missing_phrase_ranges,
     fix_bad_index_ranges,
-    combined_phrase_ranges_into_one_sentence,
 )
 
 

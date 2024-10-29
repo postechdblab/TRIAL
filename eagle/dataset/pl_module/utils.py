@@ -1,6 +1,6 @@
 from typing import *
 
-from eagle.tokenization import Tokenizer
+from eagle.tokenization.tokenizer import Tokenizer
 
 
 def tokenize_and_cache_corpus(
@@ -15,7 +15,10 @@ def tokenize_and_cache_corpus(
     elif type(list(corpus.values())[0]) == list:
         # Flatten the list of lists
         tokenized_items = tokenizer.tokenize_batch(
-            [f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(sublist) for sublist in list(corpus.values())]
+            [
+                f" {tokenizer.tokenizer.special_tokens_map["sep_token"]} ".join(sublist)
+                for sublist in list(corpus.values())
+            ]
         )
         # Back to list of lists
         items = {}

@@ -6,7 +6,8 @@ import hydra
 from omegaconf import DictConfig
 
 from eagle.phrase.utils import get_output_file_name
-from eagle.tokenization import Tokenizer, Tokenizers
+from eagle.tokenization.tokenizer import Tokenizer
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("AnalysisExtractedPhrase")
 

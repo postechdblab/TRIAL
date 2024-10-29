@@ -21,7 +21,8 @@ from eagle.phrase import (
     combined_phrase_ranges_into_one_sentence,
     fix_bad_index_ranges,
 )
-from eagle.tokenization import Sentencizer, Tokenizer
+from eagle.tokenization.sentencizer import Sentencizer
+from eagle.tokenization.tokenizer import Tokenizer
 from eagle.tokenization.utils import combine_splitted_tok_ids
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, pretty_print_tokens_with_their_indices

@@ -5,7 +5,7 @@ from omegaconf import DictConfig
 
 from eagle.model.eagle import EAGLE
 from eagle.search.plaid import PLAID
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 
 class EAGLERetriever(BaseRetriever):

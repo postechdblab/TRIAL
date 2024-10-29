@@ -17,7 +17,8 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
 
-from eagle.dataset import ContrastiveDataModule, DistillationDataModule
+from eagle.dataset.contrastive_dataset import ContrastiveDataModule
+from eagle.dataset.distillation_dataset import DistillationDataModule
 from eagle.model import LightningNewModel
 from eagle.utils import add_config, add_global_configs
 

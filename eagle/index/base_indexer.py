@@ -15,12 +15,12 @@ import torch
 import ujson
 from omegaconf import DictConfig
 
+from eagle.dataset.corpus import Corpus
 from eagle.index.codecs.residual import ResidualCodec
 from eagle.index.codecs.residual_embeddings import BaseResidualEmbeddings
-from eagle.dataset.corpus import Corpus
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 TYPICAL_DOCLEN = 120
 HELDOUT_FRACTION = 0.05

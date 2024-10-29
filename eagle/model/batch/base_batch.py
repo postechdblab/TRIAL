@@ -3,7 +3,7 @@ from typing import *
 
 from torch.utils.data import Dataset as TorchDataset
 
-from eagle.dataset import BaseDataset
+from eagle.dataset.base_dataset import BaseDataset
 
 
 class BaseBatch(TorchDataset):

@@ -11,7 +11,7 @@ from eagle.dataset.utils import (
     get_labels,
     read_qrels_qids,
 )
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("BaseDataset")
 

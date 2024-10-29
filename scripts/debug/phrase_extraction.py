@@ -11,7 +11,7 @@ from eagle.dataset.utils import read_compressed
 from eagle.phrase.constituency import ConstituencyParser
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.phrase.utils import get_tokenized_path
-from eagle.tokenization import Tokenizers
+from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("DebugPhraseExtraction")
 
