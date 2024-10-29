@@ -123,7 +123,7 @@ class Tokenizer:
         docs: List[Document],
         padding=False,
         return_tensors: str = None,
-        truncation=True,
+        truncation=False,
     ) -> Dict[str, torch.Tensor]:
         # Aggregate all sentences
         all_sentences = []

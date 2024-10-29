@@ -88,6 +88,7 @@ class ColBERTIndxer(BaseIndexer):
         ) = self.model.encode_documents(
             local_samples,
             show_progress=self.is_main_thread,
+            truncation=True,
         )
         # Flatten tok_embs
         local_sample_tok_ids, local_sample_tok_lens = flatten_items_with_mask(
@@ -252,6 +253,7 @@ class ColBERTIndxer(BaseIndexer):
                 tok_ids, tok_embs, tok_masks = self.model.encode_documents(
                     documents,
                     show_progress=self.is_main_thread,
+                    truncation=True,
                 )
                 # Flatten tok_embs
                 tok_ids, tok_lens = flatten_items_with_mask(tok_ids, tok_masks)

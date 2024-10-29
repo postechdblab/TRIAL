@@ -333,7 +333,11 @@ class ColBERT(BaseModel):
         )
 
     def encode_documents(
-        self, documents: List[Document], bsize: int = 512, show_progress: bool = False
+        self,
+        documents: List[Document],
+        bsize: int = 512,
+        show_progress: bool = False,
+        truncation=False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         with torch.inference_mode():
             # Configs
@@ -341,7 +345,10 @@ class ColBERT(BaseModel):
 
             # Tokenize the documents
             result = self.tokenizers.d_tokenizer.tokenize_batch(
-                documents, padding=True, return_tensors="pt"
+                documents,
+                truncation=truncation,
+                padding=True,
+                return_tensors="pt",
             )
             ids, att_mask = result["input_ids"], result["attention_mask"]
 

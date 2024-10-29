@@ -57,7 +57,7 @@ bash scripts/bash/run_phrase_extraction.sh
 
 ### Merge the splitted files into one
 ```bash
-python scripts/preprocess/extract_phrase.py dataset.name=beir-msmarco +op=merge +total=${total} 
+python scripts/preprocess/extract_phrases.py dataset.name=beir-msmarco +op=merge +total=${total} 
 ```
 
 # Training
