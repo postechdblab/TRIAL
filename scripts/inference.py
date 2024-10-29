@@ -1,14 +1,15 @@
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 import logging
-import os
 from typing import *
 
-import hkkang_utils.slack as slack_utils
 import hydra
 import lightning as L
 import torch
 from omegaconf import DictConfig
 
-from eagle.dataset import ContrastiveDataModule, InferenceDataModule
 from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model import LightningNewModel
 from eagle.model.batch.utils import (
@@ -25,9 +26,7 @@ from eagle.tokenization.utils import combine_splitted_tok_ids
 from eagle.utils import add_global_configs, set_random_seed
 from scripts.utils import check_argument, pretty_print_tokens_with_their_indices
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-logger = logging.getLogger("Run")
+logger = logging.getLogger("Evaluate")
 
 
 def preprocess(text: str, tokenizer: Tokenizer) -> Any:
@@ -209,96 +208,7 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
     return None
 
 
-def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
-    # Load data module and model
-    data_module = InferenceDataModule(cfg)
-
-    # Load index
-    index_dir_path = os.path.join(
-        cfg.indexing.dir_path, cfg.dataset.name, cfg._global.tag
-    )
-    logger.info(f"Index directory path: {index_dir_path}")
-
-    # Load trained model
-    assert ckpt_path, "Please provide the path to the checkpoint"
-    model = LightningNewModel(cfg=cfg, index_dir_path=index_dir_path)
-
-    trainer = L.Trainer(
-        deterministic=True,
-        accelerator="cuda",
-        devices=torch.cuda.device_count(),
-        strategy="ddp",
-    )
-    remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
-    trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
-    return None
-
-
-def reranking(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
-    # Load data module and model
-    data_module = ContrastiveDataModule(cfg, skip_train=True)
-
-    # Load trained model
-    assert ckpt_path, "Please provide the path to the checkpoint"
-    model = LightningNewModel(cfg=cfg)
-    trainer = L.Trainer(
-        deterministic=True,
-        accelerator="cuda",
-        devices=torch.cuda.device_count(),
-        strategy="ddp",
-    )
-    # remove_model_prefix_key_from_saved_dict(ckpt_path=ckpt_path)
-    trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
-    return None
-
-
-def remove_model_prefix_key_from_saved_dict(ckpt_path: str) -> None:
-    logger.info(f"Loding the checkpoint from {ckpt_path}")
-    tmp = torch.load(ckpt_path, weights_only=True)
-    logger.info(f"Removing the prefix from the model state_dict")
-    tmp["state_dict"] = {
-        k.replace("._orig_mod.", "."): v for k, v in tmp["state_dict"].items()
-    }
-    logger.info(f"Saving the modified checkpoint to {ckpt_path}")
-    torch.save(tmp, ckpt_path)
-    return None
-
-
-def run(
-    cfg: DictConfig,
-    mode: str,
-    is_analyze: bool,
-    ckpt_path: str = None,
-    use_slack: bool = False,
-) -> None:
-    with slack_utils.notification(
-        channel="question-answering",
-        success_msg=f"Succeeded to train NewRetriever!",
-        error_msg=f"Falied to train NewRetriever!",
-        disable=not use_slack,
-    ):
-        with torch.no_grad():
-            if mode == "inference":
-                return inference(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
-            elif mode == "evaluate_retrieval":
-                return full_retrieval(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
-            elif mode == "evaluate_reranking":
-                return reranking(cfg, ckpt_path=ckpt_path, is_analyze=is_analyze)
-            raise ValueError(f"Invalid mode: {mode}")
-
-
 def check_arguments(cfg: DictConfig) -> DictConfig:
-    check_argument(
-        cfg.args,
-        name="mode",
-        arg_type=str,
-        choices=["inference", "evaluate_retrieval", "evaluate_reranking"],
-        is_requried=True,
-        help="mode should be 'inference' ,'evaluate_retrieval', or 'evaluate_reranking'",
-    )
-    check_argument(
-        cfg.args, name="is_analyze", arg_type=bool, help="Whether to analyze the model"
-    )
     check_argument(
         cfg.args,
         name="use_slack",
@@ -317,12 +227,12 @@ def main(cfg: DictConfig) -> None:
 
     # Set random seeds
     L.seed_everything(cfg._global.seed, workers=True)
-
-    # Check arguments
     args = check_arguments(cfg)
 
-    run(cfg, **args)
-    logger.info("Training completed successfully!")
+    with torch.no_grad():
+        inference(cfg, ckpt_path=args.ckpt_path)
+
+        logger.info("Evaluation completed successfully!")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import *
 
@@ -41,9 +42,23 @@ LOTTE_DATASET_NAMES = [
     "writing-search",
 ]
 
+logger = logging.getLogger("Utils")
+
 
 def join_word(tokens: List[str], start: int, end: int) -> str:
     return " ".join(tokens[start:end]).replace(" ##", "").replace("[PAD]", "")
+
+
+def remove_model_prefix_key_from_saved_dict(ckpt_path: str) -> None:
+    logger.info(f"Loding the checkpoint from {ckpt_path}")
+    tmp = torch.load(ckpt_path, weights_only=True)
+    logger.info(f"Removing the prefix from the model state_dict")
+    tmp["state_dict"] = {
+        k.replace("._orig_mod.", "."): v for k, v in tmp["state_dict"].items()
+    }
+    logger.info(f"Saving the modified checkpoint to {ckpt_path}")
+    torch.save(tmp, ckpt_path)
+    return None
 
 
 def check_argument(

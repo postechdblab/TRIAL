@@ -77,7 +77,17 @@ python scripts/index.py _global.tag=colbert model=colbert model.ckpt_path=/root/
 ```
 
 # Evaluation
-## Evaluate Reranking
+## Evaluate with Reranking
 ```bash
-python scripts/run.py _global.tag=colbert model=colbert
+python scripts/evaluate.py _global.tag=colbert model=colbert +args.ckpt_path=${CKPT_PATH} +args.mode=reranking
+```
+
+## Evaluate with Full Retrieval
+```bash
+python scripts/evaluate.py _global.tag=colbert model=colbert +args.ckpt_path=${CKPT_PATH} +args.mode=retrieval
+```
+
+# Inference
+```bash
+python scripts/inference.py _global.tag=colbert model=colbert +args.ckpt_path=${CKPT_PATH}
 ```
