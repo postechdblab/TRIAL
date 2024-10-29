@@ -90,7 +90,8 @@ class Tokenizer:
         tokens = self.tokenizer(
             list(string.punctuation), add_special_tokens=False, return_tensors=None
         )["input_ids"]
-        tokens = [token for token in tokens if token is not None]
+        # flatten the list
+        tokens = [token for sublist in tokens for token in sublist]
         return list(set(tokens))
 
     def _preprocess_text(self, text: str) -> str:
