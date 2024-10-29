@@ -193,6 +193,9 @@ class Tokenizer:
     def cutoff_by_max_len(
         self, tok_ids: Union[List, torch.Tensor], maintain_special_tokens: bool = True
     ) -> Union[List, torch.Tensor]:
+        # Check input type
+        if type(tok_ids) == list:
+            assert type(tok_ids[0]) == int, f"Unsupported type: {type(tok_ids[0])}"
         # Check if the length is less than the max length
         if len(tok_ids) <= self.cfg.max_len:
             return tok_ids

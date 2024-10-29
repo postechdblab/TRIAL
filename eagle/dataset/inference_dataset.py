@@ -49,7 +49,7 @@ class InferenceDataset(BaseDataset):
             raise ValueError(f"Invalid data type: {type(self.data[idx])}")
 
         # Cut off by max length
-        q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
+        q_tok_ids = [self.tokenizers.q_tokenizer.cutoff_by_max_len(item) for item in q_tok_ids]
         q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")
 
         return {
