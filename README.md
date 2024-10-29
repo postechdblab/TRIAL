@@ -5,11 +5,11 @@
 
 ### Example: Split query in msmarco dataset to sentences
 ```bash
-python scripts/preprocess/split_text_to_sentences.py +target_data=query dataset.name=beir-msmarco
+python scripts/preprocess/split_text_to_sentences.py +target_data=query dataset.name=beir-msmarco +op=split +total=1 +i=0
 ```
 ### Example: Split document in msmarco dataset to sentences
 ```bash
-python scripts/preprocess/split_text_to_sentences.py +target_data=document dataset.name=beir-msmarco
+python scripts/preprocess/split_text_to_sentences.py +target_data=document dataset.name=beir-msmarco +op=split +total=1 +i=0
 ```
 
 
@@ -24,7 +24,7 @@ total=64
 num_devices=2
 ```
 
-2.2.
+2.2. Run the bash script to tokenize the sentences.
 ```bash
 bash scripts/bash/run_tokenization.sh
 ```
@@ -32,7 +32,7 @@ bash scripts/bash/run_tokenization.sh
 2.3.
 Merge the results
 ```bash
-python scripts/preprocess/tokenization.py +op=merge +total=${total} 
+python scripts/preprocess/tokenize_data.py dataset.name=beir-msmarco +op=merge +total=${total} 
 ```
 
 
@@ -57,7 +57,7 @@ bash scripts/bash/run_phrase_extraction.sh
 
 ### Merge the splitted files into one
 ```bash
-python scripts/preprocess/extract_phrase.py +op=merge +total=${total} 
+python scripts/preprocess/extract_phrase.py dataset.name=beir-msmarco +op=merge +total=${total} 
 ```
 
 # Training

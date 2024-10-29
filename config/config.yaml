@@ -4,9 +4,9 @@ _global:
     tag: "default"
     root_dir: "/root/EAGLE/runs"
 defaults:
+    - _self_
     - model: eagle
     - tokenizers: default
     - dataset: default
     - training: default
     - indexing: default
-    # - _self_: default

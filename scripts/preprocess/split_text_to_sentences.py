@@ -1,3 +1,7 @@
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 import logging
 import math
 import os
@@ -10,6 +14,7 @@ import hydra
 import tqdm
 from omegaconf import DictConfig
 
+from eagle.phrase.clean import unidecode_text
 from eagle.tokenization.sentencizer import Sentencizer
 
 logger = logging.getLogger("SplitSentences")
@@ -120,7 +125,7 @@ def split_text_to_sentences(
     for chunk in tqdm.tqdm(
         list_utils.chunks(target_chunk, CHUNK_SIZE), total=num_of_chunks
     ):
-        texts: List[str] = [item["text"] for item in chunk]
+        texts: List[str] = [unidecode_text(item["text"]) for item in chunk]
         all_sentences: List[List[str]] = sentencizer(texts)
         for i, sentences in enumerate(all_sentences):
             chunk[i]["text"] = sentences
@@ -132,7 +137,7 @@ def split_text_to_sentences(
     )
     logger.info(f"Saving the parsed data to {output_file_path}")
 
-    file_utils.write_jsonl_file(target_chunk, output_file_path, encoding="utf-8")
+    file_utils.write_jsonl_file(target_chunk, output_file_path)
 
     return None
 

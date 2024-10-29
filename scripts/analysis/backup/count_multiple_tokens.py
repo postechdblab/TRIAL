@@ -167,7 +167,9 @@ if __name__ == "__main__":
     )
 
     # Initialize tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", model_max_length=512)
+    tokenizer = AutoTokenizer.from_pretrained(
+        "bert-base-uncased", model_max_length=512, legacy=False
+    )
 
     if args.dataset == "all":
         eval_datasets = BEIR_DATASET_NAMES

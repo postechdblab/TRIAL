@@ -1,3 +1,7 @@
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 import logging
 import math
 import os
@@ -248,9 +252,6 @@ def extract_phrase_indices(
 
     logger.info(f"Target chunk size: {len(dataset_chunk)}")
     mini_dataset_chunks: Generator = list_utils.chunks(dataset_chunk, CHUNK_SIZE)
-    # mini_tokenized_data_chunks: List = list_utils.chunks(
-    #     tokenized_data_chunk.items(), CHUNK_SIZE
-    # )
 
     logger.info(f"Begin to extract phrases from {len(dataset_chunk)} texts")
     all_results: Dict[Union[int, str], List[List[Tuple[int]]]] = {}

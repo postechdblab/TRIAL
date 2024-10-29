@@ -27,7 +27,9 @@ class Tokenizer:
     def __init__(self, cfg: DictConfig, model_name: str) -> None:
         self.cfg = cfg
         self.name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, model_max_length=512)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, model_max_length=512, legacy=False
+        )
         new_tok_offset = handle_old_ckpt(self.cfg, "new_tok_offset")
         self.tokenizer.add_special_tokens(
             {
@@ -87,10 +89,9 @@ class Tokenizer:
 
     @functools.cached_property
     def punctuations(self) -> List[int]:
-        tokens = [
-            self.tokenizer.encode(symbol, add_special_tokens=False)[0]
-            for symbol in string.punctuation
-        ]
+        tokens = self.tokenizer(
+            list(string.punctuation), add_special_tokens=False, return_tensors=None
+        )["input_ids"]
         tokens = [token for token in tokens if token is not None]
         return list(set(tokens))
 
@@ -108,48 +109,13 @@ class Tokenizer:
         truncation=True,
     ) -> torch.Tensor:
         texts: List[str] = list(map(self._preprocess_text, texts))
-        batch_size = 100000
-
-        # TODO: Need this?
-        if len(texts) > batch_size and False:
-            chunks = list_utils.divide_into_chunks(texts, 32)
-            multiprocessor = concurrent_utils.MultiProcessor(num_workers=32)
-            logger.info("Tokenizing texts in parallel")
-            for i in range(32):
-                multiprocessor.run(
-                    pickleable_func,
-                    copy.deepcopy(self.tokenizer),
-                    chunks[i],
-                    padding=padding,
-                    truncation=truncation,
-                    max_length=self.cfg.max_len if truncation else None,
-                    return_tensors=return_tensors,
-                )
-            multiprocessor.join()
-            results = multiprocessor.results
-            input_ids = []
-            attention_mask = []
-            for result in results:
-                input_ids.extend(result["input_ids"])
-                attention_mask.extend(result["attention_mask"])
-
-            # Padd sequences
-            if padding:
-                input_ids = pad_sequence(input_ids, batch_first=True)
-                attention_mask = pad_sequence(attention_mask, batch_first=True)
-
-            tokenized_texts = {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-            }
-        else:
-            tokenized_texts = self.tokenizer(
-                texts,
-                padding=padding,
-                truncation=truncation,
-                max_length=self.cfg.max_len if truncation else None,
-                return_tensors=return_tensors,
-            )
+        tokenized_texts = self.tokenizer(
+            texts,
+            padding=padding,
+            truncation=truncation,
+            max_length=self.cfg.max_len if truncation else None,
+            return_tensors=return_tensors,
+        )
         return tokenized_texts
 
     def cutoff_by_max_len(

@@ -18,7 +18,9 @@ nlp.add_pipe("sentencizer")
 
 # Initialize the BERT tokenizer
 t5_tokenizer = T5TokenizerFast.from_pretrained(
-    "t5-base", model_max_length=MAX_TOKEN_LENGTH
+    "t5-base",
+    model_max_length=MAX_TOKEN_LENGTH,
+    legacy=False,
 )
 
 

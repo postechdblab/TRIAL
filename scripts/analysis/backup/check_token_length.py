@@ -143,7 +143,9 @@ def main(
 ) -> None:
     """Get the max token length"""
     # Initialize tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", model_max_length=512)
+    tokenizer = AutoTokenizer.from_pretrained(
+        "bert-base-uncased", model_max_length=512, legacy=False
+    )
 
     # Read in text data
     logger.info(f"Reading data...")

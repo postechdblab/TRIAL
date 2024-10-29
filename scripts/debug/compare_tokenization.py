@@ -12,8 +12,10 @@ def main() -> None:
 
     # Load the model and tokenizer
     model = SentenceTransformer("whaleloops/phrase-bert")
-    phrase_bert_tokenizer = AutoTokenizer.from_pretrained("whaleloops/phrase-bert")
-    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    phrase_bert_tokenizer = AutoTokenizer.from_pretrained(
+        "whaleloops/phrase-bert", legacy=False
+    )
+    bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased", legacy=False)
 
     # Encode the phrases into embeddings
     phrase_embs = model.encode(phrase_list)
