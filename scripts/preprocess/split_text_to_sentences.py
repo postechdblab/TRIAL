@@ -137,7 +137,7 @@ def split_text_to_sentences(
     )
     logger.info(f"Saving the parsed data to {output_file_path}")
 
-    file_utils.write_jsonl_file(target_chunk, output_file_path)
+    file_utils.write_jsonl_file(target_chunk, output_file_path, ensure_ascii=True)
 
     return None
 
