@@ -16,8 +16,8 @@ from eagle.model.batch.utils import (
     convert_range_to_scatter,
     cut_off_phrase_ranges_by_max_len,
 )
-from eagle.phrase import (
-    PhraseExtractor,
+from eagle.phrase import PhraseExtractor
+from eagle.phrase.utils import (
     combined_phrase_ranges_into_one_sentence,
     fix_bad_index_ranges,
 )

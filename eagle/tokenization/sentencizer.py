@@ -6,7 +6,7 @@ import hkkang_utils.pattern as pattern_utils
 
 class Sentencizer(metaclass=pattern_utils.SingletonMetaWithArgs):
     def __init__(self, gpu_id: int = 0):
-        model_name = "en_core_web_trf"
+        model_name = "en_core_web_lg"
         if gpu_id != -1:
             spacy.require_gpu(gpu_id=gpu_id)
         try:

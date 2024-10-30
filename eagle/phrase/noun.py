@@ -196,7 +196,7 @@ class SpacyModel(metaclass=pattern_utils.SingletonMetaWithArgs):
     def __init__(self, gpu_id: int = 0) -> None:
         if gpu_id != -1:
             spacy.require_gpu(gpu_id=gpu_id)
-        model_name = "en_core_web_trf"
+        model_name = "en_core_web_lg"
         try:
             self.model = spacy.load(model_name)
         except:
