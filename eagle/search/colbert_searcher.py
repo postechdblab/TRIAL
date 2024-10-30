@@ -34,13 +34,14 @@ class ColBERTSearcher(BaseSearcher):
         all_pids = []
         all_scores = []
         all_intermediate_pids = []
+        all_qd_scores= []
         for b_idx in range(bsize):
             # Retrieve pids and scores
             query_tok = q_tok_projected[b_idx]
             mask = q_tok_mask[b_idx]
 
             # Perform retrieval
-            retrieved_pids, scores, intermediate_pids = self.plaid(
+            retrieved_pids, scores, qd_scores, intermediate_pids = self.plaid(
                 query_tok=query_tok,
                 mask=mask,
                 gold_doc_ids=pos_doc_indices[b_idx] if pos_doc_indices else None,
@@ -50,5 +51,6 @@ class ColBERTSearcher(BaseSearcher):
             all_pids.append(retrieved_pids.cpu())
             all_scores.append(scores.cpu())
             all_intermediate_pids.append(intermediate_pids)
+            all_qd_scores.append(qd_scores)
 
-        return all_pids, all_scores, all_intermediate_pids
+        return all_pids, all_scores, all_qd_scores, all_intermediate_pids

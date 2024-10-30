@@ -73,9 +73,9 @@ class PLAID:
         )
         if is_debug:
             return result[0], result[1], (pids1, pids2, pids3), result[2:]
-        final_pids, scores = result
+        final_pids, scores, element_wise_scores = result
         if return_intermediate_pids:
-            return final_pids, scores, (pids1, pids2, pids3)
+            return final_pids, scores, element_wise_scores, (pids1, pids2, pids3)
 
     def _set_embeddings_strided(self, indexer_name: str) -> None:
         self.tok_embeddings_strided = CODEC_STRIDED_REGISTRY[indexer_name](
@@ -282,7 +282,7 @@ class PLAID:
         q_mask: torch.Tensor,
         pids: torch.Tensor,
         is_debug: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """This is the stage 4 of the PLAID scoring pipeline.
         We compute the exact scores of the pids using the decomposed embeddings.
 
@@ -318,11 +318,12 @@ class PLAID:
             query_tok = query_tok.to(d_tok_packed.dtype)
 
         # Compute scores
-        max_scores_by_token, max_sim_by_token, _, max_key_tok_ids = compute_sum_maxsim(
+        max_scores_by_token, max_sim_by_token, element_wise_scores, max_key_tok_ids = compute_sum_maxsim(
             q_encoded=query_tok,
             k_encoded=d_tok_packed,
             k_lengths=d_tok_length,
             return_max_scores=is_debug,
+            return_element_wise_scores=True,
             k_ids=d_tok_ids,
         )
         max_scores = max_scores_by_token
@@ -339,7 +340,7 @@ class PLAID:
                 max_key_tok_ids[indices],
             )
 
-        return pids, max_scores
+        return pids, max_scores, element_wise_scores
 
 
 def main():

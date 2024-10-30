@@ -6,33 +6,25 @@ import bitsandbytes as bnb
 import hkkang_utils.file as file_utils
 import lightning as L
 import torch
-import tqdm
 from omegaconf import DictConfig
 from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.corpus import Corpus
-from eagle.dataset.utils import get_mask
-from eagle.metrics.utils import (
-    aggregate_final_metrics,
-    aggregate_intermediate_metrics,
-    compute_metrics,
-)
+from eagle.metrics.utils import (aggregate_final_metrics,
+                                 aggregate_intermediate_metrics,
+                                 compute_metrics)
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
-from eagle.model.utils import (
-    _sort_by_length,
-    _split_into_batches,
-    append_dummy_pid,
-    pid_found_percentage,
-    unwrap_logging_items,
-)
+from eagle.model.utils import (append_dummy_pid, pid_found_percentage,
+                               unwrap_logging_items)
 from eagle.phrase.noun import SpacyModel
 from eagle.search.base_searcher import BaseSearcher
 from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
+from scripts.utils import preprocess
 
 CAPABILITY = torch.cuda.get_device_capability()
 
@@ -56,7 +48,7 @@ class LightningNewModel(L.LightningModule):
         self.model: BaseModel = MODEL_REGISTRY[cfg.model.name](
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
-        if self.cfg.use_torch_compile and CAPABILITY[0] >= 7:
+        if "use_torch_compile" in self.cfg and self.cfg.use_torch_compile and CAPABILITY[0] >= 7:
             self.model = torch.compile(self.model, dynamic=True)
 
         self.swa_model = (
@@ -166,8 +158,30 @@ class LightningNewModel(L.LightningModule):
         if self.searcher is None:
             self._load_searcher()
 
+        if self.corpus is None:
+            import os
+
+            from eagle.dataset.utils import read_corpus
+
+            print("Reading corpus...")
+            self.corpus = read_corpus(
+                os.path.join(
+                    self.dataset_cfg.dataset.dir_path,
+                    self.dataset_cfg.dataset.name,
+                    self.dataset_cfg.dataset.corpus_file,
+                )
+            )
+            print("Done reading corpus!")
+
         # Perform search on the index
-        all_pids, all_scores, all_intermediate_pids = self.searcher(**batch)
+        all_pids, all_scores, all_qd_scores, all_intermediate_pids = self.searcher(**batch)
+
+        # Analyze
+        # Get pid
+        pid = all_pids[0][0].item()
+        # Get the document
+        doc = " ".join(self.corpus[str(pid)])
+        tmp = preprocess(doc, self.tokenizers.d_tokenizer, False)
 
         # Post-process the results if the dataset is BEIR-ArguAna
         if self.dataset_name == "beir-arguana":
@@ -506,60 +520,3 @@ class LightningNewModel(L.LightningModule):
 
         # Return optimizers and learning rate schedulers
         return optimizers, schedulers
-
-    # Custom methods for indexing corpus
-    # def docFromText(
-    #     self,
-    #     docs: List[str],
-    #     bsize: Optional[int] = None,
-    #     keep_dims="flatten",
-    #     showprogress=False,
-    # ) -> Tuple[torch.Tensor, List[int]]:
-    #     assert keep_dims == "flatten", "Only 'flatten' is supported for keep_dims."
-    #     assert bsize, "Please provide the batch size for the indexing."
-
-    #     # Tokenize
-    #     result = self.tokenizers.d_tokenizer(docs, padding=True, return_tensors="pt")
-    #     ids, att_mask = result["input_ids"], result["attention_mask"]
-    #     ids, att_mask, reverse_indices = _sort_by_length(ids, att_mask, bsize)
-
-    #     # Create mask
-    #     # TODO: Need to align this with the trained model
-    #     tok_mask = get_mask(
-    #         input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
-    #     ).unsqueeze(-1)
-
-    #     # Create batch
-    #     text_batches = _split_into_batches(ids, att_mask, tok_mask, bsize=bsize)
-
-    #     # Encode
-    #     result_batches = [
-    #         self.model.encode_d_text(
-    #             tok_ids=input_ids.to(self.device),
-    #             att_mask=attention_mask.to(self.device),
-    #             is_encoding=True,
-    #         )
-    #         for input_ids, attention_mask, token_mask in tqdm.tqdm(
-    #             text_batches, disable=not showprogress
-    #         )
-    #     ]
-
-    #     # Flatten
-    #     D, mask = [], []
-    #     for i in range(len(result_batches)):
-    #         D_ = result_batches[i][1].half()
-    #         mask_ = text_batches[i][2].bool()
-    #         D.append(D_)
-    #         mask.append(mask_)
-
-    #     D, mask = torch.cat(D)[reverse_indices], torch.cat(mask)[reverse_indices]
-    #     doclens = mask.squeeze(-1).sum(-1).tolist()
-
-    #     # Serialize and remove the masked tokens
-    #     D = D.view(-1, D.shape[-1])
-    #     D = D[mask.bool().flatten()].cpu()
-
-    #     # Check if flatten is correct
-    #     assert len(D) == sum(doclens), f"len(D)={len(D)} != sum(doclens)={sum(doclens)}"
-
-    #     return D, doclens

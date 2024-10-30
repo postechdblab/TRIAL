@@ -6,6 +6,16 @@ import hkkang_utils.file as file_utils
 import torch
 from omegaconf import open_dict
 
+from eagle.dataset.utils import get_att_mask, get_mask
+from eagle.model.batch.utils import (convert_range_to_scatter,
+                                     cut_off_phrase_ranges_by_max_len)
+from eagle.phrase import PhraseExtractor
+from eagle.phrase.utils import (combined_phrase_ranges_into_one_sentence,
+                                fix_bad_index_ranges)
+from eagle.tokenization.sentencizer import Sentencizer
+from eagle.tokenization.tokenizer import Tokenizer
+from eagle.tokenization.utils import combine_splitted_tok_ids
+
 BEIR_DATASET_NAMES = [
     "arguana",
     "climate-fever",
@@ -44,6 +54,66 @@ LOTTE_DATASET_NAMES = [
 
 logger = logging.getLogger("Utils")
 
+
+
+def preprocess(text: str, tokenizer: Tokenizer, extract_phrase:bool=True) -> Any:
+    # Split the text into sentences
+    sentences: List[str] = Sentencizer()(text)
+    # Tokenize the text
+    tokenized_sentences = tokenizer(sentences)["input_ids"]
+    # Extract the phrases
+    if extract_phrase:
+        extractor = PhraseExtractor(tokenizer=tokenizer)
+        # Extract phrases and combine them as a single sentence
+        phrase_ranges_per_sent: List[List[Tuple[int, int]]] = extractor(
+            texts=sentences,
+            tok_ids_list=tokenized_sentences,
+            to_token_indices=True,
+        )
+        phrase_ranges = combined_phrase_ranges_into_one_sentence(
+            [fix_bad_index_ranges(item) for item in phrase_ranges_per_sent]
+        )
+
+    # Preprocess as the model input
+    # Combine the splitted sentences
+    tok_ids, sent_start_indices = combine_splitted_tok_ids(tokenized_sentences)
+    # Cut-off by max length
+    tok_ids = tokenizer.cutoff_by_max_len(tok_ids)
+    if extract_phrase:
+        phrase_ranges = cut_off_phrase_ranges_by_max_len(
+            phrase_ranges, tokenizer.cfg.max_len
+        )
+        # Get scatter indices for phrases
+        scatter_indices: List[int] = convert_range_to_scatter(phrase_ranges)
+        # # Cut off phrase scatter indices if it exceeds the maximum length
+        # scatter_indices = tokenizer.cutoff_by_max_len(
+        #     scatter_indices, maintain_special_tokens=False
+        # )
+        scatter_indices = torch.tensor(scatter_indices, dtype=torch.long)
+    # Convert list to tensor
+    tok_ids_tensor = torch.tensor(tok_ids)
+    # Create token mask
+    tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids + tokenizer.punctuations)
+    tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
+    if extract_phrase:
+        phrase_mask = torch.zeros(len(phrase_ranges), dtype=torch.bool).float()
+        sent_mask = torch.zeros(len(sent_start_indices), dtype=torch.bool).float()
+    else:
+        phrase_mask = None
+        sent_mask = None
+        scatter_indices = None
+        phrase_ranges = None
+
+    return {
+        "tok_ids": tok_ids_tensor,
+        "tok_att_mask": tok_att_mask,
+        "tok_mask": tok_mask,
+        "sent_start_indices": sent_start_indices,
+        "phrase_scatter_indices": scatter_indices,
+        "phrase_mask": phrase_mask,
+        "sent_mask": sent_mask,
+        "phrase_ranges": phrase_ranges,
+    }
 
 def join_word(tokens: List[str], start: int, end: int) -> str:
     return " ".join(tokens[start:end]).replace(" ##", "").replace("[PAD]", "")
