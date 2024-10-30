@@ -194,7 +194,9 @@ class LightningNewModel(L.LightningModule):
         )
         # number of positive doc ids to append
         num_pids_to_append = (
-            max_pos_doc_num + max(self.searcher.plaid.ndocs, len(pids)) - len(pids)
+            max_pos_doc_num
+            + max(self.searcher.plaid.ndocs, len(all_pids[0]))
+            - len(all_pids[0])
         )
         # Append the positive doc id at the end if not found.
         # This is for correctly format the input for the evaluation script)
