@@ -40,4 +40,8 @@ def unidecode_text(text: str, rm_control_chars: bool = True) -> str:
     text = replace_pad_with_pad(text)
     if rm_control_chars:
         text = remove_control_chars(text)
-    return unidecode(text)
+    text = unidecode(text)
+    ascii_string = (
+        unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    )
+    return ascii_string
