@@ -280,8 +280,8 @@ class LightningNewModel(L.LightningModule):
         for list_of_eval_results in copied_gathered_final_results:
             for eval_result in list_of_eval_results:
                 collected.append(eval_result["test_NDCG@10"].tolist())
-        FILE_PATH = "/root/EAGLE/eval_result.json"
-        file_utils.write_json_file(collected, FILE_PATH)
+        # FILE_PATH = "/root/EAGLE/eval_result.json"
+        # file_utils.write_json_file(collected, FILE_PATH)
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
         total_data_num = len(self.trainer.datamodule.val_dataset)
         # Aggregate the final results
