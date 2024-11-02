@@ -51,7 +51,7 @@ def compute_sum_maxsim(
                 dtype=max_sim_scores.dtype,
             ),
             dim=1,
-            index=(q_mask == False).long(),
+            index=(q_mask == True).long(),
             src=max_sim_scores,
         )
         sum_maxsim_scores = sum_maxsim_scores[:, 0]
