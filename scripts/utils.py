@@ -7,11 +7,15 @@ import torch
 from omegaconf import open_dict
 
 from eagle.dataset.utils import get_att_mask, get_mask
-from eagle.model.batch.utils import (convert_range_to_scatter,
-                                     cut_off_phrase_ranges_by_max_len)
+from eagle.model.batch.utils import (
+    convert_range_to_scatter,
+    cut_off_phrase_ranges_by_max_len,
+)
 from eagle.phrase import PhraseExtractor
-from eagle.phrase.utils import (combined_phrase_ranges_into_one_sentence,
-                                fix_bad_index_ranges)
+from eagle.phrase.utils import (
+    combined_phrase_ranges_into_one_sentence,
+    fix_bad_index_ranges,
+)
 from eagle.tokenization.sentencizer import Sentencizer
 from eagle.tokenization.tokenizer import Tokenizer
 from eagle.tokenization.utils import combine_splitted_tok_ids
@@ -55,8 +59,7 @@ LOTTE_DATASET_NAMES = [
 logger = logging.getLogger("Utils")
 
 
-
-def preprocess(text: str, tokenizer: Tokenizer, extract_phrase:bool=True) -> Any:
+def preprocess(text: str, tokenizer: Tokenizer, extract_phrase: bool = True) -> Any:
     # Split the text into sentences
     sentences: List[str] = Sentencizer()(text)
     # Tokenize the text
@@ -93,7 +96,7 @@ def preprocess(text: str, tokenizer: Tokenizer, extract_phrase:bool=True) -> Any
     # Convert list to tensor
     tok_ids_tensor = torch.tensor(tok_ids)
     # Create token mask
-    tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids + tokenizer.punctuations)
+    tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids)
     tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
     if extract_phrase:
         phrase_mask = torch.zeros(len(phrase_ranges), dtype=torch.bool).float()
@@ -114,6 +117,7 @@ def preprocess(text: str, tokenizer: Tokenizer, extract_phrase:bool=True) -> Any
         "sent_mask": sent_mask,
         "phrase_ranges": phrase_ranges,
     }
+
 
 def join_word(tokens: List[str], start: int, end: int) -> str:
     return " ".join(tokens[start:end]).replace(" ##", "").replace("[PAD]", "")
@@ -301,6 +305,7 @@ def pretty_print_tokens_with_their_indices(
     for start in range(0, len(decoded_tokens), max_tokens_per_line):
         # Get the tokens for the current line (max 20 tokens)
         tokens_chunk = decoded_tokens[start : start + max_tokens_per_line]
+        tokens_chunk = [token for token in tokens_chunk if token != "[PAD]"]
 
         # Print tokens in a single line with two spaces between each token
         tokens_line = "  ".join(tokens_chunk)
@@ -309,6 +314,8 @@ def pretty_print_tokens_with_their_indices(
         # Calculate the position of each index and print the indices centered below the tokens
         indices_line = ""
         for idx, token in enumerate(tokens_chunk, start=start):
+            if token == "[PAD]":
+                continue
             token_length = len(token)
             # Center the index under the token by calculating the appropriate padding
             padding = (token_length - len(str(idx))) // 2

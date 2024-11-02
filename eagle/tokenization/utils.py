@@ -2,15 +2,14 @@ from typing import *
 
 
 def combine_splitted_tok_ids(
-    tok_ids_list: List[List[int]],
+    tok_ids_list: List[List[int]], begin_special_tok_num: int = 2
 ) -> Tuple[List[int], List[int]]:
     """Combine splitted list of tok ids (i.e., sentences) into one list of tok ids (i.e., one text)"""
     # This needs to be changed when the adding of the special tokens as prefix changes
-    BEGIN_SPECIAL_TOK_NUM = 2
     sent_start_indices = []
     # Remove special tokens in front, except the first sentence
     new_tok_ids_list: List[List[int]] = [
-        tok_ids if idx == 0 else tok_ids[BEGIN_SPECIAL_TOK_NUM:]
+        tok_ids if idx == 0 else tok_ids[begin_special_tok_num:]
         for idx, tok_ids in enumerate(tok_ids_list)
     ]
     # Combine sentences

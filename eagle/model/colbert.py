@@ -113,11 +113,11 @@ class ColBERT(BaseModel):
             "inter_loss": inter_loss,
             "kl_loss": 0 if kl_loss is None else kl_loss,
         }
-        if is_eval:
-            return return_dict, intra_scores.reshape(bsize, -1)
-        elif is_analyze:
+        if is_analyze:
             return_dict["intra_q_max_scores"] = intra_q_max_scores
             return_dict["intra_qd_scores"] = intra_qd_scores
+        if is_eval:
+            return return_dict, intra_scores.reshape(bsize, -1)
         return return_dict
 
     def encode_text(
@@ -354,7 +354,7 @@ class ColBERT(BaseModel):
 
             # Create mask
             tok_mask = get_mask(
-                input_ids=ids, skip_ids=self.tokenizers.d_tokenizer.special_toks_ids
+                input_ids=ids, skip_ids=self.tokenizers.skip_tok_ids
             ).bool()
 
             # Save the original order

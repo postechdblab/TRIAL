@@ -1,5 +1,6 @@
 import copy
 import json
+import logging
 from typing import *
 
 import bitsandbytes as bnb
@@ -11,22 +12,29 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.corpus import Corpus
-from eagle.metrics.utils import (aggregate_final_metrics,
-                                 aggregate_intermediate_metrics,
-                                 compute_metrics)
+from eagle.metrics.utils import (
+    aggregate_final_metrics,
+    aggregate_intermediate_metrics,
+    compute_metrics,
+)
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
-from eagle.model.utils import (append_dummy_pid, pid_found_percentage,
-                               unwrap_logging_items)
+from eagle.model.utils import (
+    append_dummy_pid,
+    pid_found_percentage,
+    unwrap_logging_items,
+)
 from eagle.phrase.noun import SpacyModel
 from eagle.search.base_searcher import BaseSearcher
 from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
-from scripts.utils import preprocess
+from scripts.utils import preprocess, pretty_print_tokens_with_their_indices
 
 CAPABILITY = torch.cuda.get_device_capability()
+
+logger = logging.getLogger("PLModule")
 
 
 class LightningNewModel(L.LightningModule):
@@ -48,7 +56,11 @@ class LightningNewModel(L.LightningModule):
         self.model: BaseModel = MODEL_REGISTRY[cfg.model.name](
             cfg=cfg.model, tokenizers=self.tokenizers
         )  # Initialize your model with required args
-        if "use_torch_compile" in self.cfg and self.cfg.use_torch_compile and CAPABILITY[0] >= 7:
+        if (
+            "use_torch_compile" in self.cfg
+            and self.cfg.use_torch_compile
+            and CAPABILITY[0] >= 7
+        ):
             self.model = torch.compile(self.model, dynamic=True)
 
         self.swa_model = (
@@ -82,7 +94,7 @@ class LightningNewModel(L.LightningModule):
     def _test_reranking(self, batch: Dict, batch_idx: int) -> None:
         bsize = len(batch["q_tok_ids"])
 
-        _, scores = self.model(**batch, is_analyze=True)
+        return_dict, scores = self.model(**batch, is_analyze=True)
 
         # Compute accuracy for each item in the batch (for DDP)
         metrics: List[Dict[str, float]] = []
@@ -96,16 +108,14 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
         self.final_eval_results.append(metrics)
-        is_analyze = False
+        is_analyze = True
         if is_analyze:
             assert (
-                len(batch["q_id"]) == 1
+                len(batch["q_tok_ids"]) == 1
             ), f"Only one query is supported for analysis, but found {len(batch['q_id'])}"
-            spacy_model = SpacyModel()
-            is_correct = metrics["test_custom@10"] == 1.0
-            query = self.tokenizers.q_tokenizer.tokenizer.decode(
-                batch["q_tok_ids"][0], skip_special_tokens=True
-            )
+            # query = self.tokenizers.q_tokenizer.tokenizer.decode(
+            #     batch["q_tok_ids"][0], skip_special_tokens=True
+            # )
             q_toks = self.tokenizers.q_tokenizer.tokenizer.convert_ids_to_tokens(
                 batch["q_tok_ids"][0]
             )
@@ -114,42 +124,48 @@ class LightningNewModel(L.LightningModule):
             sorted_scores.squeeze()
             sorted_indices = sorted_indices.squeeze()
             pos_rank = (sorted_indices == 0).nonzero(as_tuple=False)[0][0].item()
-            # Show the text for the top-10 documents
-            doc_ids_list = batch["doc_tok_ids"][0]
-            score_q_max = scores.max().item()
-            # Compute relevance scores
-            max_q_rel_scores, max_q_d_indices = _["tok_intra_qd_scores"].max(dim=1)
-            q_weights = (
-                None if _["q_tok_weight"] is None else _["q_tok_weight"].squeeze()
-            )
-            print(f"\n\nis_correct:{is_correct}")
-            print(f"Query {batch_idx}: {query}")
 
-            def show(d_idx, rank=0):
-                doc = self.tokenizers.d_tokenizer.tokenizer.decode(
-                    doc_ids_list[d_idx], skip_special_tokens=True
-                )
-                doc_toks = self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(
-                    doc_ids_list[d_idx]
-                )
-                max_q_d_idx_list = max_q_d_indices[d_idx].tolist()
-                print(
-                    f"\nDoc (rank:{rank} score:{scores[0][d_idx]} idx:{d_idx} ): {doc}"
-                )
-                # Print the query scores
-                print(
-                    [
-                        (
-                            f"{q_toks[i]}-{doc_toks[max_q_d_idx_list[i]]}",
-                            s,
-                            None if q_weights is None else q_weights[i].tolist(),
-                        )
-                        for i, s in enumerate(max_q_rel_scores[d_idx].tolist())
-                    ]
+            loop_num = min(10, pos_rank)
+            logger.info(f"Positive rank: {pos_rank}")
+            for loop_idx in range(loop_num + 1):
+                logger.info(f"\nRank: {loop_idx}")
+                # Show the text for the top-10 documents
+                doc_idx = sorted_indices[loop_idx].item()
+                doc_ids = batch["doc_tok_ids"][0][doc_idx]
+                decoded_doc_tokens = (
+                    self.tokenizers.d_tokenizer.tokenizer.convert_ids_to_tokens(doc_ids)
                 )
 
-            # for rank, d_idx in enumerate(sorted_indices[:10]):
-            #     show(d_idx, rank=rank)
+                qd_scores = return_dict["intra_qd_scores"][doc_idx]
+
+                # Find the max scores for each token
+                max_scores, max_indices = qd_scores.max(0)
+
+                # Find the total score of the query-document
+                total_score = max_scores[batch["q_tok_mask"][0] == 0].sum().item()
+
+                # Show the max document token and score for each query token
+                logger.info(f"Total score: {total_score}")
+                for i, (max_score, max_idx) in enumerate(zip(max_scores, max_indices)):
+                    doc_token = decoded_doc_tokens[max_idx]
+                    q_tok = q_toks[i]
+                    q_tok_mask = batch["q_tok_mask"][0][i].item()
+                    if q_tok_mask == 1:
+                        continue
+                    logger.info(
+                        f"Q Token {i:2d}: {q_tok:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
+                    )
+
+                print("Query tokens:")
+                pretty_print_tokens_with_their_indices(
+                    decoded_tokens=q_toks, max_tokens_per_line=20
+                )
+                print("Document tokens:")
+                pretty_print_tokens_with_their_indices(
+                    decoded_tokens=decoded_doc_tokens, max_tokens_per_line=20
+                )
+                print("")
+
         return None
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
@@ -158,30 +174,32 @@ class LightningNewModel(L.LightningModule):
         if self.searcher is None:
             self._load_searcher()
 
-        if self.corpus is None:
-            import os
+        # if self.corpus is None:
+        #     import os
 
-            from eagle.dataset.utils import read_corpus
+        #     from eagle.dataset.utils import read_corpus
 
-            print("Reading corpus...")
-            self.corpus = read_corpus(
-                os.path.join(
-                    self.dataset_cfg.dataset.dir_path,
-                    self.dataset_cfg.dataset.name,
-                    self.dataset_cfg.dataset.corpus_file,
-                )
-            )
-            print("Done reading corpus!")
+        #     print("Reading corpus...")
+        #     self.corpus = read_corpus(
+        #         os.path.join(
+        #             self.dataset_cfg.dataset.dir_path,
+        #             self.dataset_cfg.dataset.name,
+        #             self.dataset_cfg.dataset.corpus_file,
+        #         )
+        #     )
+        #     print("Done reading corpus!")
 
         # Perform search on the index
-        all_pids, all_scores, all_qd_scores, all_intermediate_pids = self.searcher(**batch)
+        all_pids, all_scores, all_qd_scores, all_intermediate_pids = self.searcher(
+            **batch
+        )
 
         # Analyze
         # Get pid
-        pid = all_pids[0][0].item()
-        # Get the document
-        doc = " ".join(self.corpus[str(pid)])
-        tmp = preprocess(doc, self.tokenizers.d_tokenizer, False)
+        # pid = all_pids[0][0].item()
+        # # Get the document
+        # doc = " ".join(self.corpus[str(pid)])
+        # tmp = preprocess(doc, self.tokenizers.d_tokenizer, False)
 
         # Post-process the results if the dataset is BEIR-ArguAna
         if self.dataset_name == "beir-arguana":

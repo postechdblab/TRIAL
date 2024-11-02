@@ -73,7 +73,8 @@ class Tokenizer:
             special_toks_ids = self.special_toks_ids[0:1] + self.special_toks_ids[2:]
         else:
             special_toks_ids = self.special_toks_ids
-        return special_toks_ids
+        skip_tok_ids = special_toks_ids + self.punctuations
+        return skip_tok_ids
 
     @functools.cached_property
     def special_toks_ids(self) -> List[int]:
@@ -144,7 +145,8 @@ class Tokenizer:
         accumulated_idx = 0
         for idx, sent_num in enumerate(all_sent_num):
             combined_tok_ids, sent_start_indices = combine_splitted_tok_ids(
-                tok_ids[accumulated_idx : accumulated_idx + sent_num]
+                tok_ids[accumulated_idx : accumulated_idx + sent_num],
+                begin_special_tok_num=1,
             )
             all_combined_tok_ids.append(combined_tok_ids)
             accumulated_idx += sent_num
@@ -218,8 +220,12 @@ class Tokenizer:
             tok_ids = torch.tensor(tok_ids, dtype=dtype, device=device)
         return tok_ids
 
-    def cut_off_sent_indices_by_max_len(self, sent_start_indices: List[int]) -> List[int]:
-        sent_start_indices = [idx for idx in sent_start_indices if idx < self.cfg.max_len]
+    def cut_off_sent_indices_by_max_len(
+        self, sent_start_indices: List[int]
+    ) -> List[int]:
+        sent_start_indices = [
+            idx for idx in sent_start_indices if idx < self.cfg.max_len
+        ]
         return sent_start_indices
 
     def pad_1d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
