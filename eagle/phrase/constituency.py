@@ -132,7 +132,7 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
             ],
         )
 
-    def traverse(self, tree: spacy.tokens.span.Span) -> Tuple[List, bool]:
+    def traverse(self, tree: spacy.tokens.span.Span) -> Tuple[List[Phrase], bool]:
         """Perform post-order traversal of the constituency tree.
 
         :param tree: Constituency tree
@@ -143,7 +143,7 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         if len(list(tree._.children)) == 0:
             return [
                 Phrase(
-                    original_text=tree.sent,
+                    original_text=tree.sent.text,
                     start_idx=tree.start_char,
                     end_idx=tree.end_char,
                     label="",
@@ -151,7 +151,7 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
             ], False
             # return [Phrase(tree.text, tree.start_char)]
         label = tree._.labels[0]
-        return_list = []
+        return_list: List[Phrase] = []
         is_target_phrase = self.is_phrase_to_isolate(label)
         # is_noun_phrase = label == "NP"
         # has_noun_phrase_child = False
@@ -169,7 +169,7 @@ class ConstituencyParser(metaclass=pattern_utils.SingletonMetaWithArgs):
             return_list = [self.join_phrases(return_list, label=label)]
         elif is_target_phrase:
             # Connect phrases until phrase is found
-            result = []
+            result: List[Phrase] = []
             tmp = []
             disposable_label = label
             for idx in range(len(return_list)):
