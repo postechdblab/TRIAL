@@ -91,3 +91,21 @@ python scripts/evaluate.py _global.tag=colbert model=colbert +args.ckpt_path=${C
 ```bash
 python scripts/inference.py _global.tag=colbert model=colbert +args.ckpt_path=${CKPT_PATH}
 ```
+
+# Analysis
+## Preliminary Study 1: Statistics of the number of words/phrases that are broken down into mulitple tokens
+The number of broken word for queries and documents in the dataset.
+```bash
+python scripts/analysis/token_stats.py
+```
+
+The number of broken phrase for queries and documents in the dataset.
+```bash
+python scripts/analysis/phrase_stats.py +multiprocessing=True
+```
+
+## Preliminary Study 2: Statistics of the average scores for different types of POS tags
+The average scores for different types of POS tags in the dataset.
+```bash
+python scripts/analysis/pos_stats.py
+```

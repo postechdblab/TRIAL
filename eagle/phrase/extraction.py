@@ -15,13 +15,72 @@ logger = logging.getLogger("PhraseExtractor")
 
 class PhraseExtractor:
     def __init__(
-        self, tokenizer: Tokenizer, consider_special_tokens: Optional[bool] = True
+        self,
+        tokenizer: Tokenizer,
+        consider_special_tokens: Optional[bool] = True,
+        gpu_id: Optional[int] = 0,
     ) -> None:
         self.tokenizer = tokenizer
-        self.constituency_parser = ConstituencyParser()
+        self.constituency_parser = ConstituencyParser(gpu_id=gpu_id)
         self.consider_special_tokens = consider_special_tokens
 
     def __call__(
+        self,
+        text_or_texts: Union[str, List[str]],
+        max_tok_len: Optional[int] = None,
+        tok_ids_or_tok_ids_list: Optional[Union[List[int], List[List[int]]]] = None,
+        to_char_indices: bool = False,
+        to_token_indices: bool = False,
+        show_progress: bool = False,
+    ) -> None:
+        if type(text_or_texts) == str:
+            return self._extract(
+                text=text_or_texts,
+                max_tok_len=max_tok_len,
+                tok_ids=tok_ids_or_tok_ids_list,
+                to_char_indices=to_char_indices,
+                to_token_indices=to_token_indices,
+                show_progress=show_progress,
+            )
+        elif type(text_or_texts) == list and type(text_or_texts[0]) == str:
+            return self._extract_batch(
+                texts=text_or_texts,
+                max_tok_len=max_tok_len,
+                tok_ids_list=tok_ids_or_tok_ids_list,
+                to_char_indices=to_char_indices,
+                to_token_indices=to_token_indices,
+                show_progress=show_progress,
+            )
+        else:
+            raise ValueError(f"Invalid input: {type(text_or_texts)}")
+
+    @property
+    def offset(self) -> int:
+        return 2 if self.consider_special_tokens else 0
+
+    @property
+    def padding(self) -> int:
+        return 1 if self.consider_special_tokens else 0
+
+    def _extract(
+        self,
+        text: str,
+        max_tok_len: Optional[int] = None,
+        tok_ids: Optional[List[int]] = None,
+        to_char_indices: bool = False,
+        to_token_indices: bool = False,
+        show_progress: bool = False,
+    ) -> List[List[Tuple[int]]]:
+        return self._extract_batch(
+            texts=[text],
+            max_tok_len=max_tok_len,
+            tok_ids_list=[tok_ids] if tok_ids is not None else None,
+            to_char_indices=to_char_indices,
+            to_token_indices=to_token_indices,
+            show_progress=show_progress,
+        )[0]
+
+    def _extract_batch(
         self,
         texts: List[str],
         max_tok_len: Optional[int] = None,
@@ -55,14 +114,6 @@ class PhraseExtractor:
 
         return results
 
-    @property
-    def offset(self) -> int:
-        return 2 if self.consider_special_tokens else 0
-
-    @property
-    def padding(self) -> int:
-        return 1 if self.consider_special_tokens else 0
-
     def convert_phrase_to_char_indices(
         self,
         texts: List[str],
@@ -83,8 +134,7 @@ class PhraseExtractor:
     ) -> None:
         # Tokenize
         if tok_ids_list is None:
-            tokenized_result = self.tokenizer(texts, show_progress=show_progress)
-            tok_ids_list = tokenized_result["input_ids"]
+            tok_ids_list = self.tokenizer(texts)["input_ids"]
         if self.consider_special_tokens:
             tok_ids_list = [ids[2:-1] for ids in tok_ids_list]
         input_tokens = [
