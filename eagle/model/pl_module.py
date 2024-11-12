@@ -108,7 +108,7 @@ class LightningNewModel(L.LightningModule):
         # Log metrics
         # self.log_dict(metrics, batch_size=bsize, on_step=False, on_epoch=True)
         self.final_eval_results.append(metrics)
-        is_analyze = True
+        is_analyze = False
         if is_analyze:
             assert (
                 len(batch["q_tok_ids"]) == 1
