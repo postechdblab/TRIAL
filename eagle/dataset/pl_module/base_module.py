@@ -10,10 +10,13 @@ from torch.utils.data import DataLoader
 
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
-from eagle.dataset.utils import (read_compressed, read_corpus, read_queries,
-                                 save_compressed)
-from eagle.model.batch import (BaseBatch, BatchForColBERT, BatchForDPR,
-                               BatchForEAGLE)
+from eagle.dataset.utils import (
+    read_compressed,
+    read_corpus,
+    read_queries,
+    save_compressed,
+)
+from eagle.model.batch import BaseBatch, BatchForColBERT, BatchForDPR, BatchForEAGLE
 from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("DataModule")
@@ -296,6 +299,9 @@ class BaseDataModule(L.LightningDataModule):
             tokenized_queries=tokenized_queries,
             tokenized_corpus=tokenized_corpus,
         )
+        # Remove redundant tokenized data for memory saving
+        del tokenized_queries
+        del tokenized_corpus
 
         # Shuffle data to avoid qid repetition in the mini-batch
         if not self.is_debug and not self.skip_train:
@@ -329,6 +335,9 @@ class BaseDataModule(L.LightningDataModule):
             pad_to_max_length=self.cfg_global.training.pad_to_max_length,
             **add_kwargs,
         )
+        # Remove redundant phrase ranges for memory saving
+        del phrase_ranges_queries
+        del phrase_ranges_corpus
 
         # Save datasets
         self.train_dataset = train_dataset

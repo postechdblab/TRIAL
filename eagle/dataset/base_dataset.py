@@ -1,8 +1,10 @@
+import copy
 import logging
 import os
 from typing import *
 
 import hkkang_utils.file as file_utils
+import hkkang_utils.list as list_utils
 import numpy as np
 from omegaconf import DictConfig
 
@@ -32,6 +34,9 @@ class BaseDataset:
         # Save cached information
         self.tokenized_queries = tokenized_queries
         self.tokenized_corpus = tokenized_corpus
+        # Remove redundant tokenized queries
+        self._remove_redundant_tokenized_queries()
+        self._remove_redundant_tokenized_corpus()
 
     def __len__(self) -> int:
         return len(self.data)
@@ -103,6 +108,44 @@ class BaseDataset:
         if sample_size > 0:
             data = data[:sample_size]
         return data
+
+    def _remove_redundant_tokenized_queries(self) -> None:
+        """Delete redundant tokenized queries for memory saving."""
+        # Get qids from the data
+        required_qids: Set[int] = set([item[0] for item in self.data])
+        all_qids: List[str] = list(self.tokenized_queries.keys())
+        # Remove redundant tokenized queries
+        new_data: Dict = {}
+        for qid in all_qids:
+            if int(qid) in required_qids:
+                new_data[qid] = copy.deepcopy(self.tokenized_queries[qid])
+        removed_cnt = len(self.tokenized_queries) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized queries."
+        )
+        # Update tokenized queries
+        self.tokenized_queries = new_data
+        return None
+
+    def _remove_redundant_tokenized_corpus(self) -> None:
+        """Delete redundant tokenized corpus for memory saving."""
+        # Get doc ids from the data
+        doc_ids: Set[int] = set(
+            list_utils.do_flatten_list([item[1:] for item in self.data])
+        )
+        all_pids: List[int] = list(self.tokenized_corpus.keys())
+        # Remove redundant tokenized corpus
+        new_data: Dict = {}
+        for pid in all_pids:
+            if pid in doc_ids:
+                new_data[pid] = copy.deepcopy(self.tokenized_corpus[pid])
+        removed_cnt = len(self.tokenized_corpus) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized corpus."
+        )
+        # Update tokenized corpus
+        self.tokenized_corpus = new_data
+        return None
 
     def shuffle_indices_to_avoid_qid_repetition(
         self, qrels_path: str, bsize: int

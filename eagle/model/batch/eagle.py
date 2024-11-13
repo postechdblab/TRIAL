@@ -1,3 +1,5 @@
+import copy
+import logging
 from typing import *
 
 import hkkang_utils.list as list_utils
@@ -18,6 +20,8 @@ from eagle.phrase.utils import (
     fix_bad_index_ranges,
 )
 
+logger = logging.getLogger("BatchForEAGLE")
+
 
 class BatchForEAGLE(BaseBatch):
     def __init__(
@@ -36,6 +40,8 @@ class BatchForEAGLE(BaseBatch):
         )
         self.phrase_ranges_queries: List[List[Tuple[int, int]]] = phrase_ranges_queries
         self.phrase_ranges_corpus: List[List[Tuple[int, int]]] = phrase_ranges_corpus
+        self._remove_redundant_phrase_ranges_queries()
+        self._remove_redundant_phrase_ranges_corpus()
 
     @property
     def phrase_ranges_queries_key_type(self) -> type:
@@ -56,6 +62,44 @@ class BatchForEAGLE(BaseBatch):
                 list(self.phrase_ranges_corpus.keys())[0]
             )
         return self._phrase_ranges_corpus_key_type
+
+    def _remove_redundant_phrase_ranges_queries(self) -> None:
+        """Delete the redundant phrase ranges in the queries for memory saving."""
+        # Get qids from the data
+        required_qids: Set[int] = set([item[0] for item in self.dataset.data])
+        all_qids: List[str] = list(self.phrase_ranges_queries.keys())
+        # Remove redundant phrase ranges in the queries
+        new_data: Dict[str, List[Tuple[int, int]]] = {}
+        for qid in all_qids:
+            if int(qid) in required_qids:
+                new_data[qid] = copy.deepcopy(self.phrase_ranges_queries[qid])
+        removed_cnt = len(self.phrase_ranges_queries) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for phrase ranges in the queries."
+        )
+        # Update the data
+        self.phrase_ranges_queries = new_data
+        return None
+
+    def _remove_redundant_phrase_ranges_corpus(self) -> None:
+        """Delete the redundant phrase ranges in the corpus for memory saving."""
+        # Get doc ids from the data
+        required_pids: Set[int] = set(
+            list_utils.do_flatten_list([item[1:] for item in self.dataset.data])
+        )
+        all_pids: List[int] = list(self.phrase_ranges_corpus.keys())
+        # Remove redundant phrase ranges in the corpus
+        new_data: Dict[int, List[Tuple[int, int]]] = {}
+        for pid in all_pids:
+            if pid in required_pids:
+                new_data[pid] = copy.deepcopy(self.phrase_ranges_corpus[pid])
+        removed_cnt = len(self.phrase_ranges_corpus) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for phrase ranges in the corpus."
+        )
+        # Update the data
+        self.phrase_ranges_corpus = new_data
+        return None
 
     def parse_data(self, data: List[Any]) -> Dict[str, Any]:
         """Add phrase indices and masks to the data."""
