@@ -1,6 +1,7 @@
 import logging
 from typing import *
 
+import hkkang_utils.data as data_utils
 import hkkang_utils.pattern as pattern_utils
 import spacy
 import tqdm
@@ -52,6 +53,17 @@ def truncate_exceeding_tokens(doc) -> None:
     return doc
 
 
+@data_utils.dataclass
+class POSToken:
+    text: str
+    pos: str
+    start: int
+
+    @property
+    def range(self) -> Tuple[int, int]:
+        return (self.start, self.start + len(self.text))
+
+
 class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
     def __init__(self, gpu_id: int = 0, tokenizer: Tokenizer = None) -> None:
         if gpu_id != -1:
@@ -66,7 +78,7 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         text_or_texts: Union[List[str], str],
         tok_ids_or_tok_ids_list: Optional[Union[List[List[int]], List[int]]] = None,
         show_progress: bool = False,
-        batch_size: int = 10000,
+        batch_size: int = 1000,
         max_tok_len: Optional[int] = None,
     ) -> List[Any]:
         if type(text_or_texts) == str:
@@ -120,17 +132,22 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         max_tok_len: Optional[int] = None,
     ) -> List[Tuple[str, str, Tuple[int, int]]]:
         # Parse the texts in batches
-        parsed_results: List = []
-        for i, doc_batch in enumerate(
+        parsed_results: List[List[POSToken]] = []
+        for i, doc in enumerate(
             tqdm.tqdm(
-                self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
+                self.model.pipe(texts, batch_size=batch_size),
+                disable=not show_progress,
+                total=len(texts),
             )
         ):
-            parsed_results.append([item for item in doc_batch])
+            parsed_results.append(
+                [POSToken(str(tok), tok.pos_, tok.idx) for tok in doc]
+            )
+            del doc
         # Get the token indices
         range_results = self.convert_word_to_token_indices(
             texts=texts,
-            spacy_tokens=parsed_results,
+            pos_tokens=parsed_results,
             tok_ids_list=tok_ids_list,
             max_tok_len=max_tok_len,
             show_progress=show_progress,
@@ -141,8 +158,8 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
             ranges = range_results[i][2:-1]
             pos_tokens = parsed_results[i]
             pos_tokens = pos_tokens[: len(ranges)]
-            pos_tags = [item.tag_ for item in pos_tokens]
-            pos_token_strs = [str(item) for item in pos_tokens]
+            pos_tags = [item.pos for item in pos_tokens]
+            pos_token_strs = [item.text for item in pos_tokens]
             final_results.append((pos_token_strs, pos_tags, ranges))
 
         return final_results
@@ -150,7 +167,7 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
     def convert_word_to_token_indices(
         self,
         texts: List[str],
-        spacy_tokens: List[Any],
+        pos_tokens: List[List[POSToken]],
         tok_ids_list: List[List[int]],
         max_tok_len: Optional[int] = None,
         show_progress: bool = False,
@@ -179,9 +196,7 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         all_word_indices_in_char: List[List[Tuple[int, int]]] = []
         for b_idx in range(len(texts)):
             # Get phrase indices
-            all_word_indices_in_char.append(
-                [(p.idx, p.idx + len(p)) for p in spacy_tokens[b_idx]]
-            )
+            all_word_indices_in_char.append([p.range for p in pos_tokens[b_idx]])
 
         # Convert the char-level indices into token-level indices
         all_word_indices_in_tok = []

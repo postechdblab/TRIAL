@@ -95,7 +95,7 @@ def get_stats_for_msmarco(
     # Compute the scores for the query and document
     pos_scores_dic: Dict[str, List[float]] = {}
     pos_sample_words: Dict[str, List[str]] = {}
-    for i in tqdm.tqdm(range(len(dev_data))):
+    for i in tqdm.tqdm(range(len(dev_data)), desc="Computing the scores"):
         # Get pos
         query_pos = query_pos_results[i]
         doc_pos = corpus_pos_results[i]
@@ -141,10 +141,9 @@ def get_stats_for_msmarco(
         avg_scores = sum(values) / len(values)
         cnt = len(values)
         # Print the results
-        if cnt > 5:
-            logger.info(f"POS: {key} - Avg Score: {avg_scores:.4f} - Count: {cnt}")
-            logger.info(f"POS: {key} - Sample Words: {pos_sample_words[key][:5]}")
-            final_results[key] = (avg_scores, cnt, pos_sample_words[key][:3])
+        logger.info(f"POS: {key} - Avg Score: {avg_scores:.4f} - Count: {cnt}")
+        logger.info(f"POS: {key} - Sample Words: {pos_sample_words[key][:5]}")
+        final_results[key] = (avg_scores, cnt, pos_sample_words[key][:3])
 
     return final_results
 
