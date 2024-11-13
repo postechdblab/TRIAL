@@ -17,7 +17,9 @@ from scripts.utils import format_preprocessed_data_as_batch, preprocess
 logger = logging.getLogger("POSStats")
 
 
-def get_stats_for_msmarco(cfg: DictConfig, sample_num: int = 1000) -> None:
+def get_stats_for_msmarco(
+    cfg: DictConfig, sample_num: int = 1000
+) -> Dict[str, Tuple[float, int, Tuple[str, str, str]]]:
     # Check arguments
     assert "ckpt_path" in cfg
     ckpt_path = cfg.ckpt_path
@@ -134,6 +136,7 @@ def get_stats_for_msmarco(cfg: DictConfig, sample_num: int = 1000) -> None:
             pos_sample_words.setdefault(pos, []).append(word)
 
     # Return the results
+    final_results: Dict[str, Tuple[float, int, Tuple[str, str, str]]] = {}
     for key, values in pos_scores_dic.items():
         avg_scores = sum(values) / len(values)
         cnt = len(values)
@@ -141,8 +144,9 @@ def get_stats_for_msmarco(cfg: DictConfig, sample_num: int = 1000) -> None:
         if cnt > 5:
             logger.info(f"POS: {key} - Avg Score: {avg_scores:.4f} - Count: {cnt}")
             logger.info(f"POS: {key} - Sample Words: {pos_sample_words[key][:5]}")
+            final_results[key] = (avg_scores, cnt, pos_sample_words[key][:3])
 
-    return None
+    return final_results
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
