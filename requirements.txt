@@ -6,7 +6,7 @@ wheel
 spacy-transformers
 tqdm
 transformers
-torch==2.4.1
+torch==2.5.1
 lightning
 bitsandbytes
 hkkang_utils
@@ -23,7 +23,7 @@ black
 # beir installs faiss-cpu. Uninstall faiss-cpu manually if you want to use faiss-gpu: pip uninstall faiss-cpu -y
 beir
 benepar
-# Install torch-scatter==2.1.2+pt24cu121
-https://data.pyg.org/whl/torch-2.4.0+cu124/torch_scatter-2.1.2+pt24cu124-cp312-cp312-linux_x86_64.whl
+# Install torch-scatter==2.1.2+pt25cu121
+https://data.pyg.org/whl/torch-2.5.0+cu124/torch_scatter-2.1.2+pt25cu124-cp312-cp312-linux_x86_64.whl
 # Place the spacy at the bottom to avoid conflicts with other packages
 spacy[cuda12x]
