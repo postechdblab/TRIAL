@@ -8,10 +8,14 @@ from torch.nn.utils.rnn import pad_sequence
 
 from eagle.model.base_model import BaseModel
 from eagle.model.objective import compute_loss, doc_indices_for_ib_loss
-from eagle.model.utils import (aggregate_vectors_with_indices,
-                               get_scale_factor, get_valid_num,
-                               get_weight_layer, l1_regularization,
-                               l2_regularization)
+from eagle.model.utils import (
+    aggregate_vectors_with_indices,
+    get_scale_factor,
+    get_valid_num,
+    get_weight_layer,
+    l1_regularization,
+    l2_regularization,
+)
 from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("EAGLE")
@@ -37,6 +41,7 @@ class EAGLE(BaseModel):
         self.inter_loss_coeff = cfg.inter_loss_coeff
         self.sim_type = cfg.sim_type
         self.use_attn_for_phrase_encoding = False
+        self.use_multi_doc_granularity = cfg.use_multi_doc_granularity
 
         # Layers to encode the query into phrase level
         if self.use_attn_for_phrase_encoding:
@@ -702,18 +707,26 @@ class EAGLE(BaseModel):
         )
 
         # Combine document vectors and weights for intra and inter comparison
-        d_vecs_intra = torch.cat([d_sent, d_phrase, d_tok], dim=1)
-        d_weights_intra = torch.cat(
-            [d_sent_weight_intra, d_phrase_weight_intra, d_tok_weight_intra], dim=1
-        )
         d_weights_inter = None
-        if not is_inference:
-            d_vecs_inter = torch.cat(
-                [d_sent[:, :sent_inter_max_len, :], d_phrase, d_tok], dim=1
+        if self.use_multi_doc_granularity:
+            d_vecs_intra = torch.cat([d_sent, d_phrase, d_tok], dim=1)
+            d_weights_intra = torch.cat(
+                [d_sent_weight_intra, d_phrase_weight_intra, d_tok_weight_intra], dim=1
             )
-            d_weights_inter = torch.cat(
-                [d_sent_weight_inter, d_phrase_weight_inter, d_tok_weight_inter], dim=1
-            )
+            if not is_inference:
+                d_vecs_inter = torch.cat(
+                    [d_sent[:, :sent_inter_max_len, :], d_phrase, d_tok], dim=1
+                )
+                d_weights_inter = torch.cat(
+                    [d_sent_weight_inter, d_phrase_weight_inter, d_tok_weight_inter],
+                    dim=1,
+                )
+        else:
+            d_vecs_intra = d_tok
+            d_weights_intra = d_tok_weight_intra
+            if not is_inference:
+                d_vecs_inter = d_tok
+                d_weights_inter = d_tok_weight_inter
 
         # Compute similarity scores
         assert self.sim_type in [
@@ -721,6 +734,7 @@ class EAGLE(BaseModel):
             "outer_agg",
             "inner_agg",
         ], f"Invalid sim_type: {self.sim_type}"
+        intra_sim_outer_elementwise_scores = None
         if self.sim_type in ["combination", "outer_agg"]:
             # Repeat the query vectors for intra comparison
             q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
@@ -769,6 +783,7 @@ class EAGLE(BaseModel):
                     )
                 )
 
+        intra_sim_inner_elementwise_scores = None
         if self.sim_type in ["combination", "inner_agg"]:
             # Repeat the query vectors for intra comparison
             q_vecs_intra = q_phrase.repeat_interleave(nway, dim=0)

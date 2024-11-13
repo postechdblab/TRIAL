@@ -28,3 +28,4 @@ d_weight_strategy: relu
 reduce_strategy: mean
 # reduce_strategy: max
 # reduce_strategy: min
+use_multi_doc_granularity: False
