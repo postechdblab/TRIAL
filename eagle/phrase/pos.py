@@ -7,9 +7,12 @@ import tqdm
 from transformers import T5TokenizerFast
 
 from eagle.phrase.utils import (
+    fix_ranges,
     get_range_of_phrases_in_token_level,
     get_range_of_tokens_in_char_level,
+    validate_ranges,
 )
+from eagle.tokenization.tokenizer import Tokenizer
 
 MAX_TOKEN_LENGTH = 512
 MIN_SPACY_TOKEN_LENGTH_TO_CHECK = 100
@@ -50,12 +53,13 @@ def truncate_exceeding_tokens(doc) -> None:
 
 
 class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
-    def __init__(self, gpu_id: int = 0) -> None:
+    def __init__(self, gpu_id: int = 0, tokenizer: Tokenizer = None) -> None:
         if gpu_id != -1:
             spacy.require_gpu(gpu_id=gpu_id)
         self.load_spacy_safely(model_name="en_core_web_lg")
         self.model.add_pipe("truncate_exceeding_tokens")
-        self.consider_special_tokens = False
+        self.consider_special_tokens = True
+        self.tokenizer = tokenizer
 
     def __call__(
         self,
@@ -83,6 +87,14 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         else:
             raise ValueError(f"Invalid type for text_or_texts: {type(text_or_texts)}")
 
+    @property
+    def offset(self) -> int:
+        return 2 if self.consider_special_tokens else 0
+
+    @property
+    def padding(self) -> int:
+        return 1 if self.consider_special_tokens else 0
+
     def _extract(
         self,
         text: str,
@@ -106,40 +118,49 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
         show_progress: bool = False,
         batch_size: int = 10000,
         max_tok_len: Optional[int] = None,
-    ) -> List[Any]:
+    ) -> List[Tuple[str, str, Tuple[int, int]]]:
         # Parse the texts in batches
         parsed_results: List = []
-
         for i, doc_batch in enumerate(
             tqdm.tqdm(
                 self.model.pipe(texts, batch_size=batch_size), disable=not show_progress
             )
         ):
-            parsed_results.append(doc_batch)
-            results = self.convert_phrase_to_token_indices(
-                texts=texts,
-                tags=doc_batch,
-                tok_ids_list=tok_ids_list,
-                max_tok_len=max_tok_len,
-                show_progress=show_progress,
-            )
-        raise NotImplementedError
-        return results
+            parsed_results.append([item for item in doc_batch])
+        # Get the token indices
+        range_results = self.convert_word_to_token_indices(
+            texts=texts,
+            spacy_tokens=parsed_results,
+            tok_ids_list=tok_ids_list,
+            max_tok_len=max_tok_len,
+            show_progress=show_progress,
+        )
+        # Format the results
+        final_results: List[Tuple[str, str, Tuple[int, int]]] = []
+        for i in range(len(range_results)):
+            ranges = range_results[i][2:-1]
+            pos_tokens = parsed_results[i]
+            pos_tokens = pos_tokens[: len(ranges)]
+            pos_tags = [item.tag_ for item in pos_tokens]
+            pos_token_strs = [str(item) for item in pos_tokens]
+            final_results.append((pos_token_strs, pos_tags, ranges))
 
-    def convert_phrase_to_token_indices(
+        return final_results
+
+    def convert_word_to_token_indices(
         self,
         texts: List[str],
-        tags: List[Any],
+        spacy_tokens: List[Any],
         tok_ids_list: List[List[int]],
         max_tok_len: Optional[int] = None,
         show_progress: bool = False,
     ) -> None:
         # Tokenize
         if tok_ids_list is None:
-            tokenized_result = self.tokenizer(texts, show_progress=show_progress)
-            tok_ids_list = tokenized_result["input_ids"]
+            tok_ids_list = self.tokenizer(texts)["input_ids"]
         if self.consider_special_tokens:
             tok_ids_list = [ids[2:-1] for ids in tok_ids_list]
+
         input_tokens = [
             self.tokenizer.tokenizer.convert_ids_to_tokens(ids) for ids in tok_ids_list
         ]
@@ -155,37 +176,39 @@ class POSParser(metaclass=pattern_utils.SingletonMetaWithArgs):
             all_token_in_char_indices.append(tmp_indices)
 
         # Extract phrase indices
-        all_phrase_indices_in_char: List[List[Tuple[int, int]]] = []
+        all_word_indices_in_char: List[List[Tuple[int, int]]] = []
         for b_idx in range(len(texts)):
             # Get phrase indices
-            all_phrase_indices_in_char.append([p.idx_range for p in phrases[b_idx]])
+            all_word_indices_in_char.append(
+                [(p.idx, p.idx + len(p)) for p in spacy_tokens[b_idx]]
+            )
 
         # Convert the char-level indices into token-level indices
-        all_phrase_indices_in_tok = []
+        all_word_indices_in_tok = []
         for b_idx in range(len(texts)):
             phrase_indices_in_tok = get_range_of_phrases_in_token_level(
                 all_token_in_char_indices[b_idx],
-                all_phrase_indices_in_char[b_idx],
+                all_word_indices_in_char[b_idx],
                 offset=self.offset,
                 padding=self.padding,
                 max_token_len=max_tok_len,
             )
-            phrase_indices_in_tok = self.fix_ranges(
+            phrase_indices_in_tok = fix_ranges(
                 phrase_indices_in_tok,
                 len(tok_ids_list[b_idx]) + self.offset + self.padding,
             )
-            assert self.validate_ranges(
+            assert validate_ranges(
                 phrase_indices_in_tok,
                 tok_ids_len=len(tok_ids_list[b_idx]) + self.offset + self.padding,
             ), f"Invalid ranges: {phrase_indices_in_tok}, {len(tok_ids_list[b_idx])+self.offset+self.padding}"
-            all_phrase_indices_in_tok.append(phrase_indices_in_tok)
+            all_word_indices_in_tok.append(phrase_indices_in_tok)
 
         # Handle phrases that exceed the max_len
         if max_tok_len is None:
-            filtered_phrases_list = all_phrase_indices_in_tok
+            filtered_phrases_list = all_word_indices_in_tok
         else:
             filtered_phrases_list: List[List[Tuple[int, int]]] = []
-            for phrases in all_phrase_indices_in_tok:
+            for phrases in all_word_indices_in_tok:
                 filtered_phrases: List[Tuple[int, int]] = []
                 for p_start, p_end in phrases:
                     if p_end <= max_tok_len:

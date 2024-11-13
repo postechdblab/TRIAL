@@ -1,22 +1,24 @@
-import multiprocessing
-
-multiprocessing.set_start_method("spawn", force=True)  # Set 'spawn' start method
-
 import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 import concurrent.futures
 import json
 import logging
+import multiprocessing
 import os
 from typing import *
+
 import hkkang_utils.file as file_utils
 import hydra
 import tqdm
 from omegaconf import DictConfig
+
 from eagle.phrase.extraction import PhraseExtractor
 from eagle.tokenization.tokenizers import Tokenizers
 from scripts.analysis.utils import DATASET_NAMES, avg
 
-warnings.simplefilter(action="ignore", category=FutureWarning)
+multiprocessing.set_start_method("spawn", force=True)  # Set 'spawn' start method
 logger = logging.getLogger("PhraseStats")
 
 

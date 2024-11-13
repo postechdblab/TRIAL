@@ -5,6 +5,7 @@ from typing import *
 import hkkang_utils.file as file_utils
 import torch
 from omegaconf import open_dict
+from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.utils import get_att_mask, get_mask
 from eagle.model.batch.utils import (
@@ -59,47 +60,131 @@ LOTTE_DATASET_NAMES = [
 logger = logging.getLogger("Utils")
 
 
-def preprocess(text: str, tokenizer: Tokenizer, extract_phrase: bool = True) -> Any:
+def format_preprocessed_data_as_batch(
+    preprocessed_query: Dict[str, Any],
+    preprocessed_document: Dict[str, Any],
+    model_device: str = None,
+) -> Dict[str, Any]:
+    # Create batch input
+    preprocessed_batch = {
+        "q_tok_ids": preprocessed_query["tok_ids"],
+        "q_tok_att_mask": preprocessed_query["tok_att_mask"],
+        "q_tok_mask": preprocessed_query["tok_mask"],
+        "doc_tok_ids": preprocessed_document["tok_ids"].unsqueeze(0),
+        "doc_tok_att_mask": preprocessed_document["tok_att_mask"].unsqueeze(0),
+        "doc_tok_mask": preprocessed_document["tok_mask"].unsqueeze(0),
+        "labels": None,
+        "distillation_scores": None,
+        "pos_doc_ids": None,
+        "is_analyze": True,
+        "q_sent_start_indices": [[preprocessed_query["sent_start_indices"]]],
+        "doc_sent_start_indices": [[preprocessed_document["sent_start_indices"]]],
+        "q_phrase_scatter_indices": (
+            None
+            if preprocessed_query["phrase_scatter_indices"] is None
+            else preprocessed_query["phrase_scatter_indices"]
+        ),
+        "doc_phrase_scatter_indices": (
+            None
+            if preprocessed_document["phrase_scatter_indices"] is None
+            else preprocessed_document["phrase_scatter_indices"]
+        ),
+        "q_phrase_mask": (
+            None
+            if preprocessed_query["phrase_mask"] is None
+            else preprocessed_query["phrase_mask"]
+        ),
+        "doc_phrase_mask": (
+            None
+            if preprocessed_document["phrase_mask"] is None
+            else preprocessed_document["phrase_mask"].unsqueeze(0)
+        ),
+        "q_sent_mask": (
+            None
+            if preprocessed_query["sent_mask"] is None
+            else preprocessed_query["sent_mask"]
+        ),
+        "doc_sent_mask": (
+            None
+            if preprocessed_document["sent_mask"] is None
+            else preprocessed_document["sent_mask"].unsqueeze(0)
+        ),
+    }
+    if model_device is not None:
+        # Move the tensors to the device same as the model
+        preprocessed_batch = {
+            k: v.to(model_device) if isinstance(v, torch.Tensor) else v
+            for k, v in preprocessed_batch.items()
+        }
+
+    return preprocessed_batch
+
+
+def preprocess(
+    text_batch: List[str], tokenizer: Tokenizer, extract_phrase: bool = True
+) -> Any:
     # Split the text into sentences
-    sentences: List[str] = Sentencizer()(text)
+    sentences_list: List[List[str]] = Sentencizer()(text_batch)
+    sent_num_list: List[int] = [len(item) for item in sentences_list]
+    flatten_sentences: List[str] = [
+        item for sublist in sentences_list for item in sublist
+    ]
     # Tokenize the text
-    tokenized_sentences = tokenizer(sentences)["input_ids"]
+    tokenized_sentences: List[List[int]] = tokenizer(flatten_sentences)["input_ids"]
     # Extract the phrases
     if extract_phrase:
         extractor = PhraseExtractor(tokenizer=tokenizer)
         # Extract phrases and combine them as a single sentence
-        phrase_ranges_per_sent: List[List[Tuple[int, int]]] = extractor(
-            texts=sentences,
-            tok_ids_list=tokenized_sentences,
-            to_token_indices=True,
-        )
-        phrase_ranges = combined_phrase_ranges_into_one_sentence(
-            [fix_bad_index_ranges(item) for item in phrase_ranges_per_sent]
-        )
+        all_phrase_ranges: List[torch.Tensor] = []
+        for sentences in sentences_list:
+            phrase_ranges_per_sent: List[List[Tuple[int, int]]] = extractor(
+                texts=sentences,
+                tok_ids_list=tokenized_sentences,
+                to_token_indices=True,
+            )
+            phrase_ranges = combined_phrase_ranges_into_one_sentence(
+                [fix_bad_index_ranges(item) for item in phrase_ranges_per_sent]
+            )
+            phrase_ranges = cut_off_phrase_ranges_by_max_len(
+                phrase_ranges, tokenizer.cfg.max_len
+            )
+            # Get scatter indices for phrases
+            scatter_indices: List[int] = convert_range_to_scatter(phrase_ranges)
+            # # Cut off phrase scatter indices if it exceeds the maximum length
+            # scatter_indices = tokenizer.cutoff_by_max_len(
+            #     scatter_indices, maintain_special_tokens=False
+            # )
+            scatter_indices = torch.tensor(scatter_indices, dtype=torch.long)
+            all_phrase_ranges.append(phrase_ranges)
+            raise NotImplementedError(
+                "Need to consider how to do batch processing with phrase indices and mask"
+            )
 
     # Preprocess as the model input
     # Combine the splitted sentences
-    tok_ids, sent_start_indices = combine_splitted_tok_ids(tokenized_sentences)
-    # Cut-off by max length
-    tok_ids = tokenizer.cutoff_by_max_len(tok_ids)
-    if extract_phrase:
-        phrase_ranges = cut_off_phrase_ranges_by_max_len(
-            phrase_ranges, tokenizer.cfg.max_len
+    cnt = 0
+    all_tok_ids = []
+    all_sent_start_indices = []
+    for sent_num in sent_num_list:
+        selected_tokenized_sentences = tokenized_sentences[cnt : cnt + sent_num]
+        tok_ids, sent_start_indices = combine_splitted_tok_ids(
+            selected_tokenized_sentences
         )
-        # Get scatter indices for phrases
-        scatter_indices: List[int] = convert_range_to_scatter(phrase_ranges)
-        # # Cut off phrase scatter indices if it exceeds the maximum length
-        # scatter_indices = tokenizer.cutoff_by_max_len(
-        #     scatter_indices, maintain_special_tokens=False
-        # )
-        scatter_indices = torch.tensor(scatter_indices, dtype=torch.long)
+        # Cut-off by max length
+        tok_ids = tokenizer.cutoff_by_max_len(tok_ids)
+        all_tok_ids.append(tok_ids)
+        all_sent_start_indices.append(sent_start_indices)
+        cnt += sent_num
     # Convert list to tensor
-    tok_ids_tensor = torch.tensor(tok_ids)
+    tok_ids_tensor_list = [torch.tensor(item) for item in all_tok_ids]
+    tok_ids_tensor = pad_sequence(
+        tok_ids_tensor_list, batch_first=True, padding_value=0
+    )
     # Create token mask
     tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids)
     tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
     if extract_phrase:
-        phrase_mask = torch.zeros(len(phrase_ranges), dtype=torch.bool).float()
+        phrase_mask = torch.zeros(len(all_phrase_ranges), dtype=torch.bool).float()
         sent_mask = torch.zeros(len(sent_start_indices), dtype=torch.bool).float()
     else:
         phrase_mask = None

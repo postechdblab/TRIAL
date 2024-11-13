@@ -5,8 +5,10 @@ import tqdm
 
 from eagle.phrase.constituency import ConstituencyParser, Phrase
 from eagle.phrase.utils import (
+    fix_ranges,
     get_range_of_phrases_in_token_level,
     get_range_of_tokens_in_char_level,
+    validate_ranges,
 )
 from eagle.tokenization.tokenizer import Tokenizer
 
@@ -167,11 +169,11 @@ class PhraseExtractor:
                 padding=self.padding,
                 max_token_len=max_tok_len,
             )
-            phrase_indices_in_tok = self.fix_ranges(
+            phrase_indices_in_tok = fix_ranges(
                 phrase_indices_in_tok,
                 len(tok_ids_list[b_idx]) + self.offset + self.padding,
             )
-            assert self.validate_ranges(
+            assert validate_ranges(
                 phrase_indices_in_tok,
                 tok_ids_len=len(tok_ids_list[b_idx]) + self.offset + self.padding,
             ), f"Invalid ranges: {phrase_indices_in_tok}, {len(tok_ids_list[b_idx])+self.offset+self.padding}"
@@ -189,22 +191,3 @@ class PhraseExtractor:
                         filtered_phrases.append([p_start, p_end])
                 filtered_phrases_list.append(filtered_phrases)
         return filtered_phrases_list
-
-    def validate_ranges(self, ranges: List[Tuple[int, int]], tok_ids_len: int) -> bool:
-        # Check if the ranges are valid
-        for start, end in ranges:
-            if start >= end:
-                return False
-        # Check if the ranges cover all the tokens
-        if end != tok_ids_len:
-            return False
-        return True
-
-    def fix_ranges(self, ranges: List[Tuple[int, int]], tok_ids_len: int) -> bool:
-        # Check if the ranges cover all the tokens
-        end = ranges[-1][1]
-        if end != tok_ids_len:
-            # Append tuples until the tok_ids_len
-            for i in range(end, tok_ids_len):
-                ranges.append((i, i + 1))
-        return ranges

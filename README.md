@@ -107,5 +107,5 @@ python scripts/analysis/phrase_stats.py +multiprocessing=True
 ## Preliminary Study 2: Statistics of the average scores for different types of POS tags
 The average scores for different types of POS tags in the dataset.
 ```bash
-python scripts/analysis/pos_stats.py
+python scripts/analysis/pos_stats.py +ckpt_path=/root/EAGLE/runs/colbert/best_model.ckpt
 ```

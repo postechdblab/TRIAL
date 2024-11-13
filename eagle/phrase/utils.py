@@ -452,3 +452,24 @@ def get_phrase_start_indices_batch(
                 i += 1
         phrase_start_indices_batch.append(phrase_start_indices)
     return phrase_start_indices_batch
+
+
+def validate_ranges(ranges: List[Tuple[int, int]], tok_ids_len: int) -> bool:
+    # Check if the ranges are valid
+    for start, end in ranges:
+        if start >= end:
+            return False
+    # Check if the ranges cover all the tokens
+    if end != tok_ids_len:
+        return False
+    return True
+
+
+def fix_ranges(ranges: List[Tuple[int, int]], tok_ids_len: int) -> bool:
+    # Check if the ranges cover all the tokens
+    end = ranges[-1][1]
+    if end != tok_ids_len:
+        # Append tuples until the tok_ids_len
+        for i in range(end, tok_ids_len):
+            ranges.append((i, i + 1))
+    return ranges

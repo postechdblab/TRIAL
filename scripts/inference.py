@@ -13,11 +13,14 @@ from omegaconf import DictConfig
 from eagle.model import LightningNewModel
 from eagle.tokenization.tokenizer import Tokenizer
 from eagle.utils import add_global_configs, set_random_seed
-from scripts.utils import (check_argument, preprocess,
-                           pretty_print_tokens_with_their_indices)
+from scripts.utils import (
+    check_argument,
+    format_preprocessed_data_as_batch,
+    preprocess,
+    pretty_print_tokens_with_their_indices,
+)
 
 logger = logging.getLogger("Evaluate")
-
 
 
 def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
@@ -44,45 +47,15 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
             break
 
         # Prepare the input
-        preprocessed_query = preprocess(query_text, tokenizer=q_tokenizer)
-        preprocessed_document = preprocess(document_text, tokenizer=d_tokenizer)
+        preprocessed_query = preprocess([query_text], tokenizer=q_tokenizer)
+        preprocessed_document = preprocess([document_text], tokenizer=d_tokenizer)
 
         # Create batch input
-        preprocessed_batch = {
-            "q_tok_ids": preprocessed_query["tok_ids"].unsqueeze(0),
-            "q_tok_att_mask": preprocessed_query["tok_att_mask"].unsqueeze(0),
-            "q_tok_mask": preprocessed_query["tok_mask"].unsqueeze(0),
-            "doc_tok_ids": preprocessed_document["tok_ids"].unsqueeze(0).unsqueeze(0),
-            "doc_tok_att_mask": preprocessed_document["tok_att_mask"]
-            .unsqueeze(0)
-            .unsqueeze(0),
-            "doc_tok_mask": preprocessed_document["tok_mask"].unsqueeze(0).unsqueeze(0),
-            "labels": None,
-            "distillation_scores": None,
-            "pos_doc_ids": None,
-            "is_analyze": True,
-            "q_sent_start_indices": [[preprocessed_query["sent_start_indices"]]],
-            "doc_sent_start_indices": [[preprocessed_document["sent_start_indices"]]],
-            "q_phrase_scatter_indices": preprocessed_query[
-                "phrase_scatter_indices"
-            ].unsqueeze(0),
-            "doc_phrase_scatter_indices": preprocessed_document[
-                "phrase_scatter_indices"
-            ].unsqueeze(0),
-            "q_phrase_mask": preprocessed_query["phrase_mask"].unsqueeze(0),
-            "doc_phrase_mask": preprocessed_document["phrase_mask"]
-            .unsqueeze(0)
-            .unsqueeze(0),
-            "q_sent_mask": preprocessed_query["sent_mask"].unsqueeze(0),
-            "doc_sent_mask": preprocessed_document["sent_mask"]
-            .unsqueeze(0)
-            .unsqueeze(0),
-        }
-        # Move the tensors to the device same as the model
-        preprocessed_batch = {
-            k: v.to(model.device) if isinstance(v, torch.Tensor) else v
-            for k, v in preprocessed_batch.items()
-        }
+        preprocessed_batch = format_preprocessed_data_as_batch(
+            preprocessed_query=preprocessed_query,
+            preprocessed_document=preprocessed_document,
+            model_device=model.device,
+        )
 
         # Forward the model
         results = model.model(**preprocessed_batch)
