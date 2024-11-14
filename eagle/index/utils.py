@@ -75,7 +75,7 @@ def load_item_lens(directory, flatten=True, granularity="tok"):
     doclens_filenames = {}
 
     for filename in os.listdir(directory):
-        match = re.match(f"{granularity}_lens.(\d+).json", filename)
+        match = re.match(rf"{granularity}_lens\.(\d+)\.json", filename)
 
         if match is not None:
             doclens_filenames[int(match.group(1))] = filename

@@ -3,7 +3,7 @@ from typing import *
 
 import torch
 from omegaconf import DictConfig
-
+import hkkang_utils.list as list_utils
 from eagle.dataset.base_dataset import BaseDataset
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.tokenization.utils import combine_splitted_tok_ids
@@ -54,7 +54,11 @@ class InferenceDataset(BaseDataset):
 
         # Cut off by max length
         q_tok_ids = self.tokenizers.q_tokenizer.cutoff_by_max_len(q_tok_ids)
-        q_sent_start_indices = self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(q_sent_start_indices)
+        q_sent_start_indices = (
+            self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(
+                q_sent_start_indices
+            )
+        )
 
         # Convert list to tensor
         q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")
@@ -65,3 +69,42 @@ class InferenceDataset(BaseDataset):
             "q_tok_att_mask": q_tok_att_mask,
             "pos_doc_ids": pos_doc_ids,
         }
+
+    def _remove_redundant_tokenized_queries(self) -> None:
+        """Delete redundant tokenized queries for memory saving."""
+        # Find the property key for qid
+        if "id" in self.data[0]:
+            qid_key_str = "id"
+        elif "_id" in self.data[0]:
+            qid_key_str = "_id"
+        else:
+            raise ValueError(
+                f"Cannot find the proper qid key in the data {list(self.data[0].keys())}"
+            )
+        # Get qids from the data
+        required_qids: Set[str] = set([str(item[qid_key_str]) for item in self.data])
+        all_qids: List[str] = list(self.tokenized_queries.keys())
+        # Remove redundant tokenized queries
+        new_data: Dict[str, List[List[int]]] = {}
+        for qid in all_qids:
+            if qid in required_qids:
+                new_data[qid] = self.tokenized_queries[qid]
+        # Update tokenized queries
+        self.tokenized_queries = new_data
+        return None
+
+    def _remove_redundant_tokenized_corpus(self) -> None:
+        """Delete redundant tokenized corpus for memory saving."""
+        # Get pids from the data
+        required_pids: Set[int] = set(
+            list_utils.do_flatten_list([item["answers"] for item in self.data])
+        )
+        all_pids: List[int] = [item for item in self.tokenized_corpus.keys()]
+        # Remove redundant tokenized corpus
+        new_data: Dict[int, List[List[int]]] = {}
+        for pid in all_pids:
+            if pid in required_pids:
+                new_data[pid] = self.tokenized_corpus[pid]
+        # Update tokenized corpus
+        self.tokenized_corpus = new_data
+        return None

@@ -1,6 +1,8 @@
+import copy
 import logging
 from typing import *
 
+import hkkang_utils.list as list_utils
 import torch
 from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
@@ -64,8 +66,13 @@ class ContrastiveDataset(BaseDataset):
         d_tok_ids = [
             self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
         ]
-        q_sent_start_indices = self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(q_sent_start_indices)
-        d_sent_start_indices = [self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(item)
+        q_sent_start_indices = (
+            self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(
+                q_sent_start_indices
+            )
+        )
+        d_sent_start_indices = [
+            self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(item)
             for item in d_sent_start_indices
         ]
 
@@ -94,3 +101,41 @@ class ContrastiveDataset(BaseDataset):
         )
 
         return result
+
+    def _remove_redundant_tokenized_queries(self) -> None:
+        """Delete redundant tokenized queries for memory saving."""
+        # Get qids from the data
+        required_qids: Set[int] = set([item[0] for item in self.data])
+        all_qids: List[str] = list(self.tokenized_queries.keys())
+        # Remove redundant tokenized queries
+        new_data: Dict[str, List[List[int]]] = {}
+        for qid in all_qids:
+            if int(qid) in required_qids:
+                new_data[qid] = copy.deepcopy(self.tokenized_queries[qid])
+        removed_cnt = len(self.tokenized_queries) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized queries."
+        )
+        # Update tokenized queries
+        self.tokenized_queries = new_data
+        return None
+
+    def _remove_redundant_tokenized_corpus(self) -> None:
+        """Delete redundant tokenized corpus for memory saving."""
+        # Get doc ids from the data
+        doc_ids: Set[int] = set(
+            list_utils.do_flatten_list([item[1:] for item in self.data])
+        )
+        all_pids: List[int] = list(self.tokenized_corpus.keys())
+        # Remove redundant tokenized corpus
+        new_data: Dict[int, List[List[int]]] = {}
+        for pid in all_pids:
+            if pid in doc_ids:
+                new_data[pid] = copy.deepcopy(self.tokenized_corpus[pid])
+        removed_cnt = len(self.tokenized_corpus) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized corpus."
+        )
+        # Update tokenized corpus
+        self.tokenized_corpus = new_data
+        return None

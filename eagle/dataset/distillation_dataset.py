@@ -93,3 +93,11 @@ class DistillationDataset(BaseDataset):
         if self.is_eval:
             result["labels"] = self.labels
         return result
+
+    def _remove_redundant_tokenized_queries(self) -> None:
+        """Delete redundant tokenized queries for memory saving."""
+        raise NotImplementedError("TODO")
+
+    def _remove_redundant_tokenized_corpus(self) -> None:
+        """Delete redundant tokenized corpus for memory saving."""
+        raise NotImplementedError("TODO")
