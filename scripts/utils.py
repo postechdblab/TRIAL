@@ -182,7 +182,10 @@ def preprocess(
         # Cut-off by max length
         tok_ids = tokenizer.cutoff_by_max_len(tok_ids)
         all_tok_ids.append(tok_ids)
-        all_sent_start_indices.append(sent_start_indices)
+        # Cut-off by max length
+        all_sent_start_indices.append(
+            [item for item in sent_start_indices if item <= tokenizer.cfg.max_len]
+        )
         cnt += sent_num
     # Convert list to tensor
     tok_ids_tensor_list = [torch.tensor(item) for item in all_tok_ids]
