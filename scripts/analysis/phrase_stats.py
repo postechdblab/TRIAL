@@ -92,10 +92,14 @@ def process_dataset(
     )
 
     logger.info(f"Getting the phrase statistics for {dataset_name} query dataset")
-    query_stats = get_stats_for_dataset(q_extractor, query_dataset, dataset_name)
+    query_stats = get_stats_for_dataset(
+        q_extractor, query_dataset, f"{dataset_name}-query"
+    )
 
     logger.info(f"Getting the phrase statistics for {dataset_name} document dataset")
-    doc_stats = get_stats_for_dataset(d_extractor, corpus_dataset, dataset_name)
+    doc_stats = get_stats_for_dataset(
+        d_extractor, corpus_dataset, f"{dataset_name}-doc"
+    )
 
     return {f"{dataset_name}_query": query_stats, f"{dataset_name}_doc": doc_stats}
 

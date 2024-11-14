@@ -146,7 +146,6 @@ class PhraseExtractor:
         # Find the character indices for the tokens
         all_token_in_char_indices: List[List[Tuple[int, int]]] = []
         for b_size in tqdm.tqdm(range(len(tok_ids_list)), disable=not show_progress):
-            # try:
             tmp_indices = get_range_of_tokens_in_char_level(
                 [tok.lower() for tok in input_tokens[b_size]],
                 texts[b_size].lower(),

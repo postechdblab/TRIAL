@@ -107,10 +107,10 @@ def get_stats_for_msmarco(
         doc_texts: List[str] = [" ".join(sampled_corpus_data[item]) for item in doc_ids]
         # Preprocess
         preprocssed_query = preprocess(
-            [query_text], tokenizer=tokenizers.q_tokenizer, extract_phrase=False
+            [query_text], tokenizer=tokenizers.q_tokenizer, extract_phrase=True
         )
         preprocessed_document = preprocess(
-            doc_texts, tokenizer=tokenizers.d_tokenizer, extract_phrase=False
+            doc_texts, tokenizer=tokenizers.d_tokenizer, extract_phrase=True
         )
         preprocessed_batch = format_preprocessed_data_as_batch(
             preprocessed_query=preprocssed_query,
@@ -120,8 +120,11 @@ def get_stats_for_msmarco(
 
         # Forward the model
         results = model.model(**preprocessed_batch)
-        qd_scores = results["intra_qd_scores"].transpose(-1, -2)
-        q_max_scores = qd_scores.max(dim=-1).values
+        if "intra_qd_scores" in results:
+            qd_scores = results["intra_qd_scores"].transpose(-1, -2)
+        else:
+            qd_scores = results["intra_qd_outer_scores"].transpose(-1, -2)
+        q_max_scores = qd_scores.max(dim=-1).values / 7
 
         # Compute the scores for each pos tags (use the top-1 document for the computed score)
         for j in range(len(query_pos[0])):

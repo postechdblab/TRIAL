@@ -77,8 +77,8 @@ def format_preprocessed_data_as_batch(
         "distillation_scores": None,
         "pos_doc_ids": None,
         "is_analyze": True,
-        "q_sent_start_indices": [[preprocessed_query["sent_start_indices"]]],
-        "doc_sent_start_indices": [[preprocessed_document["sent_start_indices"]]],
+        "q_sent_start_indices": [preprocessed_query["sent_start_indices"]],
+        "doc_sent_start_indices": [preprocessed_document["sent_start_indices"]],
         "q_phrase_scatter_indices": (
             None
             if preprocessed_query["phrase_scatter_indices"] is None
@@ -136,10 +136,16 @@ def preprocess(
         extractor = PhraseExtractor(tokenizer=tokenizer)
         # Extract phrases and combine them as a single sentence
         all_phrase_ranges: List[torch.Tensor] = []
-        for sentences in sentences_list:
+        all_scatter_indices: List[torch.Tensor] = []
+        cnt = 0
+        for sent_num in sent_num_list:
+            sentences = flatten_sentences[cnt : cnt + sent_num]
+            target_tokenized_sentences = tokenized_sentences[cnt : cnt + sent_num]
+            cnt += sent_num
+            # Process
             phrase_ranges_per_sent: List[List[Tuple[int, int]]] = extractor(
-                texts=sentences,
-                tok_ids_list=tokenized_sentences,
+                text_or_texts=sentences,
+                tok_ids_or_tok_ids_list=target_tokenized_sentences,
                 to_token_indices=True,
             )
             phrase_ranges = combined_phrase_ranges_into_one_sentence(
@@ -155,10 +161,13 @@ def preprocess(
             #     scatter_indices, maintain_special_tokens=False
             # )
             scatter_indices = torch.tensor(scatter_indices, dtype=torch.long)
+            all_scatter_indices.append(scatter_indices)
             all_phrase_ranges.append(phrase_ranges)
-            raise NotImplementedError(
-                "Need to consider how to do batch processing with phrase indices and mask"
-            )
+        # To Batch
+        max_len = max(max(item) for item in all_scatter_indices)
+        all_scatter_indices = pad_sequence(
+            all_scatter_indices, batch_first=True, padding_value=max_len
+        )
 
     # Preprocess as the model input
     # Combine the splitted sentences
@@ -184,8 +193,16 @@ def preprocess(
     tok_mask = get_mask(tok_ids_tensor, skip_ids=tokenizer.skip_tok_ids)
     tok_att_mask = get_att_mask(tok_ids_tensor, skip_ids=[0])
     if extract_phrase:
-        phrase_mask = torch.zeros(len(all_phrase_ranges), dtype=torch.bool).float()
-        sent_mask = torch.zeros(len(sent_start_indices), dtype=torch.bool).float()
+        phrase_masks = []
+        for phrase_ranges in all_phrase_ranges:
+            phrase_mask = torch.zeros(len(phrase_ranges), dtype=torch.bool).float()
+            phrase_masks.append(phrase_mask)
+        phrase_mask = pad_sequence(phrase_masks, batch_first=True, padding_value=1)
+        sent_masks = []
+        for sent_start_indices in all_sent_start_indices:
+            sent_mask = torch.zeros(len(sent_start_indices), dtype=torch.bool).float()
+            sent_masks.append(sent_mask)
+        sent_mask = pad_sequence(sent_masks, batch_first=True, padding_value=1)
     else:
         phrase_mask = None
         sent_mask = None
@@ -196,11 +213,11 @@ def preprocess(
         "tok_ids": tok_ids_tensor,
         "tok_att_mask": tok_att_mask,
         "tok_mask": tok_mask,
-        "sent_start_indices": sent_start_indices,
-        "phrase_scatter_indices": scatter_indices,
+        "sent_start_indices": all_sent_start_indices,
+        "phrase_scatter_indices": all_scatter_indices,
         "phrase_mask": phrase_mask,
         "sent_mask": sent_mask,
-        "phrase_ranges": phrase_ranges,
+        "phrase_ranges": all_phrase_ranges,
     }
 
 
