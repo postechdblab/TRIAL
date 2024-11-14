@@ -184,7 +184,7 @@ def preprocess(
         all_tok_ids.append(tok_ids)
         # Cut-off by max length
         all_sent_start_indices.append(
-            [item for item in sent_start_indices if item <= tokenizer.cfg.max_len]
+            [item for item in sent_start_indices if item < tokenizer.cfg.max_len]
         )
         cnt += sent_num
     # Convert list to tensor
