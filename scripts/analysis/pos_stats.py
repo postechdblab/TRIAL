@@ -1,3 +1,7 @@
+import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 import json
 import logging
 import os
@@ -124,7 +128,7 @@ def get_stats_for_msmarco(
             qd_scores = results["intra_qd_scores"].transpose(-1, -2)
         else:
             qd_scores = results["intra_qd_outer_scores"].transpose(-1, -2)
-        q_max_scores = qd_scores.max(dim=-1).values / 7
+        q_max_scores = qd_scores.max(dim=-1).values
 
         # Compute the scores for each pos tags (use the top-1 document for the computed score)
         for j in range(len(query_pos[0])):
