@@ -931,6 +931,10 @@ class EAGLE(BaseModel):
         # Apply q weights
         if q_weights is not None:
             max_q_scores = max_q_scores * q_weights.squeeze()
-        if not return_element_wise_scores:
+        if return_element_wise_scores:
+            # Scale the element-wise scores for correct analysis
+            if q_weights is not None:
+                element_wise_scores = element_wise_scores * q_weights.transpose(1, 2)
+        else:
             element_wise_scores = None
         return max_q_scores, element_wise_scores
