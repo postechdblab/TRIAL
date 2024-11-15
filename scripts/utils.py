@@ -132,6 +132,8 @@ def preprocess(
     # Tokenize the text
     tokenized_sentences: List[List[int]] = tokenizer(flatten_sentences)["input_ids"]
     # Extract the phrases
+    all_phrase_ranges = None
+    all_scatter_indices = None
     if extract_phrase:
         extractor = PhraseExtractor(tokenizer=tokenizer)
         # Extract phrases and combine them as a single sentence
