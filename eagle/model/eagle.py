@@ -41,7 +41,11 @@ class EAGLE(BaseModel):
         self.inter_loss_coeff = cfg.inter_loss_coeff
         self.sim_type = cfg.sim_type
         self.use_attn_for_phrase_encoding = False
-        self.use_multi_doc_granularity = cfg.use_multi_doc_granularity
+        self.use_multi_doc_granularity = (
+            cfg.use_multi_doc_granularity
+            if "use_multi_doc_granularity" in cfg
+            else False
+        )
 
         # Layers to encode the query into phrase level
         if self.use_attn_for_phrase_encoding:

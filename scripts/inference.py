@@ -76,14 +76,14 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
             # Concate tok, phrase, sent
             # Get sentence indices
             doc_toks = [
-                d_tokenizer.decode(item) for item in preprocessed_document["tok_ids"]
+                d_tokenizer.decode(item) for item in preprocessed_document["tok_ids"][0]
             ]
             sent_start_toks = [
-                doc_toks[idx] for idx in preprocessed_document["sent_start_indices"]
+                doc_toks[idx] for idx in preprocessed_document["sent_start_indices"][0]
             ]
             phrases = [
                 "_".join(doc_toks[s:e])
-                for s, e in preprocessed_document["phrase_ranges"]
+                for s, e in preprocessed_document["phrase_ranges"][0]
             ]
             decoded_d_tokens = sent_start_toks + phrases + doc_toks
 
@@ -97,7 +97,7 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
         # Show the max document token and score for each query token
         logger.info(f"Total score: {total_score}")
         for i, (max_score, max_idx) in enumerate(zip(max_scores, max_indices)):
-            query_token = q_tokenizer.decode([preprocessed_query["tok_ids"][i]])
+            query_token = q_tokenizer.decode(preprocessed_query["tok_ids"][0][i])
             doc_token = decoded_d_tokens[max_idx]
             logger.info(
                 f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
@@ -105,7 +105,8 @@ def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:
 
         # Print the document tokens with their indices
         decoded_q_tokens = [
-            q_tokenizer.decode([token_id]) for token_id in preprocessed_query["tok_ids"]
+            q_tokenizer.decode([token_id])
+            for token_id in preprocessed_query["tok_ids"][0]
         ]
         print("Query tokens:")
         pretty_print_tokens_with_their_indices(
