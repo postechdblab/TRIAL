@@ -6,6 +6,7 @@ import pickle
 from typing import *
 
 import hkkang_utils.file as file_utils
+import hkkang_utils.list as list_utils
 import lz4.frame as lz4f
 import numpy as np
 import torch
@@ -372,3 +373,28 @@ def get_indices_to_avoid_repeated_qids_in_minibatch(
         if dic:
             indices.extend(item_indices)
     return indices
+
+
+def extract_qids_from_msmarco_data(data: List[List[int]]) -> List[int]:
+    return [item[0] for item in data]
+
+
+def extract_qids_from_non_msmarco_data(data: List[Dict[str, Any]]) -> Set[str]:
+    assert type(data[0]) == dict, f"Invalid data type: {type(data[0])}"
+    if "id" in data[0]:
+        qid_key_str = "id"
+    elif "_id" in data[0]:
+        qid_key_str = "_id"
+    else:
+        raise ValueError(
+            f"Cannot find the proper qid key in the data {list(data[0].keys())}"
+        )
+    return set([item[qid_key_str] for item in data])
+
+
+def extract_pids_from_msmarco_data(data: List[List[int]]) -> Set[int]:
+    return set(list_utils.do_flatten_list([item[1:] for item in data]))
+
+
+def extract_pids_from_non_msmarco_data(data: List[Dict[str, Any]]) -> Set[int]:
+    return set(list_utils.do_flatten_list([item["answers"] for item in data]))

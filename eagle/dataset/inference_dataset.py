@@ -3,8 +3,14 @@ from typing import *
 
 import torch
 from omegaconf import DictConfig
-import hkkang_utils.list as list_utils
+
 from eagle.dataset.base_dataset import BaseDataset
+from eagle.dataset.utils import (
+    extract_pids_from_msmarco_data,
+    extract_pids_from_non_msmarco_data,
+    extract_qids_from_msmarco_data,
+    extract_qids_from_non_msmarco_data,
+)
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.tokenization.utils import combine_splitted_tok_ids
 
@@ -72,23 +78,22 @@ class InferenceDataset(BaseDataset):
 
     def _remove_redundant_tokenized_queries(self) -> None:
         """Delete redundant tokenized queries for memory saving."""
-        # Find the property key for qid
-        if "id" in self.data[0]:
-            qid_key_str = "id"
-        elif "_id" in self.data[0]:
-            qid_key_str = "_id"
-        else:
-            raise ValueError(
-                f"Cannot find the proper qid key in the data {list(self.data[0].keys())}"
-            )
         # Get qids from the data
-        required_qids: Set[str] = set([str(item[qid_key_str]) for item in self.data])
+        if self.cfg_dataset.name == "beir-msmarco":
+            required_qids: Set[int] = extract_qids_from_msmarco_data(self.data)
+            required_qids: Set[str] = set([str(item) for item in required_qids])
+        else:
+            required_qids: Set[str] = extract_qids_from_non_msmarco_data(self.data)
         all_qids: List[str] = list(self.tokenized_queries.keys())
         # Remove redundant tokenized queries
         new_data: Dict[str, List[List[int]]] = {}
         for qid in all_qids:
             if qid in required_qids:
                 new_data[qid] = self.tokenized_queries[qid]
+        removed_cnt = len(all_qids) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized queries."
+        )
         # Update tokenized queries
         self.tokenized_queries = new_data
         return None
@@ -96,15 +101,20 @@ class InferenceDataset(BaseDataset):
     def _remove_redundant_tokenized_corpus(self) -> None:
         """Delete redundant tokenized corpus for memory saving."""
         # Get pids from the data
-        required_pids: Set[int] = set(
-            list_utils.do_flatten_list([item["answers"] for item in self.data])
-        )
+        if self.cfg_dataset.name == "beir-msmarco":
+            required_pids: Set[int] = extract_pids_from_msmarco_data(self.data)
+        else:
+            required_pids: Set[int] = extract_pids_from_non_msmarco_data(self.data)
         all_pids: List[int] = [item for item in self.tokenized_corpus.keys()]
         # Remove redundant tokenized corpus
         new_data: Dict[int, List[List[int]]] = {}
         for pid in all_pids:
             if pid in required_pids:
                 new_data[pid] = self.tokenized_corpus[pid]
+        removed_cnt = len(self.tokenized_corpus) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized corpus."
+        )
         # Update tokenized corpus
         self.tokenized_corpus = new_data
         return None

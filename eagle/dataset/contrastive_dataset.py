@@ -2,12 +2,15 @@ import copy
 import logging
 from typing import *
 
-import hkkang_utils.list as list_utils
 import torch
 from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.base_dataset import BaseDataset
+from eagle.dataset.utils import (
+    extract_pids_from_msmarco_data,
+    extract_qids_from_msmarco_data,
+)
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.tokenization.utils import combine_splitted_tok_ids
 
@@ -105,7 +108,7 @@ class ContrastiveDataset(BaseDataset):
     def _remove_redundant_tokenized_queries(self) -> None:
         """Delete redundant tokenized queries for memory saving."""
         # Get qids from the data
-        required_qids: Set[int] = set([item[0] for item in self.data])
+        required_qids: Set[int] = extract_qids_from_msmarco_data(self.data)
         all_qids: List[str] = list(self.tokenized_queries.keys())
         # Remove redundant tokenized queries
         new_data: Dict[str, List[List[int]]] = {}
@@ -123,9 +126,7 @@ class ContrastiveDataset(BaseDataset):
     def _remove_redundant_tokenized_corpus(self) -> None:
         """Delete redundant tokenized corpus for memory saving."""
         # Get doc ids from the data
-        doc_ids: Set[int] = set(
-            list_utils.do_flatten_list([item[1:] for item in self.data])
-        )
+        doc_ids: Set[int] = extract_pids_from_msmarco_data(self.data)
         all_pids: List[int] = list(self.tokenized_corpus.keys())
         # Remove redundant tokenized corpus
         new_data: Dict[int, List[List[int]]] = {}
