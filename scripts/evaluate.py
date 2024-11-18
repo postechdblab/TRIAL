@@ -20,7 +20,12 @@ from scripts.utils import check_argument, remove_model_prefix_key_from_saved_dic
 logger = logging.getLogger("Evaluate")
 
 
-def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
+def full_retrieval(
+    cfg: DictConfig,
+    ckpt_path: str,
+    is_analyze: bool,
+    use_oracle_candidate: bool = False,
+) -> None:
     # Load data module and model
     data_module = InferenceDataModule(cfg)
 
@@ -32,7 +37,11 @@ def full_retrieval(cfg: DictConfig, ckpt_path: str, is_analyze: bool) -> None:
 
     # Load trained model
     assert ckpt_path, "Please provide the path to the checkpoint"
-    model = LightningNewModel(cfg=cfg, index_dir_path=index_dir_path)
+    model = LightningNewModel(
+        cfg=cfg,
+        index_dir_path=index_dir_path,
+        use_oracle_candidate=use_oracle_candidate,
+    )
 
     trainer = L.Trainer(
         deterministic=True,
@@ -77,6 +86,12 @@ def check_arguments(cfg: DictConfig) -> DictConfig:
         help="Whether to use slack notification",
     )
     check_argument(
+        cfg.args,
+        name="use_oracle_candidate",
+        arg_type=bool,
+        help="Wheter to include oracle in candidate list when doing retrieval",
+    )
+    check_argument(
         cfg.args, name="ckpt_path", arg_type=str, help="Path to the checkpoint"
     )
     return cfg.args
@@ -93,7 +108,12 @@ def main(cfg: DictConfig) -> None:
     with torch.no_grad():
         # Check arguments
         if args.mode == "retrieval":
-            full_retrieval(cfg, ckpt_path=args.ckpt_path, is_analyze=False)
+            full_retrieval(
+                cfg,
+                ckpt_path=args.ckpt_path,
+                is_analyze=False,
+                use_oracle_candidate=args.use_oracle_candidate,
+            )
         elif args.mode == "reranking":
             reranking(cfg, ckpt_path=args.ckpt_path, is_analyze=False)
         else:

@@ -39,7 +39,11 @@ logger = logging.getLogger("PLModule")
 
 class LightningNewModel(L.LightningModule):
     def __init__(
-        self, cfg: DictConfig, train_batch_num: int = None, index_dir_path: str = None
+        self,
+        cfg: DictConfig,
+        train_batch_num: int = None,
+        index_dir_path: str = None,
+        use_oracle_candidate: bool = False,
     ):
         super().__init__()
         ## Need to set this to False to avoid the automatic optimization
@@ -83,6 +87,8 @@ class LightningNewModel(L.LightningModule):
         # For debugging
         self.dataset_cfg = cfg
         self.corpus: Optional[Corpus] = None
+        # For evaluation and analysis
+        self.use_oracle_candidate = use_oracle_candidate
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -173,12 +179,14 @@ class LightningNewModel(L.LightningModule):
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
+        # Get the gold document ids if use_oracle_candidate is True
+        pos_doc_ids = None
+        if self.use_oracle_candidate:
+            pos_doc_ids = batch["pos_doc_ids"]
 
         # if self.corpus is None:
         #     import os
-
         #     from eagle.dataset.utils import read_corpus
-
         #     print("Reading corpus...")
         #     self.corpus = read_corpus(
         #         os.path.join(
@@ -191,7 +199,7 @@ class LightningNewModel(L.LightningModule):
 
         # Perform search on the index
         all_pids, all_scores, all_qd_scores, all_intermediate_pids = self.searcher(
-            **batch
+            **batch, pos_doc_indices=pos_doc_ids
         )
 
         # Analyze
@@ -277,7 +285,7 @@ class LightningNewModel(L.LightningModule):
             )
             metrics.append(compute_metrics(eval_preds, prefix="test"))
             # Evaluate the intermediate results
-            pos_doc_ids = [int(item) for item in batch["pos_doc_ids"][b_idx]]
+            pos_doc_ids = [item for item in batch["pos_doc_ids"][b_idx]]
             all_stage_1_accs.append(
                 pid_found_percentage(pos_doc_ids, all_intermediate_pids[b_idx][0])
             )

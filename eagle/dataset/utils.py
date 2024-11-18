@@ -267,9 +267,9 @@ def split_list(a_list: List, chunk_size: int) -> List[List]:
     return [a_list[i : i + chunk_size] for i in range(0, len(a_list), chunk_size)]
 
 
-def read_corpus(path: str) -> Dict[str, str]:
+def read_corpus(path: str) -> Dict[int, str]:
     corpus: List[Dict] = file_utils.read_json_file(path, auto_detect_extension=True)
-    corpus: Dict[str, str] = {str(doc["_id"]): doc["text"] for doc in corpus}
+    corpus: Dict[int, str] = {doc["_id"]: doc["text"] for doc in corpus}
     return corpus
 
 

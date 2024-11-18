@@ -55,12 +55,16 @@ class PLAID:
         pids3 = pids.tolist()
         if gold_doc_ids is not None:
             # Find unselected gold_doc_ids
-            gold_doc_ids = [doc_id for doc_id in gold_doc_ids if doc_id not in pids]
+            unselected_gold_doc_ids = [
+                doc_id for doc_id in gold_doc_ids if doc_id not in pids
+            ]
             # Replace the last pids with gold_doc_ids
             pids = torch.cat(
                 [
-                    pids[: len(pids) - len(gold_doc_ids)],
-                    torch.tensor(gold_doc_ids, device=pids.device, dtype=pids.dtype),
+                    pids[: len(pids) - len(unselected_gold_doc_ids)],
+                    torch.tensor(
+                        unselected_gold_doc_ids, device=pids.device, dtype=pids.dtype
+                    ),
                 ]
             )
         # Stage 4: Final ranking with decomposed embeddings
@@ -318,13 +322,15 @@ class PLAID:
             query_tok = query_tok.to(d_tok_packed.dtype)
 
         # Compute scores
-        max_scores_by_token, max_sim_by_token, element_wise_scores, max_key_tok_ids = compute_sum_maxsim(
-            q_encoded=query_tok,
-            k_encoded=d_tok_packed,
-            k_lengths=d_tok_length,
-            return_max_scores=is_debug,
-            return_element_wise_scores=True,
-            k_ids=d_tok_ids,
+        max_scores_by_token, max_sim_by_token, element_wise_scores, max_key_tok_ids = (
+            compute_sum_maxsim(
+                q_encoded=query_tok,
+                k_encoded=d_tok_packed,
+                k_lengths=d_tok_length,
+                return_max_scores=is_debug,
+                return_element_wise_scores=True,
+                k_ids=d_tok_ids,
+            )
         )
         max_scores = max_scores_by_token
         # Sort pids based on the scores
