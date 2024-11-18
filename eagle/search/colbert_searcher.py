@@ -14,7 +14,7 @@ class ColBERTSearcher(BaseSearcher):
         self.index_dir_path = index_dir_path
         self.plaid = PLAID(index_path=self.index_dir_path, indexer_name=model.cfg.name)
 
-    def __call__(
+    def serach(
         self,
         q_tok_ids: torch.Tensor,
         q_tok_att_mask: torch.Tensor,

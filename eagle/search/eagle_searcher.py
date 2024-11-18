@@ -19,5 +19,5 @@ class EAGLESearcher(BaseSearcher):
             d_weight_layer_norm=self.model.d_weight_layer_norm,
         )
 
-    def __call__(self, *args, **kwargs) -> Any:
+    def search(self, *args, **kwargs) -> Any:
         raise NotImplementedError
