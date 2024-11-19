@@ -7,15 +7,15 @@ import tqdm
 import ujson
 from omegaconf import DictConfig
 
+from eagle.dataset.corpus import Document
 from eagle.index.base_indexer import BaseIndexer, main_thread_only
 from eagle.index.codecs.residual import ResidualCodec
-from eagle.dataset.corpus import Document
 from eagle.index.utils import flatten_items_with_mask, optimize_ivf
 
 logger = logging.getLogger("ColBERTIndexer")
 
 
-class ColBERTIndxer(BaseIndexer):
+class ColBERTIndexer(BaseIndexer):
     def __init__(self, cfg: DictConfig, rank: int = 0, world_size: int = 1) -> None:
         super().__init__(cfg=cfg, rank=rank, world_size=world_size)
 

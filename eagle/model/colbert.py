@@ -362,7 +362,7 @@ class ColBERT(BaseModel):
             all_tok_mask = tok_mask
 
             # Sort by length
-            ids, att_mask, reverse_indices = _sort_by_length(
+            ids, att_mask, indices, reverse_indices = _sort_by_length(
                 ids, att_mask, descending=True
             )
 

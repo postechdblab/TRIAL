@@ -31,6 +31,7 @@ class PLAID:
         self.ncells = ncells
         self.skip_stage2 = skip_stage2
         self.centroid_threshold = centroid_threshold
+        # For computing document weight dynamically
         self.d_cross_attention_layer = d_cross_attention_layer
         self.d_weight_project_layer = d_weight_project_layer
         self.d_weight_layer_norm = d_weight_layer_norm
@@ -50,6 +51,17 @@ class PLAID:
         )
         self.timer_stage4 = time_utils.Timer(
             class_name=self.__class__.__name__, func_name="Stage 4"
+        )
+        self.timer_d_weight = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="d_weight"
+        )
+
+    @property
+    def is_use_d_weight(self) -> bool:
+        return (
+            self.d_cross_attention_layer is not None
+            and self.d_weight_project_layer is not None
+            and self.d_weight_layer_norm is not None
         )
 
     def __call__(self, *args, **kwargs) -> torch.Tensor:
@@ -347,6 +359,28 @@ class PLAID:
         d_tok_packed, d_tok_length, d_tok_ids = self.tok_embeddings_strided.lookup_pids(
             pids
         )
+
+        if self.is_use_d_weight:
+            with self.timer_d_weight.measure():
+                d_tok_packed_float = d_tok_packed.float()
+                cross_encoded_d_tok_vectors, _ = self.d_cross_attention_layer(
+                    d_tok_packed_float,
+                    query_tok,
+                    query_tok,
+                )
+                # Add and normalize
+                cross_encoded_d_tok_vectors = (
+                    cross_encoded_d_tok_vectors + d_tok_packed_float
+                )
+                cross_encoded_d_tok_vectors = self.d_weight_layer_norm(
+                    cross_encoded_d_tok_vectors
+                )
+                d_tok_packed_weight = self.d_weight_project_layer(
+                    cross_encoded_d_tok_vectors
+                )
+                d_tok_packed = (d_tok_packed * d_tok_packed_weight).to(
+                    d_tok_packed.dtype
+                )
 
         # Convert data type if necessary
         if query_tok.dtype != d_tok_packed.dtype:

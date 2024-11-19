@@ -66,7 +66,7 @@ def _sort_by_length(ids, mask, bsize=None, descending=False):
     indices = mask.sum(-1).sort(descending=descending).indices
     reverse_indices = indices.sort(descending=False).indices
 
-    return ids[indices], mask[indices], reverse_indices
+    return ids[indices], mask[indices], indices, reverse_indices
 
 
 def _split_into_batches(

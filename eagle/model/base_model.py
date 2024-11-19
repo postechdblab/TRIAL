@@ -102,11 +102,15 @@ class BaseModel(torch.nn.Module):
 
     @abc.abstractmethod
     def encode_passage(self, *args, **kwargs) -> Any:
-        pass
+        raise NotImplementedError("Implement this method in the derived class")
 
     @abc.abstractmethod
     def forward(self, *args, **kwargs) -> Any:
-        pass
+        raise NotImplementedError("Implement this method in the derived class")
+
+    @abc.abstractmethod
+    def encode_documents(self, *args, **kwargs) -> Any:
+        raise NotImplementedError("Implement this method in the derived class")
 
     def eval(self, *args, **kwargs) -> None:
         for att_name in dir(self):

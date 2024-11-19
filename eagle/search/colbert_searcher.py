@@ -40,8 +40,7 @@ class ColBERTSearcher(BaseSearcher):
         # Preprocess the pids (decrease by 1 due to 0-based indexing)
         with self.timer.pause():
             if pos_doc_indices is not None:
-                pos_doc_indices = torch.tensor(pos_doc_indices, dtype=torch.int64)
-                pos_doc_indices = pos_doc_indices - torch.ones_like(pos_doc_indices)
+                pos_doc_indices = self.preprocess_doc_indices(pos_doc_indices)
 
         # Encode query
         with self.timer_encodings.measure():
@@ -72,10 +71,10 @@ class ColBERTSearcher(BaseSearcher):
 
             # Increase the values of pids by 1 (0-based indexing)
             with self.timer.pause():
-                retrieved_pids = retrieved_pids + torch.ones_like(retrieved_pids)
-                stage_1_pids = [item + 1 for item in intermediate_pids[0]]
-                stage_2_pids = [item + 1 for item in intermediate_pids[1]]
-                stage_3_pids = [item + 1 for item in intermediate_pids[2]]
+                retrieved_pids = self.postprocess_doc_indices(retrieved_pids)
+                stage_1_pids = self.postprocess_doc_indices(intermediate_pids[0])
+                stage_2_pids = self.postprocess_doc_indices(intermediate_pids[1])
+                stage_3_pids = self.postprocess_doc_indices(intermediate_pids[2])
 
             # Aggregate results
             all_pids.append(retrieved_pids)
