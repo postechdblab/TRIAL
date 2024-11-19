@@ -68,12 +68,12 @@ python scripts/train.py _global.tag=colbert model=colbert training.use_torch_com
 
 ## Training the EAGLE model
 ```bash
-python scripts/train.py _global.tag=eagle model=eagle
+python scripts/train.py _global.tag=eagle model=eagle training.pad_to_max_length=False
 ```
 
 # Indexing
 ```bash
-python scripts/index.py _global.tag=colbert model=colbert model.ckpt_path=/root/EAGLE/runs/colbert/best_model.ckpt dataset.name=beir-msmarco
+python scripts/index.py _global.tag=colbert model=colbert model.ckpt_path=${CKPT_PATH} dataset.name=beir-msmarco
 ```
 
 # Evaluation
