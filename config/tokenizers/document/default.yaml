@@ -1,4 +1,4 @@
 new_tok_offset: 1
 special_tok: "[DXD]"
 skip_new_special_token: True
-max_len: 220
+max_len: 300
