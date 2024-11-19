@@ -24,7 +24,6 @@ from eagle.model.utils import (
     pid_found_percentage,
     unwrap_logging_items,
 )
-from eagle.phrase.noun import SpacyModel
 from eagle.search.base_searcher import BaseSearcher
 from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY

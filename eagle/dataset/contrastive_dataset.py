@@ -127,11 +127,11 @@ class ContrastiveDataset(BaseDataset):
         """Delete redundant tokenized corpus for memory saving."""
         # Get doc ids from the data
         doc_ids: Set[int] = extract_pids_from_msmarco_data(self.data)
-        all_pids: List[int] = list(self.tokenized_corpus.keys())
+        all_pids: List[Union[int, str]] = list(self.tokenized_corpus.keys())
         # Remove redundant tokenized corpus
         new_data: Dict[int, List[List[int]]] = {}
         for pid in all_pids:
-            if pid in doc_ids:
+            if int(pid) in doc_ids:
                 new_data[pid] = copy.deepcopy(self.tokenized_corpus[pid])
         removed_cnt = len(self.tokenized_corpus) - len(new_data)
         logger.info(

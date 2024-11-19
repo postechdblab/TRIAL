@@ -392,8 +392,13 @@ def extract_qids_from_non_msmarco_data(data: List[Dict[str, Any]]) -> Set[str]:
     return set([item[qid_key_str] for item in data])
 
 
-def extract_pids_from_msmarco_data(data: List[List[int]]) -> Set[int]:
-    return set(list_utils.do_flatten_list([item[1:] for item in data]))
+def extract_pids_from_msmarco_data(
+    data: List[List[Union[int, Tuple[int, float]]]]
+) -> Set[int]:
+    # Check if is distillation data
+    if type(data[0][1]) == list:
+        return set([pair[0] for item in data for pair in item[1:]])
+    return set([pids for item in data for pids in item[1:]])
 
 
 def extract_pids_from_non_msmarco_data(data: List[Dict[str, Any]]) -> Set[int]:

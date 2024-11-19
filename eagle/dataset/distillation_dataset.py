@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import *
 
@@ -6,6 +7,10 @@ from omegaconf import DictConfig
 from torch.nn.utils.rnn import pad_sequence
 
 from eagle.dataset.base_dataset import BaseDataset
+from eagle.dataset.utils import (
+    extract_pids_from_msmarco_data,
+    extract_qids_from_msmarco_data,
+)
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.tokenization.utils import combine_splitted_tok_ids
 
@@ -96,8 +101,36 @@ class DistillationDataset(BaseDataset):
 
     def _remove_redundant_tokenized_queries(self) -> None:
         """Delete redundant tokenized queries for memory saving."""
-        raise NotImplementedError("TODO")
+        # Get qids from the data
+        required_qids: Set[int] = extract_qids_from_msmarco_data(self.data)
+        all_qids: List[str] = list(self.tokenized_queries.keys())
+        # Remove redundant tokenized queries
+        new_data: Dict[str, List[List[int]]] = {}
+        for qid in all_qids:
+            if int(qid) in required_qids:
+                new_data[qid] = copy.deepcopy(self.tokenized_queries[qid])
+        removed_cnt = len(self.tokenized_queries) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized queries."
+        )
+        # Update tokenized queries
+        self.tokenized_queries = new_data
+        return None
 
     def _remove_redundant_tokenized_corpus(self) -> None:
         """Delete redundant tokenized corpus for memory saving."""
-        raise NotImplementedError("TODO")
+        # Get doc ids from the data
+        doc_ids: Set[int] = extract_pids_from_msmarco_data(self.data)
+        all_pids: List[Union[int, str]] = list(self.tokenized_corpus.keys())
+        # Remove redundant tokenized corpus
+        new_data: Dict[int, List[List[int]]] = {}
+        for pid in all_pids:
+            if int(pid) in doc_ids:
+                new_data[pid] = copy.deepcopy(self.tokenized_corpus[pid])
+        removed_cnt = len(self.tokenized_corpus) - len(new_data)
+        logger.info(
+            f"Removed {removed_cnt} and {len(new_data)} left for tokenized corpus."
+        )
+        # Update tokenized corpus
+        self.tokenized_corpus = new_data
+        return None
