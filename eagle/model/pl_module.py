@@ -90,10 +90,20 @@ class LightningNewModel(L.LightningModule):
         # For evaluation and analysis
         self.use_oracle_candidate = use_oracle_candidate
 
+    @property
+    def is_test_reranking(self) -> bool:
+        return not self.training and self.index_dir_path is None
+
+    @property
+    def is_test_full_retrieval(self) -> bool:
+        return not self.training and self.index_dir_path is not None
+
     def _load_searcher(self) -> PLAID:
         # Load the searcher
         self.searcher: BaseSearcher = SEARCHER_REGISTRY[self.model.cfg.name](
-            cfg=self.cfg, model=self.model, index_dir_path=self.index_dir_path
+            cfg=self.cfg,
+            model=self.model,
+            index_dir_path=self.index_dir_path,
         )
         return self.searcher
 
@@ -306,9 +316,12 @@ class LightningNewModel(L.LightningModule):
 
     def test_step(self, batch: Dict, batch_idx: int) -> None:
         with torch.no_grad():
-            if self.index_dir_path is None:
+            if self.is_test_reranking:
                 return self._test_reranking(batch, batch_idx)
-            return self._test_full_retrieval(batch, batch_idx)
+            elif self.is_test_full_retrieval:
+                return self._test_full_retrieval(batch, batch_idx)
+            else:
+                raise ValueError("Invalid test mode!")
 
     def on_test_epoch_end(self) -> Dict:
         # Print the result
@@ -352,6 +365,7 @@ class LightningNewModel(L.LightningModule):
             }
 
         if self.trainer.is_global_zero:
+            self.searcher.timer.summarize_measured_times()
             print("Intermediate results:")
             print(json.dumps(gathered_intermediate_metrics, indent=4))
             print(f"\nFinal results (Total data: {total_data_num}):")

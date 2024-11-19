@@ -10,6 +10,7 @@ from eagle.search.algorithm import (
     reduce_element_wise_relevance_scores,
 )
 from eagle.search.strided_tensor import StridedTensor
+import hkkang_utils.time as time_utils
 
 
 class PLAID:
@@ -34,8 +35,28 @@ class PLAID:
         self.d_weight_project_layer = d_weight_project_layer
         self.d_weight_layer_norm = d_weight_layer_norm
         self._set_embeddings_strided(indexer_name)
+        # For analysis
+        self.timer = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="search"
+        )
+        self.timer_stage1 = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="Stage 1"
+        )
+        self.timer_stage2 = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="Stage 2"
+        )
+        self.timer_stage3 = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="Stage 3"
+        )
+        self.timer_stage4 = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="Stage 4"
+        )
 
-    def __call__(
+    def __call__(self, *args, **kwargs) -> torch.Tensor:
+        with self.timer.measure():
+            return self.search(*args, **kwargs)
+
+    def search(
         self,
         query_tok: torch.Tensor,
         tok_weight: Optional[torch.Tensor] = None,
@@ -45,36 +66,46 @@ class PLAID:
         is_debug: bool = False,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
-        pids, centroid_scores = self.get_initial_pids(query_tok, mask)
-        pids1 = pids.tolist()
+        with self.timer_stage1.measure():
+            pids, centroid_scores = self.get_initial_pids(query_tok, mask)
+            pids1 = pids.tolist()
         # Stage 2: Filter pids using pruned centroid scores
-        pids = self.filter_with_pruning_centroids(pids, centroid_scores, tok_weight)
-        pids2 = pids.tolist()
+        with self.timer_stage2.measure():
+            pids = self.filter_with_pruning_centroids(pids, centroid_scores, tok_weight)
+            pids2 = pids.tolist()
         # Stage 3: Filter pids using full centroid scores
-        pids = self.filter_without_pruning_centroids(pids, centroid_scores, tok_weight)
-        pids3 = pids.tolist()
-        if gold_doc_ids is not None:
-            # Find unselected gold_doc_ids
-            unselected_gold_doc_ids = [
-                doc_id for doc_id in gold_doc_ids if doc_id not in pids
-            ]
-            # Replace the last pids with gold_doc_ids
-            pids = torch.cat(
-                [
-                    pids[: len(pids) - len(unselected_gold_doc_ids)],
-                    torch.tensor(
-                        unselected_gold_doc_ids, device=pids.device, dtype=pids.dtype
-                    ),
-                ]
+        with self.timer_stage3.measure():
+            pids = self.filter_without_pruning_centroids(
+                pids, centroid_scores, tok_weight
             )
+            pids3 = pids.tolist()
+        # Append gold_doc_ids to the last pids
+        with self.timer.pause():
+            if gold_doc_ids is not None:
+                # Find unselected gold_doc_ids
+                unselected_gold_doc_ids = [
+                    doc_id for doc_id in gold_doc_ids if doc_id not in pids
+                ]
+                # Replace the last pids with gold_doc_ids
+                pids = torch.cat(
+                    [
+                        pids[: len(pids) - len(unselected_gold_doc_ids)],
+                        torch.tensor(
+                            unselected_gold_doc_ids,
+                            device=pids.device,
+                            dtype=pids.dtype,
+                        ),
+                    ]
+                )
         # Stage 4: Final ranking with decomposed embeddings
-        result = self.rank_pids(
-            query_tok=query_tok,
-            q_tok_weight=tok_weight,
-            q_mask=mask,
-            pids=pids,
-            is_debug=is_debug,
-        )
+        with self.timer_stage4.measure():
+            result = self.rank_pids(
+                query_tok=query_tok,
+                q_tok_weight=tok_weight,
+                q_mask=mask,
+                pids=pids,
+                is_debug=is_debug,
+            )
         if is_debug:
             return result[0], result[1], (pids1, pids2, pids3), result[2:]
         final_pids, scores, element_wise_scores = result

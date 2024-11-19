@@ -1,5 +1,6 @@
 from typing import *
 
+import hkkang_utils.time as time_utils
 import torch
 from omegaconf import DictConfig
 
@@ -9,12 +10,23 @@ from eagle.search.plaid import PLAID
 
 
 class ColBERTSearcher(BaseSearcher):
-    def __init__(self, cfg: DictConfig, model: ColBERT, index_dir_path: str) -> None:
+    def __init__(
+        self,
+        cfg: DictConfig,
+        model: ColBERT,
+        index_dir_path: str,
+    ) -> None:
         super().__init__(cfg=cfg, model=model)
         self.index_dir_path = index_dir_path
-        self.plaid = PLAID(index_path=self.index_dir_path, indexer_name=model.cfg.name)
+        self.plaid = PLAID(
+            index_path=self.index_dir_path,
+            indexer_name=model.cfg.name,
+        )
+        self.timer_encodings = time_utils.Timer(
+            class_name=self.__class__.__name__, func_name="encode"
+        )
 
-    def serach(
+    def search(
         self,
         q_tok_ids: torch.Tensor,
         q_tok_att_mask: torch.Tensor,
@@ -22,18 +34,20 @@ class ColBERTSearcher(BaseSearcher):
         pos_doc_indices: List[List[int]] = None,
         **Kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[List, List, List]]]:
-        # Configs
+        # Config
         bsize = q_tok_ids.size(0)
 
         # Preprocess the pids (decrease by 1 due to 0-based indexing)
-        if pos_doc_indices is not None:
-            pos_doc_indices = torch.tensor(pos_doc_indices, dtype=torch.int64)
-            pos_doc_indices = pos_doc_indices - torch.ones_like(pos_doc_indices)
+        with self.timer.pause():
+            if pos_doc_indices is not None:
+                pos_doc_indices = torch.tensor(pos_doc_indices, dtype=torch.int64)
+                pos_doc_indices = pos_doc_indices - torch.ones_like(pos_doc_indices)
 
         # Encode query
-        q_tok_projected, q_tok_scale_factor = self.model.encode_q_text(
-            tok_ids=q_tok_ids, att_mask=q_tok_att_mask, tok_mask=q_tok_mask
-        )
+        with self.timer_encodings.measure():
+            q_tok_projected, q_tok_scale_factor = self.model.encode_q_text(
+                tok_ids=q_tok_ids, att_mask=q_tok_att_mask, tok_mask=q_tok_mask
+            )
 
         # Perform search one-by-one
         all_pids = []
@@ -54,12 +68,14 @@ class ColBERTSearcher(BaseSearcher):
                 ),
                 return_intermediate_pids=True,
             )
-            # Increase the values of pids by 1 (0-based indexing)
             retrieved_pids = retrieved_pids.cpu()
-            retrieved_pids = retrieved_pids + torch.ones_like(retrieved_pids)
-            stage_1_pids = [item + 1 for item in intermediate_pids[0]]
-            stage_2_pids = [item + 1 for item in intermediate_pids[1]]
-            stage_3_pids = [item + 1 for item in intermediate_pids[2]]
+
+            # Increase the values of pids by 1 (0-based indexing)
+            with self.timer.pause():
+                retrieved_pids = retrieved_pids + torch.ones_like(retrieved_pids)
+                stage_1_pids = [item + 1 for item in intermediate_pids[0]]
+                stage_2_pids = [item + 1 for item in intermediate_pids[1]]
+                stage_3_pids = [item + 1 for item in intermediate_pids[2]]
 
             # Aggregate results
             all_pids.append(retrieved_pids)

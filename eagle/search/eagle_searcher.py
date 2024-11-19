@@ -8,8 +8,13 @@ from eagle.search.plaid import PLAID
 
 
 class EAGLESearcher(BaseSearcher):
-    def __init__(self, model: BaseModel, cfg: DictConfig, index_dir_path: str) -> None:
-        super().__init__(cfg, model)
+    def __init__(
+        self,
+        model: BaseModel,
+        cfg: DictConfig,
+        index_dir_path: str,
+    ) -> None:
+        super().__init__(cfg=cfg, model=model)
         self.index_dir_path = index_dir_path
         self.plaid = PLAID(
             index_path=self.index_dir_path,
