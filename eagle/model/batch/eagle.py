@@ -81,16 +81,17 @@ class BatchForEAGLE(BaseBatch):
             required_qids: Set[str] = extract_qids_from_non_msmarco_data(
                 self.dataset.data
             )
-        all_qids: List[str] = list(self.phrase_ranges_queries.keys())
+        all_qids: List[Union[int, str]] = list(self.phrase_ranges_queries.keys())
         # Remove redundant phrase ranges in the queries
         new_data: Dict[str, List[Tuple[int, int]]] = {}
         for qid in all_qids:
-            if qid in required_qids:
+            if str(qid) in required_qids:
                 new_data[qid] = copy.deepcopy(self.phrase_ranges_queries[qid])
         removed_cnt = len(self.phrase_ranges_queries) - len(new_data)
         logger.info(
             f"Removed {removed_cnt} and {len(new_data)} left for phrase ranges in the queries."
         )
+        assert len(new_data) > 0, "Every phrase ranges are filtered out!"
         # Update the data
         self.phrase_ranges_queries = new_data
         return None
@@ -112,6 +113,7 @@ class BatchForEAGLE(BaseBatch):
         logger.info(
             f"Removed {removed_cnt} and {len(new_data)} left for phrase ranges in the corpus."
         )
+        assert len(new_data) > 0, "Every phrase ranges are filtered out!"
         # Update the data
         self.phrase_ranges_corpus = new_data
         return None
@@ -373,7 +375,7 @@ class BatchForEAGLE(BaseBatch):
         return pad_sequence(data, batch_first=True)
 
     def _collate_distillation_scores(self, data: List[Any]) -> List[Any]:
-        return data
+        return torch.stack(data)
 
     def _collate_pos_doc_ids(self, data: List[List[str]]) -> List[List[str]]:
         return data
