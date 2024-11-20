@@ -107,6 +107,8 @@ class ContrastiveDataset(BaseDataset):
 
     def _remove_redundant_tokenized_queries(self) -> None:
         """Delete redundant tokenized queries for memory saving."""
+        if self.tokenized_queries is None:
+            return None
         # Get qids from the data
         required_qids: Set[int] = extract_qids_from_msmarco_data(self.data)
         all_qids: List[str] = list(self.tokenized_queries.keys())
@@ -125,6 +127,8 @@ class ContrastiveDataset(BaseDataset):
 
     def _remove_redundant_tokenized_corpus(self) -> None:
         """Delete redundant tokenized corpus for memory saving."""
+        if self.tokenized_corpus is None:
+            return None
         # Get doc ids from the data
         doc_ids: Set[int] = extract_pids_from_msmarco_data(self.data)
         all_pids: List[Union[int, str]] = list(self.tokenized_corpus.keys())
