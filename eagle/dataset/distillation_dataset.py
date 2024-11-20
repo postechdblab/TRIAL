@@ -72,6 +72,15 @@ class DistillationDataset(BaseDataset):
         d_tok_ids = [
             self.tokenizers.d_tokenizer.cutoff_by_max_len(item) for item in d_tok_ids
         ]
+        q_sent_start_indices = (
+            self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(
+                q_sent_start_indices
+            )
+        )
+        d_sent_start_indices = [
+            self.tokenizers.q_tokenizer.cut_off_sent_indices_by_max_len(item)
+            for item in d_sent_start_indices
+        ]
         # Convert list to tensor
         q_tok_ids = torch.tensor(q_tok_ids, dtype=torch.int64, device="cpu")
         d_tok_ids = [
