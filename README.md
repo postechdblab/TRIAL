@@ -109,3 +109,8 @@ The average scores for different types of POS tags in the dataset.
 ```bash
 python scripts/analysis/pos_stats.py +ckpt_path=/root/EAGLE/runs/colbert/best_model.ckpt
 ```
+
+## Index Statistics
+```bash
+python scripts/analysis/index_stats.py
+```
