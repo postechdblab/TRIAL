@@ -57,7 +57,8 @@ class DistillationDataset(BaseDataset):
             q_tok_ids_per_sentences
         )
         d_tok_ids_per_sentences = [
-            self.tokenized_corpus[pid] for pid in pos_doc_ids + neg_doc_ids
+            self.tokenized_corpus[self.tokenized_corpus_key_type(pid)]
+            for pid in pos_doc_ids + neg_doc_ids
         ]
         d_tok_ids = []
         d_sent_start_indices = []
