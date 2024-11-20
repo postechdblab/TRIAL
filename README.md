@@ -1,6 +1,10 @@
 # EAGLE: Efficient Retrieval Using Aggregated Scores from Multiple Granularity Embeddings
 
 # Preprocess dataset
+## 0. Clean the corpus (remove documents with empty text)
+```bash
+python scripts/preprocess/clean_corpus.py
+```
 ## 1. Split text to sentences
 
 ### Example: Split query in msmarco dataset to sentences
