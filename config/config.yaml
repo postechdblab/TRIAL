@@ -3,6 +3,7 @@ _global:
     seed: 10
     tag: "default"
     root_dir: "/root/EAGLE/runs"
+    eval_dir: "/root/EAGLE/eval"
 defaults:
     - _self_
     - model: eagle

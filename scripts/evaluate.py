@@ -15,7 +15,7 @@ from eagle.dataset.pl_module.contrastive_module import ContrastiveDataModule
 from eagle.dataset.pl_module.inference_module import InferenceDataModule
 from eagle.model import LightningNewModel
 from eagle.utils import add_global_configs, set_random_seed
-from scripts.utils import check_argument, remove_model_prefix_key_from_saved_dict
+from scripts.utils import check_argument
 
 logger = logging.getLogger("Evaluate")
 

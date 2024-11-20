@@ -240,6 +240,7 @@ class BatchForEAGLE(BaseBatch):
             ]
 
         return {
+            "qid": qid,
             "q_tok_ids": q_tok_ids,
             "q_tok_att_mask": q_tok_att_mask,
             "q_tok_mask": q_tok_mask,
@@ -258,6 +259,9 @@ class BatchForEAGLE(BaseBatch):
             "distillation_scores": distillation_scores,
             "pos_doc_ids": pos_doc_ids,
         }
+
+    def _collate_qid(self, data: List[str]) -> List[str]:
+        return data
 
     def _collate_q_tok_ids(self, data: List[torch.Tensor]) -> torch.Tensor:
         if self.pad_to_max_length:

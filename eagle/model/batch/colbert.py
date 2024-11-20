@@ -9,6 +9,9 @@ from eagle.model.batch import BaseBatch
 
 
 class BatchForColBERT(BaseBatch):
+    def _collate_qid(self, data: List[str]) -> List[str]:
+        return data
+
     def _collate_q_tok_ids(self, data: List[torch.Tensor]) -> torch.Tensor:
         if self.pad_to_max_length:
             return torch.stack(data)
@@ -123,6 +126,7 @@ class BatchForColBERT(BaseBatch):
             doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         return {
+            "qid": qid,
             "q_tok_ids": q_tok_ids,
             "q_tok_att_mask": q_tok_att_mask,
             "q_tok_mask": q_tok_mask,

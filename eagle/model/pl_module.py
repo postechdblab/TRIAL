@@ -1,12 +1,14 @@
-import copy
 import json
 import logging
+import os
 from typing import *
 
 import bitsandbytes as bnb
 import hkkang_utils.file as file_utils
+import hkkang_utils.list as list_utils
 import lightning as L
 import torch
+import torch.distributed as dist
 from omegaconf import DictConfig
 from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
@@ -88,6 +90,9 @@ class LightningNewModel(L.LightningModule):
         self.corpus: Optional[Corpus] = None
         # For evaluation and analysis
         self.use_oracle_candidate = use_oracle_candidate
+        self.all_qids: List[str] = []
+        self.all_retrieved_scores: List[torch.Tensor] = []
+        self.all_retrieved_pids: List[torch.Tensor] = []
 
     @property
     def is_test_reranking(self) -> bool:
@@ -96,6 +101,13 @@ class LightningNewModel(L.LightningModule):
     @property
     def is_test_full_retrieval(self) -> bool:
         return not self.training and self.index_dir_path is not None
+
+    def _gather_data(self, data: List[str]) -> List[List[str]]:
+        if not dist.is_initialized():
+            return [data]
+        gathered_data = [None] * dist.get_world_size()
+        dist.all_gather_object(gathered_data, data)
+        return gathered_data
 
     def _load_searcher(self) -> PLAID:
         # Load the searcher
@@ -310,6 +322,10 @@ class LightningNewModel(L.LightningModule):
         self.intermediate_eval_results.append(
             (all_stage_1_accs, all_stage_2_accs, all_stage_3_accs)
         )
+        # Log data for analysis
+        self.all_qids.extend(batch["qid"])
+        self.all_retrieved_scores.extend(all_scores)
+        self.all_retrieved_pids.extend(all_pids)
 
         return None
 
@@ -326,14 +342,7 @@ class LightningNewModel(L.LightningModule):
         # Print the result
         gathered_final_results = self.all_gather(self.final_eval_results)
 
-        # Write results
-        copied_gathered_final_results = copy.deepcopy(gathered_final_results)
-        collected = []
-        for list_of_eval_results in copied_gathered_final_results:
-            for eval_result in list_of_eval_results:
-                collected.append(eval_result["test_NDCG@10"].tolist())
-        # FILE_PATH = "/root/EAGLE/eval_result.json"
-        # file_utils.write_json_file(collected, FILE_PATH)
+        # Gather data across all processes
         gathered_intermediate_results = self.all_gather(self.intermediate_eval_results)
         total_data_num = len(self.trainer.datamodule.val_dataset)
         # Aggregate the final results
@@ -363,13 +372,70 @@ class LightningNewModel(L.LightningModule):
                 "stage3": gathered_stage3_prob,
             }
 
+        # Gather data for analysis
+        all_qids: List[str] = list_utils.do_flatten_list(
+            self._gather_data(self.all_qids)
+        )
+        all_retrieved_scores: List[torch.Tensor] = list_utils.do_flatten_list(
+            self._gather_data(self.all_retrieved_scores)
+        )
+        all_retrieved_pids: List[torch.Tensor] = list_utils.do_flatten_list(
+            self._gather_data(self.all_retrieved_pids)
+        )
+        # Prepare the data for analysis
+        analysis_data: List[Tuple[str, List[float], List[int]]] = []
+        for qid, scores, pids in zip(
+            all_qids, all_retrieved_scores, all_retrieved_pids
+        ):
+            analysis_data.append((qid, scores.cpu().tolist(), pids.cpu().tolist()))
+        dir_path = os.path.join(self.cfg.eval_dir, self.model.cfg.name)
+        file_prefix = f"{self.cfg.tag}_{self.dataset_cfg.dataset.name}"
+        # Get the paths to save the data
+        detailed_result_path = os.path.join(
+            dir_path,
+            f"{file_prefix}_details.json",
+        )
+        acc_result_path = os.path.join(
+            dir_path,
+            f"{file_prefix}_acc.json",
+        )
+        intermediate_acc_result_path = os.path.join(
+            dir_path,
+            f"{file_prefix}_intermediate.json",
+        )
+        speed_result_path = os.path.join(
+            dir_path,
+            f"{file_prefix}_speed.json",
+        )
+
         if self.trainer.is_global_zero:
+            logger.info(
+                f"Saving the evaluation results ({len(analysis_data)} data) to {self.cfg.eval_dir}"
+            )
+            # Save the evaluation results as json
+            os.makedirs(dir_path, exist_ok=True)
+            file_utils.write_json_file(
+                analysis_data,
+                detailed_result_path,
+            )
+            file_utils.write_json_file(
+                {"cnt": total_data_num} | gathered_final_metrics,
+                acc_result_path,
+            )
+            file_utils.write_json_file(
+                gathered_intermediate_metrics,
+                intermediate_acc_result_path,
+            )
+            file_utils.write_json_file(
+                self.searcher.timer.summarize_measured_times(silent=True, in_dict=True),
+                speed_result_path,
+            )
+            # Print the evaluation results
             self.searcher.timer.summarize_measured_times()
             print("Intermediate results:")
             print(json.dumps(gathered_intermediate_metrics, indent=4))
             print(f"\nFinal results (Total data: {total_data_num}):")
             print(json.dumps(gathered_final_metrics, indent=4))
-        # self.trainer._logger_connector._logged_metrics = gathered_metrics
         self.trainer.strategy.barrier()
         return gathered_final_metrics
 
