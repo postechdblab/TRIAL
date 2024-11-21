@@ -278,9 +278,15 @@ class BaseDataModule(L.LightningDataModule):
         tokenized_corpus = read_compressed(self.target_tokenized_corpus_cache_path)
         tokenized_queries = read_compressed(self.target_tokenized_queries_cache_path)
 
+        # Config whether to use phrase ranges
+        is_use_phrase = (
+            self.cfg_global.model.name == "eagle"
+            and self.cfg_global.model.sim_type in ["combination", "inner_agg"]
+        )
+
         # Load phrase ranges for queries and corpus
         phrase_ranges_queries = phrase_ranges_corpus = None
-        if self.cfg_global.model.name == "eagle":
+        if is_use_phrase:
             phrase_ranges_queries = file_utils.read_pickle_file(
                 self.target_q_phrase_range_path
             )
