@@ -149,16 +149,18 @@ class BatchForEAGLE(BaseBatch):
             )
 
         # Get phrase ranges
-        q_phrase_ranges: List[Tuple] = combined_phrase_ranges_into_one_sentence(
-            [
-                fix_bad_index_ranges(item)
-                for item in self.phrase_ranges_queries[
-                    self.phrase_ranges_queries_key_type(qid)
+        q_phrase_ranges = None
+        if self.phrase_ranges_queries is not None:
+            q_phrase_ranges: List[Tuple] = combined_phrase_ranges_into_one_sentence(
+                [
+                    fix_bad_index_ranges(item)
+                    for item in self.phrase_ranges_queries[
+                        self.phrase_ranges_queries_key_type(qid)
+                    ]
                 ]
-            ]
-        )
+            )
         doc_phrase_ranges = None
-        if is_to_encode_doc:
+        if is_to_encode_doc and self.phrase_ranges_corpus is not None:
             doc_phrase_ranges: List[List[Tuple]] = [
                 combined_phrase_ranges_into_one_sentence(
                     [
@@ -172,10 +174,11 @@ class BatchForEAGLE(BaseBatch):
             ]
 
         # Cut off phrase ranges if it exceeds the maximum length
-        q_phrase_ranges = cut_off_phrase_ranges_by_max_len(
-            q_phrase_ranges, self.dataset.tokenizers.q_tokenizer.cfg.max_len
-        )
-        if is_to_encode_doc:
+        if self.phrase_ranges_queries is not None:
+            q_phrase_ranges = cut_off_phrase_ranges_by_max_len(
+                q_phrase_ranges, self.dataset.tokenizers.q_tokenizer.cfg.max_len
+            )
+        if is_to_encode_doc and self.phrase_ranges_corpus is not None:
             doc_phrase_ranges = [
                 cut_off_phrase_ranges_by_max_len(
                     item, self.dataset.tokenizers.d_tokenizer.cfg.max_len
@@ -185,16 +188,21 @@ class BatchForEAGLE(BaseBatch):
 
         # Fix the missing phrase ranges.
         # This is a temporary fix. Need to change the phrase range creation logic to avoid this.
-        q_phrase_ranges = fill_in_missing_phrase_ranges(q_phrase_ranges)
-        if is_to_encode_doc:
+        if self.phrase_ranges_queries is not None:
+            q_phrase_ranges = fill_in_missing_phrase_ranges(q_phrase_ranges)
+        if is_to_encode_doc and self.phrase_ranges_corpus is not None:
             doc_phrase_ranges = [
                 fill_in_missing_phrase_ranges(item) for item in doc_phrase_ranges
             ]
 
         # Get scatter indices for phrases
-        q_phrase_scatter_indices: List[int] = convert_range_to_scatter(q_phrase_ranges)
+        q_phrase_scatter_indices = None
+        if self.phrase_ranges_queries is not None:
+            q_phrase_scatter_indices: List[int] = convert_range_to_scatter(
+                q_phrase_ranges
+            )
         doc_phrase_scatter_indices = None
-        if is_to_encode_doc:
+        if is_to_encode_doc and self.phrase_ranges_corpus is not None:
             doc_phrase_scatter_indices: List[List[int]] = [
                 convert_range_to_scatter(item) for item in doc_phrase_ranges
             ]
@@ -225,9 +233,11 @@ class BatchForEAGLE(BaseBatch):
             doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         # Create phrase masks
-        q_phrase_mask = torch.zeros(len(q_phrase_ranges), dtype=torch.bool).float()
+        q_phrase_mask = None
+        if q_phrase_ranges is not None:
+            q_phrase_mask = torch.zeros(len(q_phrase_ranges), dtype=torch.bool).float()
         doc_phrase_mask = None
-        if is_to_encode_doc:
+        if is_to_encode_doc and doc_phrase_ranges is not None:
             doc_phrase_mask = [
                 torch.zeros(len(dpr), dtype=torch.bool).float()
                 for dpr in doc_phrase_ranges
@@ -239,7 +249,7 @@ class BatchForEAGLE(BaseBatch):
         # Create sentence masks
         doc_sent_mask = None
         q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
-        if is_to_encode_doc:
+        if is_to_encode_doc and doc_sent_start_indices is not None:
             doc_sent_mask = [
                 torch.zeros(len(dssi), dtype=torch.bool).float()
                 for dssi in doc_sent_start_indices
