@@ -22,6 +22,12 @@ class Document:
         assert type(self.sents) == list, f"Text is not a list: {self.sents}"
         return f"{self.title} | {" ".join(self.sents)}"
 
+    @property
+    def title_and_sents(self) -> List[str]:
+        if self.title == "":
+            return self.sents
+        return [self.title] + self.sents
+
 
 class Corpus:
     def __init__(self, cfg: DictConfig) -> None:

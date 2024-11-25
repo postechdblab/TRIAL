@@ -130,8 +130,8 @@ class Tokenizer:
         all_sentences = []
         all_sent_num = []
         for doc in docs:
-            all_sent_num.append(len(doc.sents))
-            for sent_idx, sent in enumerate(doc.sents):
+            all_sent_num.append(len(doc.title_and_sents))
+            for sent_idx, sent in enumerate(doc.title_and_sents):
                 if sent_idx == 0:
                     sent = self._preprocess_text(sent)
                 all_sentences.append(sent)
