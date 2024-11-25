@@ -4,11 +4,13 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import logging
 import os
+from datetime import timedelta
 from typing import *
 
 import hydra
 import lightning as L
 import torch
+from lightning.pytorch.strategies import DDPStrategy
 from omegaconf import DictConfig
 
 from eagle.dataset.pl_module.contrastive_module import ContrastiveDataModule
@@ -47,7 +49,9 @@ def full_retrieval(
         deterministic=True,
         accelerator="cuda",
         devices=torch.cuda.device_count(),
-        strategy="ddp",
+        strategy=DDPStrategy(
+            timeout=timedelta(hours=5), static_graph=True, gradient_as_bucket_view=True
+        ),
     )
     trainer.test(model, datamodule=data_module, ckpt_path=ckpt_path)
     return None
