@@ -739,8 +739,10 @@ class EAGLE(BaseModel):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Configs
         bsize, q_tok_len, q_dim = q_tok.shape
-        bsize, q_phrase_len, q_dim = q_phrase.shape
-        _, sent_inter_max_len, _ = d_sent_weight_inter.shape
+        if d_sent_weight_inter is None:
+            sent_inter_max_len = None
+        else:
+            _, sent_inter_max_len, _ = d_sent_weight_inter.shape
         nway = d_tok.shape[0] // bsize
         ib_nhard = nway // bsize
         repeat_num_for_inter = ib_nhard * (bsize - 1) + 1
@@ -785,7 +787,11 @@ class EAGLE(BaseModel):
             # Repeat the query vectors for intra comparison
             q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
             q_weight_intra = q_tok_weight.repeat_interleave(nway, dim=0)
-            q_scatter_indices_intra = q_scatter_indices.repeat_interleave(nway, dim=0)
+            q_scatter_indices_intra = None
+            if q_scatter_indices is not None:
+                q_scatter_indices_intra = q_scatter_indices.repeat_interleave(
+                    nway, dim=0
+                )
             q_scale_factors_intra = q_tok_scale_factor.repeat_interleave(nway, dim=0)
 
             # Repeat the query vectors for inter comparison
@@ -794,9 +800,11 @@ class EAGLE(BaseModel):
                 q_weight_inter = q_tok_weight.repeat_interleave(
                     repeat_num_for_inter, dim=0
                 )
-                q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
-                    repeat_num_for_inter, dim=0
-                )
+                q_scatter_indices_inter = None
+                if q_scatter_indices is not None:
+                    q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
+                        repeat_num_for_inter, dim=0
+                    )
                 q_scale_factors_inter = q_tok_scale_factor.repeat_interleave(
                     repeat_num_for_inter, dim=0
                 )
@@ -918,11 +926,14 @@ class EAGLE(BaseModel):
         )
 
         # Aggregate token-level vector similarity to phrase-level
-        max_q_aggregated = aggregate_vectors_with_indices(
-            src_tensor=max_q_scores,
-            scatter_indices=q_scatter_indices,
-            reduce=self.reduce_strategy,
-        )
+        if q_scatter_indices is None:
+            max_q_aggregated = max_q_scores
+        else:
+            max_q_aggregated = aggregate_vectors_with_indices(
+                src_tensor=max_q_scores,
+                scatter_indices=q_scatter_indices,
+                reduce=self.reduce_strategy,
+            )
 
         # Aggregate phrase-level scores to query-level scores
         q_scores = max_q_aggregated.sum(dim=1)
