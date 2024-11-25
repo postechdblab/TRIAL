@@ -51,6 +51,9 @@ class EAGLE(BaseModel):
             if "use_multi_doc_granularity" in cfg
             else False
         )
+        self.use_phrase_level = (
+            cfg.use_phrase_level if "use_phrase_level" in cfg else False
+        )
 
         # Layers to encode the query into phrase level
         if self.use_attn_for_phrase_encoding:
@@ -372,7 +375,7 @@ class EAGLE(BaseModel):
         encoded_phrase_vectors = None
         projected_phrase_vectors = None
         # Encode phrase-level embeddings
-        if phrase_scatter_indices is not None:
+        if self.use_phrase_level and phrase_scatter_indices is not None:
             if self.use_attn_for_phrase_encoding:
                 # TODO: Make different phrases into a batch
                 # TODO: Add positional encoding
@@ -439,7 +442,9 @@ class EAGLE(BaseModel):
         )
         # Dynamic configs
         dtype = projected_tok_vectors.dtype
-        is_create_phrase_vectors = projected_phrase_vectors is not None
+        is_create_phrase_vectors = (
+            self.use_phrase_level and projected_phrase_vectors is not None
+        )
         is_create_sent_vectors = projected_sent_vectors is not None
 
         # Mask paddings
@@ -573,7 +578,9 @@ class EAGLE(BaseModel):
 
         # Dynamic configs
         dtype = projected_tok_vectors.dtype
-        is_create_phrase_vectors = projected_phrase_vectors is not None
+        is_create_phrase_vectors = (
+            self.use_phrase_level and projected_phrase_vectors is not None
+        )
         is_create_sent_vectors = projected_sent_vectors is not None
 
         # Apply mask
@@ -788,7 +795,7 @@ class EAGLE(BaseModel):
             q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
             q_weight_intra = q_tok_weight.repeat_interleave(nway, dim=0)
             q_scatter_indices_intra = None
-            if q_scatter_indices is not None:
+            if self.use_phrase_level and q_scatter_indices is not None:
                 q_scatter_indices_intra = q_scatter_indices.repeat_interleave(
                     nway, dim=0
                 )
@@ -801,7 +808,7 @@ class EAGLE(BaseModel):
                     repeat_num_for_inter, dim=0
                 )
                 q_scatter_indices_inter = None
-                if q_scatter_indices is not None:
+                if self.use_phrase_level and q_scatter_indices is not None:
                     q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
                         repeat_num_for_inter, dim=0
                     )
