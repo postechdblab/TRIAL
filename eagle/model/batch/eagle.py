@@ -52,7 +52,7 @@ class BatchForEAGLE(BaseBatch):
 
     @property
     def phrase_ranges_queries_key_type(self) -> type:
-        if len(self.phrase_ranges_queries) == 0:
+        if self.phrase_ranges_queries is None or len(self.phrase_ranges_queries) == 0:
             return None
         if not hasattr(self, "_phrase_ranges_queries_key_type"):
             self._phrase_ranges_queries_key_type = type(
@@ -62,7 +62,7 @@ class BatchForEAGLE(BaseBatch):
 
     @property
     def phrase_ranges_corpus_key_type(self) -> type:
-        if len(self.phrase_ranges_corpus) == 0:
+        if self.phrase_ranges_corpus is None or len(self.phrase_ranges_corpus) == 0:
             return None
         if not hasattr(self, "_phrase_ranges_corpus_key_type"):
             self._phrase_ranges_corpus_key_type = type(
