@@ -13,10 +13,10 @@ def tokenize_batch_sentences(
         for idx, key in enumerate(corpus.keys()):
             items[key] = tokenized_items["input_ids"][idx]
     elif type(list(corpus.values())[0]) == list:
-        nums: List[int] = 0
+        nums: List[int] = []
         all_sentences: List[str] = []
         for sublist in list(corpus.values()):
-            nums += len(sublist)
+            nums.append(len(sublist))
             all_sentences.extend(sublist)
         # Tokenize all sentences
         tokenized_items = tokenizer.tokenize_batch(all_sentences)
