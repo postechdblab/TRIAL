@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
 from eagle.dataset.base_dataset import BaseDataset
-from eagle.dataset.pl_module.utils import tokenize_and_cache_corpus
+from eagle.dataset.pl_module.utils import tokenize_batch_sentences
 from eagle.dataset.utils import (
     read_compressed,
     read_corpus,
@@ -157,7 +157,7 @@ class BaseDataModule(L.LightningDataModule):
             logger.info(f"Reading all documents...")
             d_corpus = read_corpus(self.corpus_path)
             logger.info("Tokenizing and caching document corpus...")
-            d_items = tokenize_and_cache_corpus(
+            d_items = tokenize_batch_sentences(
                 tokenizer=self.tokenizers.d_tokenizer, corpus=d_corpus
             )
             # Write the cache
@@ -171,7 +171,7 @@ class BaseDataModule(L.LightningDataModule):
             logger.info("Reading all queries...")
             q_corpus = read_queries(self.queries_path)
             logger.info("Tokenizing and caching query set...")
-            q_items = tokenize_and_cache_corpus(
+            q_items = tokenize_batch_sentences(
                 tokenizer=self.tokenizers.q_tokenizer, corpus=q_corpus
             )
             # Write the cache

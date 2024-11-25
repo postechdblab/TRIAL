@@ -31,7 +31,8 @@ from eagle.search.plaid import PLAID
 from eagle.search.registry import SEARCHER_REGISTRY
 from eagle.tokenization.tokenizers import Tokenizers
 from eagle.utils import handle_old_ckpt, remove_key_with_none_value
-from scripts.utils import preprocess, pretty_print_tokens_with_their_indices
+
+# from scripts.utils import preprocess, pretty_print_tokens_with_their_indices
 
 CAPABILITY = torch.cuda.get_device_capability()
 
@@ -183,15 +184,15 @@ class LightningNewModel(L.LightningModule):
                         f"Q Token {i:2d}: {q_tok:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
                     )
 
-                print("Query tokens:")
-                pretty_print_tokens_with_their_indices(
-                    decoded_tokens=q_toks, max_tokens_per_line=20
-                )
-                print("Document tokens:")
-                pretty_print_tokens_with_their_indices(
-                    decoded_tokens=decoded_doc_tokens, max_tokens_per_line=20
-                )
-                print("")
+                # print("Query tokens:")
+                # pretty_print_tokens_with_their_indices(
+                #     decoded_tokens=q_toks, max_tokens_per_line=20
+                # )
+                # print("Document tokens:")
+                # pretty_print_tokens_with_their_indices(
+                #     decoded_tokens=decoded_doc_tokens, max_tokens_per_line=20
+                # )
+                # print("")
 
         return None
 

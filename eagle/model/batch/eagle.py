@@ -72,6 +72,8 @@ class BatchForEAGLE(BaseBatch):
 
     def _remove_redundant_phrase_ranges_queries(self) -> None:
         """Delete the redundant phrase ranges in the queries for memory saving."""
+        if self.phrase_ranges_queries is None:
+            return None
         # Get qids from the data
         if self.dataset.cfg_dataset.name == "beir-msmarco":
             required_qids: Set[str] = [
@@ -98,6 +100,8 @@ class BatchForEAGLE(BaseBatch):
 
     def _remove_redundant_phrase_ranges_corpus(self) -> None:
         """Delete the redundant phrase ranges in the corpus for memory saving."""
+        if self.phrase_ranges_corpus is None:
+            return None
         # Get doc ids from the data
         if self.dataset.cfg_dataset.name == "beir-msmarco":
             doc_ids: Set[int] = extract_pids_from_msmarco_data(self.dataset.data)
