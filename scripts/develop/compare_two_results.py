@@ -1,6 +1,8 @@
 import warnings
 
-warnings.simplefilter(action="ignore", category=FutureWarning)
+# Suppress all warnings
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
 import logging
 import os
 from typing import *
@@ -26,7 +28,7 @@ def detailed_comparison_with_qid(
     d_tokenizer: Tokenizer,
 ) -> None:
     # Inference
-    logger.info(f"Model1: ")
+    logger.info(f"{model1.model_name}: ")
     result1 = single_inference(
         model=model1,
         q_text=q_text,
@@ -34,7 +36,7 @@ def detailed_comparison_with_qid(
         q_tokenizer=q_tokenizer,
         d_tokenizer=d_tokenizer,
     )
-    logger.info(f"Model2: ")
+    logger.info(f"{model2.model_name}: ")
     result2 = single_inference(
         model=model2,
         q_text=q_text,
@@ -58,38 +60,113 @@ def detailed_comparison_with_qids(
     gold_pids_dic: Dict[str, List[int]],
 ) -> None:
     for qid_to_compare in qids_to_compare:
+        gold_pids: int = gold_pids_dic[qid_to_compare]
         gold_pid: int = gold_pids_dic[qid_to_compare][0]
         # Get the query and document texts
         query_sentences: List[str] = query_data[qid_to_compare]
         # Get the top-ranked document for model 1
-        top_ranked_pids1: List[int] = results1[qid_to_compare][1]
-        top_ranked_pids2: List[int] = results2[qid_to_compare][1]
-
+        retrieved_pids1: List[int] = results1[qid_to_compare][1]
+        retrieved_scores1: List[float] = results1[qid_to_compare][0]
+        retrieved_pids2: List[int] = results2[qid_to_compare][1]
+        retrieved_scores2: List[float] = results2[qid_to_compare][0]
+        # Location of the gold pid in the retrieved pids
+        model1_rank = (
+            retrieved_pids1.index(gold_pid) + 1 if gold_pid in retrieved_pids1 else -1
+        )
+        model2_rank = (
+            retrieved_pids2.index(gold_pid) + 1 if gold_pid in retrieved_pids2 else -1
+        )
         doc_sentences: List[str] = corpus_data[gold_pid]["text"]
         doc_title: str = corpus_data[gold_pid]["title"]
         # Create query and doc text
         q_text = " ".join(query_sentences)
-        d_text = " ".join(doc_sentences)
+        gold_d_text = " ".join(doc_sentences)
         if doc_title:
-            d_text = doc_title + " | " + d_text
-        detailed_comparison_with_qid(
-            model1=model1,
-            model2=model2,
-            q_text=q_text,
-            d_text=d_text,
-            q_tokenizer=q_tokenizer,
-            d_tokenizer=d_tokenizer,
-        )
-        stop = 1
-    stop = 1
+            gold_d_text = doc_title + ". " + gold_d_text
+
+        top_num_to_examine = 10
+        retrieved_pids_to_examine1 = retrieved_pids1[:top_num_to_examine]
+        retrieved_pids_to_examine2 = retrieved_pids2[:top_num_to_examine]
+        retrieved_scores_to_examine1 = retrieved_scores1[:top_num_to_examine]
+        retrieved_scores_to_examine2 = retrieved_scores2[:top_num_to_examine]
+        pids_only_from_model1 = [
+            item
+            for item in retrieved_pids_to_examine1
+            if item not in retrieved_pids_to_examine2
+        ]
+        pids_only_from_model2 = [
+            item
+            for item in retrieved_pids_to_examine2
+            if item not in retrieved_pids_to_examine1
+        ]
+
+        # Print the information
+        print("")
+        logger.info(f"QID: {qid_to_compare}")
+        logger.info(f"Gold pid: {gold_pid}")
+        logger.info(f"Model1 Rank: {model1_rank}")
+        logger.info(f"Model1 retrieved pids: {retrieved_pids_to_examine1}")
+        logger.info(f"Model1 retrieved scores: {retrieved_scores_to_examine1}")
+        logger.info(f"Model1 only pids: {pids_only_from_model1}")
+        logger.info(f"Model2 Rank: {model2_rank}")
+        logger.info(f"Model2 retrieved pids: {retrieved_pids_to_examine2}")
+        logger.info(f"Model2 retrieved scores: {retrieved_scores_to_examine2}")
+        logger.info(f"Model2 only pids: {pids_only_from_model2}")
+        logger.info(f"Query: {q_text}")
+        logger.info(f"Gold doc: {gold_d_text}")
+
+        while True:
+            pid_to_examine = input("Enter the pid to examine: ")
+            if pid_to_examine == "exit":
+                return None
+            if pid_to_examine == "pass":
+                break
+            try:
+                pid_to_examine = int(pid_to_examine)
+            except:
+                logger.error(f"Invalid pid: {pid_to_examine}")
+                continue
+
+            # Get the document text
+            target_d_sentences: List[str] = corpus_data[pid_to_examine]["text"]
+            target_d_title: str = corpus_data[pid_to_examine]["title"]
+            target_d_text = " ".join(target_d_sentences)
+            if target_d_title:
+                target_d_text = doc_title + ". " + target_d_text
+
+            detailed_comparison_with_qid(
+                model1=model1,
+                model2=model2,
+                q_text=q_text,
+                d_text=target_d_text,
+                q_tokenizer=q_tokenizer,
+                d_tokenizer=d_tokenizer,
+            )
     return None
+
+
+def load_model(model_ckpt_path: str) -> Tuple[LightningNewModel, DictConfig]:
+    # Load model
+    logger.info(f"Loading model from {model_ckpt_path}")
+    model = LightningNewModel.load_from_checkpoint(
+        checkpoint_path=model_ckpt_path, map_location="cuda:0"
+    )
+    model.eval()
+    return model
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:
     # Configs
-    eval_dir_path = cfg._global.eval_dir
     dataset_name = "beir-arguana"
+    model1_ckpt_path = "/root/EAGLE/runs/colbert/best_model.ckpt"
+    model2_ckpt_path = "/root/EAGLE/runs/eagle_weights/best_model.ckpt"
+    cfg.tokenizers.query.max_len = 300
+    # model1_ckpt_path = cfg.args.ckpt1
+    # model2_ckpt_path = cfg.args.ckpt2
+    # dataset_name = cfg.dataset.name
+
+    eval_dir_path = cfg._global.eval_dir
     query_path: str = os.path.join(
         cfg.dataset.dir_path, dataset_name, cfg.dataset.query_file
     )
@@ -99,19 +176,31 @@ def main(cfg: DictConfig) -> None:
     dev_file_path = os.path.join(
         cfg.dataset.dir_path, dataset_name, cfg.dataset.val.data_file
     )
-    model1 = "colbert"
-    model2 = "eagle"
-    tag1 = "colbert"
-    tag2 = "eagle_weights"
-    model1_ckpt_path = "/root/EAGLE/runs/colbert/best_model.ckpt"
-    model2_ckpt_path = "/root/EAGLE/runs/eagle_weights/best_model.ckpt"
+
+    # Load tokenizers
+    logger.info(f"Creating tokenizers for {cfg.model.backbone_name}")
+    q_tokenizer = Tokenizer(
+        cfg=cfg.tokenizers.query, model_name=cfg.model.backbone_name
+    )
+    d_tokenizer = Tokenizer(
+        cfg=cfg.tokenizers.document, model_name=cfg.model.backbone_name
+    )
+    # Load model 1
+    model1 = load_model(model1_ckpt_path)
+    model2 = load_model(model2_ckpt_path)
+
+    model1_name = model1.model.cfg.name
+    model2_name = model2.model.cfg.name
+
+    tag1 = model1.cfg.tag
+    tag2 = model2.cfg.tag
 
     # Read in the two result files
     result_file_1_path = os.path.join(
-        eval_dir_path, model1, f"{tag1}_{dataset_name}_details.json"
+        eval_dir_path, model1_name, f"{tag1}_{dataset_name}_details.json"
     )
     result_file_2_path = os.path.join(
-        eval_dir_path, model2, f"{tag2}_{dataset_name}_details.json"
+        eval_dir_path, model2_name, f"{tag2}_{dataset_name}_details.json"
     )
     logger.info(
         f"Reading result files from {result_file_1_path} and {result_file_2_path}"
@@ -168,28 +257,6 @@ def main(cfg: DictConfig) -> None:
         # Aggregate gold pids
         gold_pids_dic[qid] = gold_pids
 
-    # Load tokenizers
-    logger.info(f"Creating tokenizers for {cfg.model.backbone_name}")
-    q_tokenizer = Tokenizer(
-        cfg=cfg.tokenizers.query, model_name=cfg.model.backbone_name
-    )
-    d_tokenizer = Tokenizer(
-        cfg=cfg.tokenizers.document, model_name=cfg.model.backbone_name
-    )
-    # Load model 1
-    logger.info(f"Loading model 1 from {model1_ckpt_path}")
-    model1 = LightningNewModel.load_from_checkpoint(
-        checkpoint_path=model1_ckpt_path, map_location="cuda:0"
-    )
-    model1.eval()
-
-    # Load model 2
-    logger.info(f"Loading model 2 from {model2_ckpt_path}")
-    model2 = LightningNewModel.load_from_checkpoint(
-        checkpoint_path=model2_ckpt_path, map_location="cuda:1"
-    )
-    model2.eval()
-
     # Examine what model1 did better than model2
     detailed_comparison_with_qids(
         model1=model1,
@@ -198,7 +265,7 @@ def main(cfg: DictConfig) -> None:
         d_tokenizer=d_tokenizer,
         query_data=queries,
         corpus_data=corpus,
-        qids_to_compare=better1_qids,
+        qids_to_compare=better2_qids,
         results1=results1,
         results2=results2,
         gold_pids_dic=gold_pids_dic,

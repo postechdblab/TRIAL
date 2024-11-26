@@ -118,3 +118,9 @@ python scripts/analysis/pos_stats.py +ckpt_path=/root/EAGLE/runs/colbert/best_mo
 ```bash
 python scripts/analysis/index_stats.py
 ```
+
+# Development
+## Compare results of two different models
+```bash
+python scripts/develop/compare_two_results.py dataset.name=beir-arguana +args.ckpt1=${CKPT_PATH1} +args.ckpt2=${CKPT_PATH2}
+```

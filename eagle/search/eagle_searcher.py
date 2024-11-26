@@ -65,7 +65,12 @@ class EAGLESearcher(BaseSearcher):
             weight = q_tok_weight[b_idx]
 
             # Perform retrieval
-            retrieved_pids, scores, qd_scores, intermediate_pids = self.plaid(
+            (
+                retrieved_pids,
+                scores,
+                qd_scores,
+                intermediate_pids,
+            ) = self.plaid(
                 query_tok=query_tok,
                 tok_weight=weight,
                 mask=mask,
@@ -89,4 +94,9 @@ class EAGLESearcher(BaseSearcher):
             all_intermediate_pids.append((stage_1_pids, stage_2_pids, stage_3_pids))
             all_qd_scores.append(qd_scores)
 
-        return all_pids, all_scores, all_qd_scores, all_intermediate_pids
+        return (
+            all_pids,
+            all_scores,
+            all_qd_scores,
+            all_intermediate_pids,
+        )

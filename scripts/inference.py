@@ -51,13 +51,15 @@ def single_inference(
     }
 
     # Get the query-doc token similarity scores
-    if "intra_qd_scores" in results:
-        qd_scores = results["intra_qd_scores"].squeeze().transpose(0, 1)
+    if model.model.cfg.name == "colbert":
+        qd_sims = results["intra_qd_scores"].squeeze().transpose(0, 1)
         decoded_d_tokens = [
             d_tokenizer.decode(item) for item in preprocessed_document["tok_ids"][0]
         ]
-    else:
-        qd_scores = results["intra_qd_outer_scores"].squeeze().transpose(0, 1)
+        d_weights = None
+        q_weights = None
+    elif model.model.cfg.name == "eagle":
+        qd_sims = results["intra_qd_outer_scores"].squeeze().transpose(0, 1)
         # Concate tok, phrase, sent
         # Get sentence indices
         doc_toks = [
@@ -70,11 +72,19 @@ def single_inference(
             "_".join(doc_toks[s:e])
             for s, e in preprocessed_document["phrase_ranges"][0]
         ]
-        decoded_d_tokens = sent_start_toks + phrases + doc_toks
+        # decoded_d_tokens = sent_start_toks + phrases + doc_toks
+        decoded_d_tokens = doc_toks
+        d_weights = results["intra_selected_d_weights"].squeeze()
+        q_weights = results["intra_q_weights"].squeeze()
+    else:
+        raise ValueError(f"Invalid model name: {model.model.cfg.name}")
 
     # Find the max scores for each token
-    max_scores, max_indices = qd_scores.max(1)
-
+    if q_weights is None:
+        max_scores, max_indices = qd_sims.max(1)
+    else:
+        qd_scores = qd_sims * q_weights.unsqueeze(1) * d_weights.unsqueeze(1)
+        max_scores, max_indices = qd_scores.max(1)
     # Find the total score of the query-document
     total_score = max_scores.sum()
 
@@ -84,9 +94,17 @@ def single_inference(
     for i, (max_score, max_idx) in enumerate(zip(max_scores, max_indices)):
         query_token = q_tokenizer.decode(preprocessed_query["tok_ids"][0][i])
         doc_token = decoded_d_tokens[max_idx]
-        logger.info(
-            f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
-        )
+        if q_weights is None:
+            logger.info(
+                f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
+            )
+        else:
+            q_weight = q_weights[i]
+            d_weight = d_weights[i]
+            sim_score = qd_sims[i, max_idx]
+            logger.info(
+                f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.3f}) (sim:{sim_score:.3f}) (q_w:{q_weight:.3f}) (d_w:{d_weight:.3f})"
+            )
 
     # Print the document tokens with their indices
     decoded_q_tokens = [

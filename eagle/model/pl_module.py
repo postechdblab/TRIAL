@@ -96,6 +96,10 @@ class LightningNewModel(L.LightningModule):
         self.all_retrieved_pids: List[torch.Tensor] = []
 
     @property
+    def model_name(self) -> str:
+        return f"{self.model.cfg.name}-{self.model.cfg.tag}"
+
+    @property
     def is_test_reranking(self) -> bool:
         return not self.training and self.index_dir_path is None
 
