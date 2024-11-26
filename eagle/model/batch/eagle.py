@@ -47,8 +47,8 @@ class BatchForEAGLE(BaseBatch):
         )
         self.phrase_ranges_queries: List[List[Tuple[int, int]]] = phrase_ranges_queries
         self.phrase_ranges_corpus: List[List[Tuple[int, int]]] = phrase_ranges_corpus
-        self._remove_redundant_phrase_ranges_queries()
-        self._remove_redundant_phrase_ranges_corpus()
+        # self._remove_redundant_phrase_ranges_queries()
+        # self._remove_redundant_phrase_ranges_corpus()
 
     @property
     def phrase_ranges_queries_key_type(self) -> type:
@@ -72,6 +72,7 @@ class BatchForEAGLE(BaseBatch):
 
     def _remove_redundant_phrase_ranges_queries(self) -> None:
         """Delete the redundant phrase ranges in the queries for memory saving."""
+        logger.info("Removing redundant phrase ranges in the queries.")
         if self.phrase_ranges_queries is None:
             return None
         # Get qids from the data
@@ -100,6 +101,7 @@ class BatchForEAGLE(BaseBatch):
 
     def _remove_redundant_phrase_ranges_corpus(self) -> None:
         """Delete the redundant phrase ranges in the corpus for memory saving."""
+        logger.info(f"Removing redundant phrase ranges in the corpus.")
         if self.phrase_ranges_corpus is None:
             return None
         # Get doc ids from the data
