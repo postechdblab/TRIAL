@@ -36,6 +36,8 @@ class PLAID:
         self.d_weight_project_layer = d_weight_project_layer
         self.d_weight_layer_norm = d_weight_layer_norm
         self._set_embeddings_strided(indexer_name)
+        # Setting
+        self.use_higher_precision = True
         # For analysis
         self.timer = time_utils.Timer(
             class_name=self.__class__.__name__, func_name="search"
@@ -382,9 +384,13 @@ class PLAID:
                     d_tok_packed.dtype
                 )
 
-        # Convert data type if necessary
-        if query_tok.dtype != d_tok_packed.dtype:
-            query_tok = query_tok.to(d_tok_packed.dtype)
+        if self.use_higher_precision:
+            query_tok = query_tok.float()
+            d_tok_packed = d_tok_packed.float()
+        else:
+            # Convert data type if necessary
+            if query_tok.dtype != d_tok_packed.dtype:
+                query_tok = query_tok.to(d_tok_packed.dtype)
 
         # Compute scores
         max_scores_by_token, max_sim_by_token, element_wise_scores, max_key_tok_ids = (
