@@ -36,8 +36,8 @@ class BaseDataset:
         self.tokenized_queries = tokenized_queries
         self.tokenized_corpus = tokenized_corpus
         # Remove redundant tokenized queries
-        self._remove_redundant_tokenized_queries()
-        self._remove_redundant_tokenized_corpus()
+        # self._remove_redundant_tokenized_queries()
+        # self._remove_redundant_tokenized_corpus()
 
     def __len__(self) -> int:
         return len(self.data)
@@ -111,13 +111,17 @@ class BaseDataset:
         raise NotImplementedError("Implement this method in the child class.")
 
     def _read_data(self, path: str) -> List[List[int]]:
+        logger.info(f"Reading data from {path}")
         data: List = file_utils.read_json_file(path, auto_detect_extension=True)
+        logger.info(f"Loaded {len(data)} data.")
         # Sample data if needed
         sample_size = (
             self.cfg.debug_sample_size if self.cfg.is_debug else self.cfg.sample_size
         )
         if sample_size > 0:
+            logger.info(f"Sampling {sample_size} data.")
             data = data[:sample_size]
+            logger.info(f"Sampled {len(data)} data.")
         return data
 
     def shuffle_indices_to_avoid_qid_repetition(

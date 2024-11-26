@@ -107,6 +107,7 @@ class ContrastiveDataset(BaseDataset):
 
     def _remove_redundant_tokenized_queries(self) -> None:
         """Delete redundant tokenized queries for memory saving."""
+        logger.info("Removing redundant tokenized queries.")
         if self.tokenized_queries is None:
             return None
         # Get qids from the data
@@ -127,6 +128,7 @@ class ContrastiveDataset(BaseDataset):
 
     def _remove_redundant_tokenized_corpus(self) -> None:
         """Delete redundant tokenized corpus for memory saving."""
+        logger.info(f"Removing redundant tokenized corpus.")
         if self.tokenized_corpus is None:
             return None
         # Get doc ids from the data

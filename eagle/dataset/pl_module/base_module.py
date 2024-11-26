@@ -276,7 +276,9 @@ class BaseDataModule(L.LightningDataModule):
         # Load tokenized queries and corpus
         logger.info(f"Loading tokenized queries and corpus...")
         tokenized_corpus = read_compressed(self.target_tokenized_corpus_cache_path)
+        logger.info(f"Loaded {len(tokenized_corpus)} tokenized documents")
         tokenized_queries = read_compressed(self.target_tokenized_queries_cache_path)
+        logger.info(f"Loaded {len(tokenized_queries)} tokenized queries")
 
         # Config whether to use phrase ranges
         is_use_phrase = (
@@ -287,12 +289,17 @@ class BaseDataModule(L.LightningDataModule):
         # Load phrase ranges for queries and corpus
         phrase_ranges_queries = phrase_ranges_corpus = None
         if is_use_phrase:
+            logger.info(f"Loading phrase ranges for queries and corpus...")
             phrase_ranges_queries = file_utils.read_pickle_file(
                 self.target_q_phrase_range_path
+            )
+            logger.info(
+                f"Loaded {len(phrase_ranges_queries)} phrase ranges for queries"
             )
             phrase_ranges_corpus = file_utils.read_pickle_file(
                 self.target_d_phrase_range_path
             )
+            logger.info(f"Loaded {len(phrase_ranges_corpus)} phrase ranges for corpus")
 
         # Load train and val data
         train_dataset = None
@@ -306,8 +313,9 @@ class BaseDataModule(L.LightningDataModule):
             tokenized_corpus=tokenized_corpus,
         )
         # Remove redundant tokenized data for memory saving
-        del tokenized_queries
-        del tokenized_corpus
+        # logger.info(f"Removing redundant tokenized data for memory saving...")
+        # del tokenized_queries
+        # del tokenized_corpus
 
         # Shuffle data to avoid qid repetition in the mini-batch
         if not self.is_debug and not self.skip_train:
@@ -326,6 +334,7 @@ class BaseDataModule(L.LightningDataModule):
             add_kwargs["phrase_ranges_corpus"] = phrase_ranges_corpus
 
         # Create Dataset Batch
+        logger.info(f"Creating dataset batch...")
         train_batch = None
         if not self.skip_train:
             train_batch = self.data_batching_cls(
@@ -342,10 +351,12 @@ class BaseDataModule(L.LightningDataModule):
             **add_kwargs,
         )
         # Remove redundant phrase ranges for memory saving
-        del phrase_ranges_queries
-        del phrase_ranges_corpus
+        # logger.info(f"Removing redundant phrase ranges for memory saving...")
+        # del phrase_ranges_queries
+        # del phrase_ranges_corpus
 
         # Save datasets
+        logger.info(f"Datasets loaded and ready!")
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.test_dataset = val_dataset
