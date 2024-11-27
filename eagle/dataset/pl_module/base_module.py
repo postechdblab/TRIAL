@@ -284,6 +284,7 @@ class BaseDataModule(L.LightningDataModule):
         is_use_phrase = (
             self.cfg_global.model.name == "eagle"
             and self.cfg_global.model.sim_type in ["combination", "inner_agg"]
+            and self.cfg_global.model.use_phrase_level
         )
 
         # Load phrase ranges for queries and corpus
