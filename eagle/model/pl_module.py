@@ -205,6 +205,7 @@ class LightningNewModel(L.LightningModule):
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
+
         # Get the gold document ids if use_oracle_candidate is True
         pos_doc_ids = None
         if self.use_oracle_candidate:
@@ -431,12 +432,16 @@ class LightningNewModel(L.LightningModule):
                 gathered_intermediate_metrics,
                 intermediate_acc_result_path,
             )
-            file_utils.write_json_file(
-                self.searcher.timer.summarize_measured_times(silent=True, in_dict=True),
-                speed_result_path,
-            )
+            if self.searcher is not None:
+                file_utils.write_json_file(
+                    self.searcher.timer.summarize_measured_times(
+                        silent=True, in_dict=True
+                    ),
+                    speed_result_path,
+                )
             # Print the evaluation results
-            self.searcher.timer.summarize_measured_times()
+            if self.searcher is not None:
+                self.searcher.timer.summarize_measured_times()
             print("Intermediate results:")
             print(json.dumps(gathered_intermediate_metrics, indent=4))
             print(f"\nFinal results (Total data: {total_data_num}):")
