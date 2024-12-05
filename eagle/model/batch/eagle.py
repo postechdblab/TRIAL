@@ -39,7 +39,6 @@ class BatchForEAGLE(BaseBatch):
         phrase_ranges_queries=None,
         phrase_ranges_corpus=None,
     ):
-        assert not pad_to_max_length, "Padding to max length is not supported yet."
         super().__init__(
             dataset=dataset,
             skip_tok_ids=skip_tok_ids,

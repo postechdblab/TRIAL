@@ -238,49 +238,35 @@ class EAGLE(BaseModel):
             is_inference=is_inference,
         )
 
+        # Compute scores
         (
             intra_scores,
             inter_scores,
             intra_qd_inner_scores,
             intra_qd_outer_scores,
             intra_selected_d_weights,
-        ) = self.interaction_with_relation(
+        ) = self.compute_scores(
+            q_sent=q_sent_projected,
+            q_phrase=q_phrase_projected,
             q_tok=q_tok_projected,
-            q_tok_weight=q_tok_weight,
+            d_sent=d_sent_projected,
+            d_phrase=d_phrase_projected,
             d_tok=d_tok_projected,
-            d_tok_weight=d_tok_weight_intra,
-            q_scale_factors=q_tok_scale_factor,
+            q_tok_weight=q_tok_weight,
+            q_phrase_weight=q_phrase_weight,
+            d_tok_weight_intra=d_tok_weight_intra,
+            d_tok_weight_inter=d_tok_weight_inter,
+            d_phrase_weight_intra=d_phrase_weight_intra,
+            d_phrase_weight_inter=d_phrase_weight_inter,
+            d_sent_weight_inter=d_sent_weight_inter,
+            d_sent_weight_intra=d_sent_weight_intra,
+            q_scatter_indices=q_phrase_scatter_indices,
+            q_tok_scale_factor=q_tok_scale_factor,
+            q_phrase_scale_factor=q_phrase_scale_factor,
+            q_sent_scale_factor=q_sent_scale_factor,
+            is_inference=is_inference,
+            return_element_wise_scores=is_analyze,
         )
-
-        # (
-        #     intra_scores,
-        #     inter_scores,
-        #     intra_qd_inner_scores,
-        #     intra_qd_outer_scores,
-        #     intra_selected_d_weights,
-        # ) = self.multi_granularity_interaction(
-        #     q_sent=q_sent_projected,
-        #     q_phrase=q_phrase_projected,
-        #     q_tok=q_tok_projected,
-        #     d_sent=d_sent_projected,
-        #     d_phrase=d_phrase_projected,
-        #     d_tok=d_tok_projected,
-        #     q_tok_weight=q_tok_weight,
-        #     q_phrase_weight=q_phrase_weight,
-        #     d_tok_weight_intra=d_tok_weight_intra,
-        #     d_tok_weight_inter=d_tok_weight_inter,
-        #     d_phrase_weight_intra=d_phrase_weight_intra,
-        #     d_phrase_weight_inter=d_phrase_weight_inter,
-        #     d_sent_weight_inter=d_sent_weight_inter,
-        #     d_sent_weight_intra=d_sent_weight_intra,
-        #     q_scatter_indices=q_phrase_scatter_indices,
-        #     q_tok_scale_factor=q_tok_scale_factor,
-        #     q_phrase_scale_factor=q_phrase_scale_factor,
-        #     q_sent_scale_factor=q_sent_scale_factor,
-        #     is_inference=is_inference,
-        #     return_element_wise_scores=is_analyze,
-        # )
-
         # Compute loss
         device = intra_scores.device
         loss, intra_loss, inter_loss, kl_loss = compute_loss(
@@ -752,7 +738,7 @@ class EAGLE(BaseModel):
             sent_weights_inter,
         )
 
-    def multi_granularity_interaction(
+    def compute_scores(
         self,
         q_sent: torch.Tensor,
         q_phrase: torch.Tensor,
@@ -766,21 +752,19 @@ class EAGLE(BaseModel):
         d_tok_weight_inter: torch.Tensor,
         d_phrase_weight_intra: torch.Tensor,
         d_phrase_weight_inter: torch.Tensor,
-        d_sent_weight_intra: torch.Tensor,
         d_sent_weight_inter: torch.Tensor,
+        d_sent_weight_intra: torch.Tensor,
         q_scatter_indices: torch.Tensor,
-        q_tok_scale_factor: Optional[torch.Tensor] = None,
-        q_phrase_scale_factor: Optional[torch.Tensor] = None,
-        q_sent_scale_factor: Optional[torch.Tensor] = None,
+        q_tok_scale_factor: torch.Tensor,
+        q_phrase_scale_factor: torch.Tensor,
+        q_sent_scale_factor: torch.Tensor,
         is_inference: bool = False,
         return_element_wise_scores: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        # Configs
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]
+    ]:
+        # Configurations
         bsize, q_tok_len, q_dim = q_tok.shape
-        if d_sent_weight_inter is None:
-            sent_inter_max_len = None
-        else:
-            _, sent_inter_max_len, _ = d_sent_weight_inter.shape
         nway = d_tok.shape[0] // bsize
         ib_nhard = nway // bsize
         repeat_num_for_inter = ib_nhard * (bsize - 1) + 1
@@ -792,211 +776,109 @@ class EAGLE(BaseModel):
             device=d_sent.device,
         )
 
-        # Combine document vectors and weights for intra and inter comparison
-        d_weights_inter = None
-        d_weights_intra = None
-        if self.use_multi_doc_granularity:
-            d_vecs_intra = torch.cat([d_sent, d_phrase, d_tok], dim=1)
-            if self.is_use_d_weight:
-                d_weights_intra = torch.cat(
-                    [d_sent_weight_intra, d_phrase_weight_intra, d_tok_weight_intra],
-                    dim=1,
-                )
-            if not is_inference:
-                d_vecs_inter = torch.cat(
-                    [d_sent[:, :sent_inter_max_len, :], d_phrase, d_tok], dim=1
-                )
-                if self.is_use_d_weight:
-                    d_weights_inter = torch.cat(
-                        [
-                            d_sent_weight_inter,
-                            d_phrase_weight_inter,
-                            d_tok_weight_inter,
-                        ],
-                        dim=1,
-                    )
-        else:
-            d_vecs_intra = d_tok
-            d_weights_intra = d_tok_weight_intra
-            if not is_inference:
-                d_vecs_inter = d_tok
-                d_weights_inter = d_tok_weight_inter
+        # Prepare intra scores
+        q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
+        q_scale_factors_intra = q_tok_scale_factor.repeat_interleave(nway, dim=0)
 
-        # Compute similarity scores
-        assert self.sim_type in [
-            "combination",
-            "outer_agg",
-            "inner_agg",
-        ], f"Invalid sim_type: {self.sim_type}"
-        intra_sim_outer_elementwise_scores = None
-        if self.sim_type in ["combination", "outer_agg"]:
-            # Repeat the query vectors for intra comparison
-            q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
+        q_weight_intra = None
+        if q_tok_weight is not None:
             q_weight_intra = q_tok_weight.repeat_interleave(nway, dim=0)
-            q_scatter_indices_intra = None
-            if self.use_phrase_level and q_scatter_indices is not None:
-                q_scatter_indices_intra = q_scatter_indices.repeat_interleave(
-                    nway, dim=0
-                )
-            q_scale_factors_intra = q_tok_scale_factor.repeat_interleave(nway, dim=0)
+        q_scatter_indices_intra = None
+        if self.use_phrase_level and q_scatter_indices is not None:
+            q_scatter_indices_intra = q_scatter_indices.repeat_interleave(nway, dim=0)
 
-            # Repeat the query vectors for inter comparison
-            if not is_inference:
-                q_vecs_inter = q_tok.repeat_interleave(repeat_num_for_inter, dim=0)
+        # Compute intra scores
+        if self.use_multi_doc_granularity:
+            (
+                intra_sim_scores,
+                intra_sim_elementwise_scores,
+                intra_sim_selected_d_weights,
+            ) = self.multi_granularity_interaction()
+        else:
+            (
+                intra_sim_scores,
+                intra_sim_elementwise_scores,
+                intra_sim_selected_d_weights,
+            ) = self.token_interaction_with_relation(
+                q_tok=q_vecs_intra,
+                q_tok_weight=q_weight_intra,
+                d_tok=d_tok,
+                q_scale_factors=q_scale_factors_intra,
+                return_element_wise_scores=return_element_wise_scores,
+            )
+
+        if not is_inference:
+            # Prepare inter scores
+            q_vecs_inter = q_tok.repeat_interleave(repeat_num_for_inter, dim=0)
+            q_scale_factors_inter = q_tok_scale_factor.repeat_interleave(
+                repeat_num_for_inter, dim=0
+            )
+            q_weight_inter = None
+            if q_tok_weight is not None:
                 q_weight_inter = q_tok_weight.repeat_interleave(
                     repeat_num_for_inter, dim=0
                 )
-                q_scatter_indices_inter = None
-                if self.use_phrase_level and q_scatter_indices is not None:
-                    q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
-                        repeat_num_for_inter, dim=0
-                    )
-                q_scale_factors_inter = q_tok_scale_factor.repeat_interleave(
+            q_scatter_indices_inter = None
+            if self.use_phrase_level and q_scatter_indices is not None:
+                q_scatter_indices_inter = q_scatter_indices.repeat_interleave(
                     repeat_num_for_inter, dim=0
                 )
-                selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
+            selected_d_vecs_inter: torch.Tensor = d_tok[d_inter_indices]
 
-            # Compute intra query scores through outer aggregation (i.e., token-level vector similarity)
-            (
-                intra_sim_scores_outer,
-                intra_sim_outer_elementwise_scores,
-                intra_sim_outer_selected_d_weights,
-            ) = self.compute_outer_sim(
-                q_vecs=q_vecs_intra,
-                q_weights=q_weight_intra,
-                q_scatter_indices=q_scatter_indices_intra,
-                q_scale_factors=q_scale_factors_intra,
-                d_vecs=d_vecs_intra,
-                d_weights=d_weights_intra,
-                return_element_wise_scores=return_element_wise_scores,
-                use_sum_instead_of_max=not is_inference and self.use_sum_when_training,
-            )
-
-            # Compute inter query scores through outer aggregation (i.e., token-level vector similarity)
-            if not is_inference:
+            # Compute inter scores
+            if self.use_multi_doc_granularity:
                 (
-                    inter_sim_scores_outer,
-                    inter_sim_outer_elementwise_scores,
-                    inter_sim_outer_selected_d_weights,
-                ) = self.compute_outer_sim(
-                    q_vecs=q_vecs_inter,
-                    q_weights=q_weight_inter,
-                    q_scatter_indices=q_scatter_indices_inter,
+                    inter_sim_scores,
+                    inter_sim_elementwise_scores,
+                    inter_sim_selected_d_weights,
+                ) = self.multi_granularity_interaction()
+            else:
+                (
+                    inter_sim_scores,
+                    inter_sim_elementwise_scores,
+                    inter_sim_selected_d_weights,
+                ) = self.token_interaction_with_relation(
+                    q_tok=q_vecs_inter,
+                    q_tok_weight=q_weight_inter,
+                    d_tok=selected_d_vecs_inter,
                     q_scale_factors=q_scale_factors_inter,
-                    d_vecs=selected_d_vecs_inter,
-                    d_weights=d_weights_inter,
                     return_element_wise_scores=return_element_wise_scores,
-                    use_sum_instead_of_max=not is_inference
-                    and self.use_sum_when_training,
                 )
 
-        intra_sim_inner_elementwise_scores = None
-        # if self.sim_type in ["combination", "inner_agg"]:
-        #     # Repeat the query vectors for intra comparison
-        #     q_vecs_intra = q_phrase.repeat_interleave(nway, dim=0)
-        #     q_weight_intra = q_phrase_weight.repeat_interleave(nway, dim=0)
-        #     q_scale_factors_intra = q_phrase_scale_factor.repeat_interleave(nway, dim=0)
-
-        #     # Repeat the query vectors for inter comparison
-        #     if not is_inference:
-        #         q_vecs_inter = q_phrase.repeat_interleave(repeat_num_for_inter, dim=0)
-        #         q_weight_inter = q_phrase_weight.repeat_interleave(
-        #             repeat_num_for_inter, dim=0
-        #         )
-        #         q_scale_factors_inter = q_phrase_scale_factor.repeat_interleave(
-        #             repeat_num_for_inter, dim=0
-        #         )
-        #         selected_d_vecs_inter: torch.Tensor = d_vecs_inter[d_inter_indices]
-
-        #     # Compute intra query scores through inner aggregation (i.e., phrase-level vector similarity)
-        #     (
-        #         intra_sim_scores_inner,
-        #         intra_sim_inner_elementwise_scores,
-        #         intra_sim_inner_selected_d_weights,
-        #     ) = self.compute_inner_sim(
-        #         q_vecs=q_vecs_intra,
-        #         q_weights=q_weight_intra,
-        #         q_scale_factors=q_scale_factors_intra,
-        #         d_vecs=d_vecs_intra,
-        #         d_weights=d_weights_intra,
-        #         return_element_wise_scores=return_element_wise_scores,
-        #         use_sum_instead_of_max=not is_inference and self.use_sum_when_training,
-        #     )
-
-        #     # Compute inter query scores through inner aggregation (i.e., phrase-level vector similarity)
-        #     if not is_inference:
-        #         (
-        #             inter_sim_scores_inner,
-        #             inter_sim_inner_elementwise_scores,
-        #             inter_sim_inner_selected_d_weights,
-        #         ) = self.compute_inner_sim(
-        #             q_vecs=q_vecs_inter,
-        #             q_weights=q_weight_inter,
-        #             q_scale_factors=q_scale_factors_inter,
-        #             d_vecs=selected_d_vecs_inter,
-        #             d_weights=d_weights_inter,
-        #             return_element_wise_scores=return_element_wise_scores,
-        #             use_sum_instead_of_max=not is_inference
-        #             and self.use_sum_when_training,
-        #         )
-
-        # # Compute the final scores
-        # inter_sim_scores = None
-        # inter_sim_selcted_d_weights = None
-        # if self.sim_type == "combination":
-        #     intra_sim_scores = torch.max(intra_sim_scores_outer, intra_sim_scores_inner)
-        #     if not is_inference:
-        #         inter_sim_scores = torch.max(
-        #             inter_sim_scores_outer, inter_sim_scores_inner
-        #         )
-        #     if self.is_use_d_weight:
-        #         raise NotImplementedError("Need to handle selected_d_weights")
-        # elif self.sim_type == "outer_agg":
-        #     intra_sim_scores = intra_sim_scores_outer
-        #     intra_sim_selected_d_weights = intra_sim_outer_selected_d_weights
-        #     if not is_inference:
-        #         inter_sim_scores = inter_sim_scores_outer
-        #         inter_sim_selcted_d_weights = inter_sim_outer_selected_d_weights
-        # else:
-        # intra_sim_scores = intra_sim_scores_inner
-        # intra_sim_selected_d_weights = intra_sim_inner_selected_d_weights
-        # if not is_inference:
-        #     inter_sim_scores = inter_sim_scores_inner
-        #     inter_sim_selcted_d_weights = inter_sim_inner_selected_d_weights
-        intra_sim_scores = intra_sim_scores_outer
-        intra_sim_selected_d_weights = intra_sim_outer_selected_d_weights
-        if not is_inference:
-            inter_sim_scores = inter_sim_scores_outer
-            inter_sim_selcted_d_weights = inter_sim_outer_selected_d_weights
+        # Format the results
+        intra_sim_scores = intra_sim_scores
+        inter_sim_scores = inter_sim_scores
 
         return (
             intra_sim_scores,
             inter_sim_scores,
-            intra_sim_inner_elementwise_scores,
-            intra_sim_outer_elementwise_scores,
+            intra_sim_elementwise_scores,
+            inter_sim_elementwise_scores,
             intra_sim_selected_d_weights,
         )
 
-    def interaction_with_relation(
+    def multi_granularity_interaction(
+        self, *args, **kwargs
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+        raise NotImplementedError("TODO: Implement multi-granularity interaction")
+
+    def token_interaction_with_relation(
         self,
         q_tok: torch.Tensor,
         q_tok_weight: torch.Tensor,
         d_tok: torch.Tensor,
-        d_tok_weight: torch.Tensor,
         q_scale_factors: torch.Tensor,
-    ):
-        nway = d_tok.shape[0] // q_tok.shape[0]
-        # Repeat the query vectors for intra comparison
-        q_tok = q_tok.repeat_interleave(nway, dim=0)
-        q_tok_weight = q_tok_weight.repeat_interleave(nway, dim=0)
-        q_scale_factors = q_scale_factors.repeat_interleave(nway, dim=0)
+        return_element_wise_scores: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Literal[None]]:
+        # Configurations
+        q_tok_len = q_tok.shape[1]
 
         # Compute the similarity matrix between query tokens and document tokens
         element_wise_scores = d_tok @ q_tok.transpose(-2, -1)
 
         # Compute the relation embedding for each query token pairs
-        first_toks_in_pairs = q_tok[:, torch.arange(0, q_tok.shape[1] - 1)]
-        second_toks_in_pairs = q_tok[:, torch.arange(1, q_tok.shape[1])]
+        first_toks_in_pairs = q_tok[:, torch.arange(0, q_tok_len - 1)]
+        second_toks_in_pairs = q_tok[:, torch.arange(1, q_tok_len)]
         q_tok_pair_embs = torch.cat(
             (first_toks_in_pairs, second_toks_in_pairs),
             dim=2,
@@ -1004,10 +886,11 @@ class EAGLE(BaseModel):
         # Forward the relation embeddings to the MLP
         encoded_q_relations: torch.Tensor = self.relation_encoder(q_tok_pair_embs)
 
-        # Find the maximum similarity with relation in considere
+        # Find the maximum similarity with relation in considered sequentially
         max_values_batch: List[torch.Tensor] = []
         max_indices_batch: List[torch.Tensor] = []
-        for q_tok_idx in range(q_tok.shape[1]):
+        element_wise_scores_with_relation_batch: List[torch.Tensor] = []
+        for q_tok_idx in range(q_tok_len):
             # Find the maximum similarity with relation in considered
             selected_element_wise_scores = element_wise_scores[:, :, q_tok_idx]
             if q_tok_idx == 0:
@@ -1054,11 +937,27 @@ class EAGLE(BaseModel):
                     dim=1
                 )
 
+            # Apply the query weight if it exists
+            if q_tok_weight is not None:
+                max_value = max_value * q_tok_weight[:, q_tok_idx].squeeze(-1)
+
             # Save the maximum value and index
             max_values_batch.append(max_value)
             max_indices_batch.append(max_idx)
+            if return_element_wise_scores:
+                element_wise_scores_with_relation_batch.append(
+                    selected_element_wise_scores_with_relation
+                )
 
-        raise NotImplementedError("TODO")
+        # Stack the maximum value and index
+        max_values = torch.stack(max_values_batch).transpose(0, 1)
+        max_indices = torch.stack(max_indices_batch).transpose(0, 1)
+
+        # Compute the final scores
+        sim_scores = max_values.sum(dim=1)
+        sim_scores = sim_scores * q_scale_factors
+
+        return sim_scores, element_wise_scores_with_relation_batch, None
 
     def compute_outer_sim(
         self,
