@@ -1028,7 +1028,7 @@ class EAGLE(BaseModel):
         q_weights: torch.Tensor = None,
         d_weights: torch.Tensor = None,
         return_element_wise_scores: bool = False,
-        is_training: bool = False,
+        use_sum_instead_of_max: bool = False,
     ) -> torch.Tensor:
         if return_element_wise_scores:
             # Compute similarity scores for each q vectors and d vectors
@@ -1040,7 +1040,7 @@ class EAGLE(BaseModel):
             if d_weights is not None:
                 element_wise_scores = element_wise_scores * d_weights
             # Find the maximum similarity scores for each query vectors
-            if is_training:
+            if use_sum_instead_of_max:
                 max_scores_info = element_wise_scores.sum(dim=1)
             else:
                 max_scores_info = element_wise_scores.max(dim=1)
@@ -1062,7 +1062,7 @@ class EAGLE(BaseModel):
                 d_vecs = d_vecs * d_weights
             # Compute similarity scores for each q vectors and d vectors
             element_wise_scores = d_vecs @ q_vecs.transpose(-2, -1)
-            if is_training:
+            if use_sum_instead_of_max:
                 max_q_scores = element_wise_scores.sum(dim=1)
             else:
                 max_q_scores = element_wise_scores.max(dim=1).values
