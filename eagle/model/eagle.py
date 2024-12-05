@@ -104,7 +104,8 @@ class EAGLE(BaseModel):
         # Related to the relation between tokens
         self.relation_encoder = torch.nn.Sequential(
             torch.nn.Linear(cfg.out_dim * 2, cfg.out_dim),
-            torch.nn.ReLU(),
+            torch.nn.LayerNorm(cfg.out_dim),
+            torch.nn.Mish(),
             torch.nn.Linear(cfg.out_dim, cfg.out_dim),
         )
         self.relation_scale_factor = cfg.relation_scale_factor
@@ -844,10 +845,6 @@ class EAGLE(BaseModel):
                     q_scale_factors=q_scale_factors_inter,
                     return_element_wise_scores=return_element_wise_scores,
                 )
-
-        # Format the results
-        intra_sim_scores = intra_sim_scores
-        inter_sim_scores = inter_sim_scores
 
         return (
             intra_sim_scores,

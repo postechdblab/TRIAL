@@ -31,6 +31,7 @@ torch.set_float32_matmul_precision("high")
 logger = logging.getLogger("PL_Trainer")
 
 torch._dynamo.config.optimize_ddp = False
+torch._dynamo.config.cache_size_limit = 64
 
 
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
