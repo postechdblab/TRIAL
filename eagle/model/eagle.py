@@ -774,7 +774,7 @@ class EAGLE(BaseModel):
             nway,
             ib_nhard,
             return_as_tensor=True,
-            device=d_sent.device,
+            device=d_tok.device,
         )
 
         # Prepare intra scores
