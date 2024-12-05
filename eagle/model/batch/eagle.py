@@ -249,12 +249,13 @@ class BatchForEAGLE(BaseBatch):
 
         # Create sentence masks
         doc_sent_mask = None
-        q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
-        if is_to_encode_doc and doc_sent_start_indices is not None:
-            doc_sent_mask = [
-                torch.zeros(len(dssi), dtype=torch.bool).float()
-                for dssi in doc_sent_start_indices
-            ]
+        q_sent_mask = None
+        # q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
+        # if is_to_encode_doc and doc_sent_start_indices is not None:
+        #     doc_sent_mask = [
+        #         torch.zeros(len(dssi), dtype=torch.bool).float()
+        #         for dssi in doc_sent_start_indices
+        #     ]
 
         return {
             "qid": qid,
