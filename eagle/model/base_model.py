@@ -75,6 +75,11 @@ class BaseModel(torch.nn.Module):
             found_params = []
             for name, param in self.named_parameters():
                 # Check the name exists in the loaded params
+                if name not in renamed_params:
+                    logger.warning(
+                        f"Cannot find {name} in the loaded params. Skipping.."
+                    )
+                    continue
                 assert (
                     name in renamed_params
                 ), f"Cannot find {name} in the loaded params"
