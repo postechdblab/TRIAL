@@ -9,7 +9,7 @@ quantization_bit: 8
 is_use_lora: False
 # ideas
 is_use_q_weight: True
-is_use_d_weight: True
+is_use_d_weight: False
 sim_type: combination
 # sim_type: inner_agg
 # sim_type: outer_agg
