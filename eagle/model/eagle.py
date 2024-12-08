@@ -104,14 +104,15 @@ class EAGLE(BaseModel):
         self.regularization = self.__create_regularization_func(
             strategy=cfg.w_regularize_strategy
         )
-
-        # Related to the relation between tokens
-        self.relation_encoder = torch.nn.Sequential(
-            torch.nn.Linear(cfg.out_dim * 2, cfg.out_dim),
-            torch.nn.LayerNorm(cfg.out_dim),
-            torch.nn.Mish(),
-            torch.nn.Linear(cfg.out_dim, cfg.out_dim),
-        )
+        self.relation_encoder = None
+        if self.use_relation:
+            # Related to the relation between tokens
+            self.relation_encoder = torch.nn.Sequential(
+                torch.nn.Linear(cfg.out_dim * 2, cfg.out_dim),
+                torch.nn.LayerNorm(cfg.out_dim),
+                torch.nn.Mish(),
+                torch.nn.Linear(cfg.out_dim, cfg.out_dim),
+            )
 
         # TODO: Move the post processing to the base class
         self.load_checkpoint()
