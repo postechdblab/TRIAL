@@ -145,9 +145,12 @@ class BatchForEAGLE(BaseBatch):
             q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
                 q_tok_ids
             )
-            doc_tok_ids = self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
-                doc_tok_ids
-            )
+            if is_to_encode_doc:
+                doc_tok_ids = (
+                    self.dataset.tokenizers.d_tokenizer.pad_sequence_by_max_len(
+                        doc_tok_ids
+                    )
+                )
 
         # Get phrase ranges
         q_phrase_ranges = None
