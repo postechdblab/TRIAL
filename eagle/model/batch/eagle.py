@@ -39,7 +39,6 @@ class BatchForEAGLE(BaseBatch):
         phrase_ranges_queries=None,
         phrase_ranges_corpus=None,
     ):
-        assert not pad_to_max_length, "Padding to max length is not supported yet."
         super().__init__(
             dataset=dataset,
             skip_tok_ids=skip_tok_ids,
@@ -250,12 +249,13 @@ class BatchForEAGLE(BaseBatch):
 
         # Create sentence masks
         doc_sent_mask = None
-        q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
-        if is_to_encode_doc and doc_sent_start_indices is not None:
-            doc_sent_mask = [
-                torch.zeros(len(dssi), dtype=torch.bool).float()
-                for dssi in doc_sent_start_indices
-            ]
+        q_sent_mask = None
+        # q_sent_mask = torch.zeros(len(q_sent_start_indices), dtype=torch.bool).float()
+        # if is_to_encode_doc and doc_sent_start_indices is not None:
+        #     doc_sent_mask = [
+        #         torch.zeros(len(dssi), dtype=torch.bool).float()
+        #         for dssi in doc_sent_start_indices
+        #     ]
 
         return {
             "qid": qid,
@@ -265,14 +265,16 @@ class BatchForEAGLE(BaseBatch):
             "q_phrase_mask": q_phrase_mask,
             "q_sent_mask": q_sent_mask,
             "q_phrase_scatter_indices": q_phrase_scatter_indices,
-            "q_sent_start_indices": q_sent_start_indices,
+            # "q_sent_start_indices": q_sent_start_indices,
+            "q_sent_start_indices": None,
             "doc_tok_ids": doc_tok_ids,
             "doc_tok_att_mask": doc_tok_att_mask,
             "doc_tok_mask": doc_tok_mask,
             "doc_phrase_mask": doc_phrase_mask,
             "doc_sent_mask": doc_sent_mask,
             "doc_phrase_scatter_indices": doc_phrase_scatter_indices,
-            "doc_sent_start_indices": doc_sent_start_indices,
+            "doc_sent_start_indices": None,
+            # "doc_sent_start_indices": doc_sent_start_indices,
             "labels": labels,
             "distillation_scores": distillation_scores,
             "pos_doc_ids": pos_doc_ids,
