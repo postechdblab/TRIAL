@@ -3,15 +3,11 @@ from typing import *
 import torch
 
 
-from eagle.search.strided_tensor import StridedTensor
-
-
 def compute_sum_maxsim(
     q_encoded: torch.Tensor,
     k_encoded: torch.Tensor,
     q_mask: Optional[torch.Tensor] = None,
     k_mask: Optional[torch.Tensor] = None,
-    k_lengths: Optional[torch.Tensor] = None,
     return_max_scores: bool = False,
     return_element_wise_scores: bool = False,
     k_ids: Optional[torch.Tensor] = None,
@@ -35,7 +31,6 @@ def compute_sum_maxsim(
         q_encoded=q_encoded,
         k_encoded=k_encoded,
         k_mask=k_mask,
-        k_lengths=k_lengths,
         return_element_wise_scores=return_element_wise_scores,
         is_debug=k_ids is not None,
     )
@@ -57,12 +52,9 @@ def compute_sum_maxsim(
         sum_maxsim_scores = sum_maxsim_scores[:, 0]
 
     if k_ids is not None:
-        k_ids_strided, k_ids_mask = StridedTensor(
-            k_ids, k_lengths, use_gpu=True
-        ).as_padded_tensor()
         max_key_tok_ids = []
-        for b_idx in range(k_ids_strided.shape[0]):
-            max_key_tok_ids.append(k_ids_strided[b_idx][max_sim_indices[b_idx]])
+        for b_idx in range(k_ids.shape[0]):
+            max_key_tok_ids.append(k_ids[b_idx][max_sim_indices[b_idx]])
         max_key_tok_ids = torch.stack(max_key_tok_ids)
     else:
         max_key_tok_ids = None
@@ -80,21 +72,11 @@ def compute_maxsim(
     q_encoded: torch.Tensor,
     k_encoded: torch.Tensor,
     k_mask: Optional[torch.Tensor] = None,
-    k_lengths: Optional[torch.Tensor] = None,
     return_element_wise_scores: bool = False,
     is_debug: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     # Compute the element-wise relevance scores
     element_wise_scores = k_encoded @ q_encoded.transpose(-2, -1)
-
-    # Pad the relevance scores if the key vectors are packed
-    if k_lengths is not None:
-        assert k_mask is None, "k_mask should be None when k_lengths is provided."
-        # Unpack the encoded key items
-        element_wise_scores, score_mask = StridedTensor(
-            element_wise_scores, k_lengths, use_gpu=True
-        ).as_padded_tensor()
-        k_mask = ~score_mask
 
     max_sim_scores = maxsim_from_element_wise_relevance_score(
         element_wise_scores=element_wise_scores, k_mask=k_mask
@@ -160,3 +142,96 @@ def reduce_element_wise_relevance_scores(
         max_scores = None
 
     return summed_scores, max_scores
+
+
+def token_interaction_with_relation(
+    q_tok: torch.Tensor,
+    q_tok_weight: torch.Tensor,
+    d_tok: torch.Tensor,
+    relation_encoder: torch.nn.Module,
+    relation_scale_factor: float = 1.0,
+    q_scale_factors: Optional[torch.Tensor] = None,
+    return_element_wise_scores: bool = False,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Literal[None]]:
+    # Configurations
+    q_tok_len = q_tok.shape[1]
+
+    # Compute the similarity matrix between query tokens and document tokens
+    element_wise_scores = d_tok @ q_tok.transpose(-2, -1)
+
+    # Compute the relation embedding for each query token pairs
+    first_toks_in_pairs = q_tok[:, torch.arange(0, q_tok_len - 1)]
+    second_toks_in_pairs = q_tok[:, torch.arange(1, q_tok_len)]
+    q_tok_pair_embs = torch.cat(
+        (first_toks_in_pairs, second_toks_in_pairs),
+        dim=2,
+    )
+    # Forward the relation embeddings to the MLP
+    encoded_q_relations: torch.Tensor = relation_encoder(q_tok_pair_embs)
+
+    # Find the maximum similarity with relation in considered sequentially
+    max_values_batch: List[torch.Tensor] = []
+    max_indices_batch: List[torch.Tensor] = []
+    element_wise_scores_with_relation_batch: List[torch.Tensor] = []
+    for q_tok_idx in range(q_tok_len):
+        # Find the maximum similarity with relation in considered
+        selected_element_wise_scores = element_wise_scores[:, :, q_tok_idx]
+        if q_tok_idx == 0:
+            # Find the maximum value for the first token
+            max_value, max_idx = selected_element_wise_scores.max(dim=1)
+            final_selected_wise_scores = selected_element_wise_scores
+        else:
+            # Get the query relation embedding for the current token
+            selected_q_relations = encoded_q_relations[:, q_tok_idx - 1]
+
+            # Create the document token relation embeddings
+            prev_d_idx_batch = max_indices_batch[q_tok_idx - 1]
+            # selected the document embeddings for the previous token
+            prev_selected_d_toks = d_tok[torch.arange(d_tok.shape[0]), prev_d_idx_batch]
+            # Repeat the previous document embeddings for the current token
+            repeated_prev_selected_d_toks = prev_selected_d_toks.repeat_interleave(
+                d_tok.shape[1], dim=1
+            ).view(d_tok.shape[0], d_tok.shape[1], -1)
+
+            # create the document token pair embeddings
+            d_tok_pair_embs = torch.cat(
+                [repeated_prev_selected_d_toks, d_tok],
+                dim=2,
+            )
+            # Forward the relation embeddings to the MLP
+            encoded_d_relations: torch.Tensor = relation_encoder(d_tok_pair_embs)
+
+            # Compute the similarity scores between the document token relation embeddings and the query token relation embedding
+            element_wise_relation_scores = (
+                selected_q_relations.unsqueeze(1)
+                @ encoded_d_relations.transpose(-2, -1)
+            ).squeeze(1)
+
+            # Add the similarity scores with the relational similarity scores
+            final_selected_wise_scores = (
+                selected_element_wise_scores
+                + relation_scale_factor * element_wise_relation_scores
+            )
+            # Find the maximum value for the current token
+            max_value, max_idx = final_selected_wise_scores.max(dim=1)
+
+        # Apply the query weight if it exists
+        if q_tok_weight is not None:
+            max_value = max_value * q_tok_weight[:, q_tok_idx].squeeze(-1)
+
+        # Save the maximum value and index
+        max_values_batch.append(max_value)
+        max_indices_batch.append(max_idx)
+        if return_element_wise_scores:
+            element_wise_scores_with_relation_batch.append(final_selected_wise_scores)
+
+    # Stack the maximum value and index
+    max_values = torch.stack(max_values_batch).transpose(0, 1)
+    # max_indices = torch.stack(max_indices_batch).transpose(0, 1)
+
+    # Compute the final scores
+    sim_scores = max_values.sum(dim=1)
+    if q_scale_factors is not None:
+        sim_scores = sim_scores * q_scale_factors
+
+    return sim_scores, element_wise_scores_with_relation_batch, None

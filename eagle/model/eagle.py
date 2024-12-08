@@ -21,6 +21,7 @@ from eagle.model.utils import (
     l1_regularization,
     l2_regularization,
 )
+from eagle.search.algorithm import token_interaction_with_relation
 from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("EAGLE")
@@ -800,11 +801,13 @@ class EAGLE(BaseModel):
                 intra_sim_scores,
                 intra_sim_elementwise_scores,
                 intra_sim_selected_d_weights,
-            ) = self.token_interaction_with_relation(
+            ) = token_interaction_with_relation(
                 q_tok=q_vecs_intra,
                 q_tok_weight=q_weight_intra,
                 d_tok=d_tok,
                 q_scale_factors=q_scale_factors_intra,
+                relation_encoder=self.relation_encoder,
+                relation_scale_factor=self.relation_scale_factor,
                 return_element_wise_scores=return_element_wise_scores,
             )
 
@@ -838,11 +841,13 @@ class EAGLE(BaseModel):
                     inter_sim_scores,
                     inter_sim_elementwise_scores,
                     inter_sim_selected_d_weights,
-                ) = self.token_interaction_with_relation(
+                ) = token_interaction_with_relation(
                     q_tok=q_vecs_inter,
                     q_tok_weight=q_weight_inter,
                     d_tok=selected_d_vecs_inter,
                     q_scale_factors=q_scale_factors_inter,
+                    relation_encoder=self.relation_encoder,
+                    relation_scale_factor=self.relation_scale_factor,
                     return_element_wise_scores=return_element_wise_scores,
                 )
 
@@ -858,103 +863,6 @@ class EAGLE(BaseModel):
         self, *args, **kwargs
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         raise NotImplementedError("TODO: Implement multi-granularity interaction")
-
-    def token_interaction_with_relation(
-        self,
-        q_tok: torch.Tensor,
-        q_tok_weight: torch.Tensor,
-        d_tok: torch.Tensor,
-        q_scale_factors: torch.Tensor,
-        return_element_wise_scores: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Literal[None]]:
-        # Configurations
-        q_tok_len = q_tok.shape[1]
-
-        # Compute the similarity matrix between query tokens and document tokens
-        element_wise_scores = d_tok @ q_tok.transpose(-2, -1)
-
-        # Compute the relation embedding for each query token pairs
-        first_toks_in_pairs = q_tok[:, torch.arange(0, q_tok_len - 1)]
-        second_toks_in_pairs = q_tok[:, torch.arange(1, q_tok_len)]
-        q_tok_pair_embs = torch.cat(
-            (first_toks_in_pairs, second_toks_in_pairs),
-            dim=2,
-        )
-        # Forward the relation embeddings to the MLP
-        encoded_q_relations: torch.Tensor = self.relation_encoder(q_tok_pair_embs)
-
-        # Find the maximum similarity with relation in considered sequentially
-        max_values_batch: List[torch.Tensor] = []
-        max_indices_batch: List[torch.Tensor] = []
-        element_wise_scores_with_relation_batch: List[torch.Tensor] = []
-        for q_tok_idx in range(q_tok_len):
-            # Find the maximum similarity with relation in considered
-            selected_element_wise_scores = element_wise_scores[:, :, q_tok_idx]
-            if q_tok_idx == 0:
-                # Find the maximum value for the first token
-                max_value, max_idx = selected_element_wise_scores.max(dim=1)
-            else:
-                # Get the query relation embedding for the current token
-                selected_q_relations = encoded_q_relations[:, q_tok_idx - 1]
-
-                # Create the document token relation embeddings
-                prev_d_idx_batch = max_indices_batch[q_tok_idx - 1]
-                # selected the document embeddings for the previous token
-                prev_selected_d_toks = d_tok[
-                    torch.arange(d_tok.shape[0]), prev_d_idx_batch
-                ]
-                # Repeat the previous document embeddings for the current token
-                repeated_prev_selected_d_toks = prev_selected_d_toks.repeat_interleave(
-                    d_tok.shape[1], dim=1
-                ).view(d_tok.shape[0], d_tok.shape[1], -1)
-
-                # create the document token pair embeddings
-                d_tok_pair_embs = torch.cat(
-                    [repeated_prev_selected_d_toks, d_tok],
-                    dim=2,
-                )
-                # Forward the relation embeddings to the MLP
-                encoded_d_relations: torch.Tensor = self.relation_encoder(
-                    d_tok_pair_embs
-                )
-
-                # Compute the similarity scores between the document token relation embeddings and the query token relation embedding
-                element_wise_relation_scores = (
-                    selected_q_relations.unsqueeze(1)
-                    @ encoded_d_relations.transpose(-2, -1)
-                ).squeeze(1)
-
-                # Add the similarity scores with the relational similarity scores
-                selected_element_wise_scores_with_relation = (
-                    selected_element_wise_scores
-                    + self.relation_scale_factor * element_wise_relation_scores
-                )
-                # Find the maximum value for the current token
-                max_value, max_idx = selected_element_wise_scores_with_relation.max(
-                    dim=1
-                )
-
-            # Apply the query weight if it exists
-            if q_tok_weight is not None:
-                max_value = max_value * q_tok_weight[:, q_tok_idx].squeeze(-1)
-
-            # Save the maximum value and index
-            max_values_batch.append(max_value)
-            max_indices_batch.append(max_idx)
-            if return_element_wise_scores:
-                element_wise_scores_with_relation_batch.append(
-                    selected_element_wise_scores_with_relation
-                )
-
-        # Stack the maximum value and index
-        max_values = torch.stack(max_values_batch).transpose(0, 1)
-        max_indices = torch.stack(max_indices_batch).transpose(0, 1)
-
-        # Compute the final scores
-        sim_scores = max_values.sum(dim=1)
-        sim_scores = sim_scores * q_scale_factors
-
-        return sim_scores, element_wise_scores_with_relation_batch, None
 
     def compute_outer_sim(
         self,

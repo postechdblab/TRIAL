@@ -24,6 +24,8 @@ class EAGLESearcher(BaseSearcher):
             d_cross_attention_layer=self.model.cross_att_layer,
             d_weight_project_layer=self.model.d_weight_layer,
             d_weight_layer_norm=self.model.d_weight_layer_norm,
+            relation_encoder=self.model.relation_encoder,
+            relation_scale_factor=model.cfg.relation_scale_factor,
         )
         self.timer_encodings = time_utils.Timer(
             class_name=self.__class__.__name__, func_name="encode"

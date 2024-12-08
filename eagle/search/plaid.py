@@ -8,6 +8,7 @@ from eagle.index.index_loader import IndexLoader
 from eagle.search.algorithm import (
     compute_sum_maxsim,
     reduce_element_wise_relevance_scores,
+    token_interaction_with_relation,
 )
 from eagle.search.strided_tensor import StridedTensor
 import hkkang_utils.time as time_utils
@@ -25,6 +26,8 @@ class PLAID:
         d_cross_attention_layer: torch.nn.Module = None,
         d_weight_project_layer: torch.nn.Module = None,
         d_weight_layer_norm: torch.nn.Module = None,
+        relation_encoder: torch.nn.Module = None,
+        relation_scale_factor: float = 1.0,
     ) -> None:
         self.index = IndexLoader(index_path=index_path)
         self.ndocs = ndocs
@@ -35,6 +38,10 @@ class PLAID:
         self.d_cross_attention_layer = d_cross_attention_layer
         self.d_weight_project_layer = d_weight_project_layer
         self.d_weight_layer_norm = d_weight_layer_norm
+        # For relation-based scoring
+        self.relation_encoder = relation_encoder
+        self.relation_scale_factor = relation_scale_factor
+        # Set embeddings
         self._set_embeddings_strided(indexer_name)
         # Setting
         self.use_higher_precision = True
@@ -346,17 +353,6 @@ class PLAID:
         :return: shape (ndocs), Final retrieval results. Document ids ranked by the exact scores
         :rtype: List[int]
         """
-        # Apply weights
-        if q_tok_weight is not None:
-            query_tok = query_tok * q_tok_weight
-
-        # Apply mask
-        if q_mask is not None:
-            # Reshape the mask if necessary
-            if len(query_tok.shape) > len(q_mask.shape):
-                q_mask = q_mask.unsqueeze(-1)
-            query_tok.masked_fill_(q_mask == True, 0)
-
         # Extract document token embeddings
         d_tok_packed, d_tok_length, d_tok_ids = self.tok_embeddings_strided.lookup_pids(
             pids
@@ -384,25 +380,72 @@ class PLAID:
                     d_tok_packed.dtype
                 )
 
+        # Convert strided tensor to padded tensor
+        d_tok_padded, d_tok_mask = StridedTensor(
+            d_tok_packed, d_tok_length, use_gpu=True
+        ).as_padded_tensor()
+        d_tok_mask = ~d_tok_mask
+
+        k_ids_padded, _ = StridedTensor(
+            d_tok_ids, d_tok_length, use_gpu=True
+        ).as_padded_tensor()
+
         if self.use_higher_precision:
             query_tok = query_tok.float()
-            d_tok_packed = d_tok_packed.float()
+            d_tok_padded = d_tok_padded.float()
         else:
             # Convert data type if necessary
             if query_tok.dtype != d_tok_packed.dtype:
                 query_tok = query_tok.to(d_tok_packed.dtype)
 
-        # Compute scores
-        max_scores_by_token, max_sim_by_token, element_wise_scores, max_key_tok_ids = (
-            compute_sum_maxsim(
+        if self.relation_encoder is None:
+            # Apply weights
+            if q_tok_weight is not None:
+                query_tok = query_tok * q_tok_weight
+
+            # Apply mask
+            if q_mask is not None:
+                # Reshape the mask if necessary
+                if len(query_tok.shape) > len(q_mask.shape):
+                    q_mask = q_mask.unsqueeze(-1)
+                query_tok.masked_fill_(q_mask == True, 0)
+
+            # Compute scores
+            (
+                max_scores_by_token,
+                max_sim_by_token,
+                element_wise_scores,
+                max_key_tok_ids,
+            ) = compute_sum_maxsim(
                 q_encoded=query_tok,
-                k_encoded=d_tok_packed,
-                k_lengths=d_tok_length,
+                k_encoded=d_tok_padded,
+                k_mask=d_tok_mask,
                 return_max_scores=is_debug,
                 return_element_wise_scores=True,
-                k_ids=d_tok_ids,
+                k_ids=k_ids_padded,
             )
-        )
+        else:
+            query_tok = query_tok.unsqueeze(0).expand(
+                d_tok_padded.size(0), query_tok.shape[0], query_tok.shape[1]
+            )
+            q_tok_weight = q_tok_weight.unsqueeze(0).expand(
+                d_tok_padded.size(0), q_tok_weight.shape[0], q_tok_weight.shape[1]
+            )
+            (
+                max_scores_by_token,
+                element_wise_scores,
+                max_key_tok_ids,
+            ) = token_interaction_with_relation(
+                q_tok=query_tok,
+                q_tok_weight=q_tok_weight,
+                d_tok=d_tok_padded,
+                q_scale_factors=None,
+                relation_encoder=self.relation_encoder,
+                relation_scale_factor=self.relation_scale_factor,
+                return_element_wise_scores=True,
+            )
+            max_sim_by_token = None
+
         max_scores = max_scores_by_token
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)
