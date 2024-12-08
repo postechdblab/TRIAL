@@ -19,20 +19,19 @@ def check_and_replace_tag(ckpt: Dict, orig_tag: str, new_tag: str) -> Dict:
 
 def main():
     # Configs
-    ckpt_path = (
-        "/root/EAGLE/runs/eagle_weights_q_relation_distill_from_author/best_model.ckpt"
-    )
+    ckpt_path = "/root/EAGLE/runs/tmp/eagle_relation_lambda_1_distill_from_author/best_model.ckpt"
     orig_tag = "eagle_weights_q_relation_distill_from_author"
-    new_tag = "eagle_weights_q_relation_distill_from_author_v2"
+    new_tag = "eagle_relation_lambda_1_distill_from_author"
 
     # Load the checkpoint
     print(f"Loading checkpoint from {ckpt_path}")
-    ckpt = torch.load(ckpt_path)
+    ckpt = torch.load(ckpt_path, weights_only=False)
     # Replace the tag name from orig_tag to new_tag
     ckpt = check_and_replace_tag(ckpt["hyper_parameters"], orig_tag, new_tag)
+    print(f"Replaced tag from {orig_tag} to {new_tag}")
     # save the cleaned checkpoint
-    # torch.save(ckpt, ckpt_path)
-    print(f"Cleaned checkpoint saved to {ckpt_path}")
+    torch.save(ckpt, ckpt_path)
+    print(f"Converted checkpoint saved to {ckpt_path}")
 
 
 if __name__ == "__main__":
