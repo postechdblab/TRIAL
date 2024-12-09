@@ -14,6 +14,8 @@ def main():
             new_key = key.replace("model._orig_mod.", "model.")
             ckpt["state_dict"][new_key] = ckpt["state_dict"][key]
             del ckpt["state_dict"][key]
+    # Change use_torch_compile to False
+    ckpt["hyper_parameters"]["training"]["use_torch_compile"] = False
     # save the cleaned checkpoint
     torch.save(ckpt, ckpt_path)
     print(f"Cleaned checkpoint saved to {ckpt_path}")
