@@ -228,6 +228,10 @@ def token_interaction_with_relation(
     # Stack the maximum value and index
     max_values = torch.stack(max_values_batch).transpose(0, 1)
     # max_indices = torch.stack(max_indices_batch).transpose(0, 1)
+    if return_element_wise_scores:
+        element_wise_scores_with_relation_batch = torch.stack(
+            element_wise_scores_with_relation_batch
+        ).transpose(0, 1)
 
     # Compute the final scores
     sim_scores = max_values.sum(dim=1)

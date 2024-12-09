@@ -59,7 +59,7 @@ def single_inference(
         d_weights = None
         q_weights = None
     elif model.model.cfg.name == "eagle":
-        qd_sims = results["intra_qd_outer_scores"].squeeze().transpose(0, 1)
+        qd_sims = results["intra_qd_scores"].squeeze()
         # Concate tok, phrase, sent
         # Get sentence indices
         doc_toks = [
@@ -74,8 +74,12 @@ def single_inference(
         ]
         # decoded_d_tokens = sent_start_toks + phrases + doc_toks
         decoded_d_tokens = doc_toks
-        d_weights = results["intra_selected_d_weights"].squeeze()
-        q_weights = results["intra_q_weights"].squeeze()
+        q_weights = None
+        d_weights = None
+        if results["intra_q_weights"] is not None:
+            q_weights = results["intra_q_weights"].squeeze()
+        if results["intra_selected_d_weights"] is not None:
+            d_weights = results["intra_selected_d_weights"].squeeze()
     else:
         raise ValueError(f"Invalid model name: {model.model.cfg.name}")
 
@@ -83,7 +87,12 @@ def single_inference(
     if q_weights is None:
         max_scores, max_indices = qd_sims.max(1)
     else:
-        qd_scores = qd_sims * q_weights.unsqueeze(1) * d_weights.unsqueeze(1)
+        if q_weights.shape[0] == qd_sims.shape[0]:
+            qd_scores = qd_sims * q_weights.unsqueeze(1)
+        else:
+            qd_scores = qd_sims * q_weights.expand(qd_sims.shape[0], -1)
+        if d_weights is not None:
+            qd_scores = qd_scores * d_weights.unsqueeze(1)
         max_scores, max_indices = qd_scores.max(1)
     # Find the total score of the query-document
     total_score = max_scores.sum()
@@ -100,7 +109,9 @@ def single_inference(
             )
         else:
             q_weight = q_weights[i]
-            d_weight = d_weights[i]
+            d_weight = 0
+            if d_weights is not None:
+                d_weight = d_weights[i]
             sim_score = qd_sims[i, max_idx]
             logger.info(
                 f"Q Token {i:2d}: {query_token:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.3f}) (sim:{sim_score:.3f}) (q_w:{q_weight:.3f}) (d_w:{d_weight:.3f})"
