@@ -247,49 +247,34 @@ class EAGLE(BaseModel):
             is_inference=is_inference,
         )
 
-        if self.use_relation:
-            (
-                intra_scores,
-                inter_scores,
-                intra_qd_inner_scores,
-                intra_qd_outer_scores,
-                intra_selected_d_weights,
-            ) = self.interaction_with_relation(
-                q_tok=q_tok_projected,
-                q_tok_weight=q_tok_weight,
-                d_tok=d_tok_projected,
-                d_tok_weight=d_tok_weight_intra,
-                q_scale_factors=q_tok_scale_factor,
-            )
-        else:
-            (
-                intra_scores,
-                inter_scores,
-                intra_qd_inner_scores,
-                intra_qd_outer_scores,
-                intra_selected_d_weights,
-            ) = self.multi_granularity_interaction(
-                q_sent=q_sent_projected,
-                q_phrase=q_phrase_projected,
-                q_tok=q_tok_projected,
-                d_sent=d_sent_projected,
-                d_phrase=d_phrase_projected,
-                d_tok=d_tok_projected,
-                q_tok_weight=q_tok_weight,
-                q_phrase_weight=q_phrase_weight,
-                d_tok_weight_intra=d_tok_weight_intra,
-                d_tok_weight_inter=d_tok_weight_inter,
-                d_phrase_weight_intra=d_phrase_weight_intra,
-                d_phrase_weight_inter=d_phrase_weight_inter,
-                d_sent_weight_inter=d_sent_weight_inter,
-                d_sent_weight_intra=d_sent_weight_intra,
-                q_scatter_indices=q_phrase_scatter_indices,
-                q_tok_scale_factor=q_tok_scale_factor,
-                q_phrase_scale_factor=q_phrase_scale_factor,
-                q_sent_scale_factor=q_sent_scale_factor,
-                is_inference=is_inference,
-                return_element_wise_scores=is_analyze,
-            )
+        (
+            intra_scores,
+            inter_scores,
+            intra_qd_inner_scores,
+            intra_qd_outer_scores,
+            intra_selected_d_weights,
+        ) = self.compute_scores(
+            q_sent=q_sent_projected,
+            q_phrase=q_phrase_projected,
+            q_tok=q_tok_projected,
+            d_sent=d_sent_projected,
+            d_phrase=d_phrase_projected,
+            d_tok=d_tok_projected,
+            q_tok_weight=q_tok_weight,
+            q_phrase_weight=q_phrase_weight,
+            d_tok_weight_intra=d_tok_weight_intra,
+            d_tok_weight_inter=d_tok_weight_inter,
+            d_phrase_weight_intra=d_phrase_weight_intra,
+            d_phrase_weight_inter=d_phrase_weight_inter,
+            d_sent_weight_inter=d_sent_weight_inter,
+            d_sent_weight_intra=d_sent_weight_intra,
+            q_scatter_indices=q_phrase_scatter_indices,
+            q_tok_scale_factor=q_tok_scale_factor,
+            q_phrase_scale_factor=q_phrase_scale_factor,
+            q_sent_scale_factor=q_sent_scale_factor,
+            is_inference=is_inference,
+            return_element_wise_scores=is_analyze,
+        )
 
         # Compute loss
         device = intra_scores.device
