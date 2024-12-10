@@ -189,9 +189,9 @@ def token_interaction_with_relation(
             # selected the document embeddings for the previous token
             prev_selected_d_toks = d_tok[torch.arange(d_tok.shape[0]), prev_d_idx_batch]
             # Repeat the previous document embeddings for the current token
-            repeated_prev_selected_d_toks = prev_selected_d_toks.repeat_interleave(
-                d_tok.shape[1], dim=1
-            ).view(d_tok.shape[0], d_tok.shape[1], -1)
+            repeated_prev_selected_d_toks = prev_selected_d_toks.unsqueeze(1).expand(
+                -1, d_tok.shape[1], -1
+            )
 
             # create the document token pair embeddings
             d_tok_pair_embs = torch.cat(
