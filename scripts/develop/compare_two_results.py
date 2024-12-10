@@ -103,7 +103,7 @@ def detailed_comparison_with_qids(
         # Print the information
         print("")
         logger.info(f"QID: {qid_to_compare}")
-        logger.info(f"Gold pid: {gold_pid}")
+        logger.info(f"Gold pids: {gold_pids}")
         logger.info(f"Model1 Rank: {model1_rank}")
         logger.info(f"Model1 retrieved pids: {retrieved_pids_to_examine1}")
         logger.info(f"Model1 retrieved scores: {retrieved_scores_to_examine1}")
@@ -158,10 +158,14 @@ def load_model(model_ckpt_path: str) -> Tuple[LightningNewModel, DictConfig]:
 @hydra.main(version_base=None, config_path="/root/EAGLE/config", config_name="config")
 def main(cfg: DictConfig) -> None:
     # Configs
-    dataset_name = "beir-arguana"
-    model1_ckpt_path = "/root/EAGLE/runs/colbert/best_model.ckpt"
-    model2_ckpt_path = "/root/EAGLE/runs/eagle_weights/best_model.ckpt"
-    cfg.tokenizers.query.max_len = 300
+    dataset_name = "beir-nfcorpus"
+    model1_ckpt_path = (
+        "/root/EAGLE/runs/eagle_no_relation_distill_from_author/best_model.ckpt"
+    )
+    model2_ckpt_path = (
+        "/root/EAGLE/runs/eagle_relation_lambda_1_distill_from_author/best_model.ckpt"
+    )
+    cfg.tokenizers.query.max_len = 32
     # model1_ckpt_path = cfg.args.ckpt1
     # model2_ckpt_path = cfg.args.ckpt2
     # dataset_name = cfg.dataset.name

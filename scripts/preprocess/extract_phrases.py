@@ -17,9 +17,13 @@ from omegaconf import DictConfig
 
 from eagle.dataset.utils import read_compressed
 from eagle.phrase.extraction import PhraseExtractor
-from eagle.phrase.utils import (SPLIT_DIR_NAME, get_output_file_name,
-                                get_partial_data_name, get_tokenized_path,
-                                remove_file_name_from_path)
+from eagle.phrase.utils import (
+    SPLIT_DIR_NAME,
+    get_output_file_name,
+    get_partial_data_name,
+    get_tokenized_path,
+    remove_file_name_from_path,
+)
 from eagle.tokenization.tokenizers import Tokenizers
 
 logger = logging.getLogger("PhraseExtraction")
@@ -28,8 +32,14 @@ CHUNK_SIZE = 1000
 
 
 def split_and_save_file(
-    cfg: DictConfig, total_proc_num: int, start_idx: int = 0, end_idx: int = None
+    cfg: DictConfig,
+    total_proc_num: int,
+    start_idx: int = 0,
+    end_idx: int = None,
+    target_data: List[str] = None,
 ) -> None:
+    if "document" not in target_data:
+        return None
     # Split the corpus file into multiple files
     logger.info(f"Splitting the corpus file into {total_proc_num} files...")
 
@@ -135,55 +145,60 @@ def split_and_save_file(
 
 
 def extract_wrapper(
-    cfg: DictConfig, total_proc_num: int, current_proc_idx: int
+    cfg: DictConfig,
+    total_proc_num: int,
+    current_proc_idx: int,
+    target_data: List[str] = None,
 ) -> None:
-    # Extract phrase indices for query
-    logger.info("Extracting phrase indices for query...")
-    # Prepare tokenizers
-    tokenizers = Tokenizers(
-        q_cfg=cfg.tokenizers.query,
-        d_cfg=cfg.tokenizers.document,
-        model_name=cfg.model.backbone_name,
-    )
-    # Get dataset path
-    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
-    dataset_path = os.path.join(dir_path, cfg.dataset.query_file)
-    tokenized_path = get_tokenized_path(
-        tokenizer=tokenizers.q_tokenizer,
-        dir_path=dir_path,
-        filename=cfg.dataset.query_file,
-    )
-    extract_phrase_indices(
-        cfg=cfg,
-        dataset_path=dataset_path,
-        tokenized_path=tokenized_path,
-        split_i=current_proc_idx,
-        total=total_proc_num,
-        prefix="query",
-    )
+    if "query" in target_data:
+        # Extract phrase indices for query
+        logger.info("Extracting phrase indices for query...")
+        # Prepare tokenizers
+        tokenizers = Tokenizers(
+            q_cfg=cfg.tokenizers.query,
+            d_cfg=cfg.tokenizers.document,
+            model_name=cfg.model.backbone_name,
+        )
+        # Get dataset path
+        dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name)
+        dataset_path = os.path.join(dir_path, cfg.dataset.query_file)
+        tokenized_path = get_tokenized_path(
+            tokenizer=tokenizers.q_tokenizer,
+            dir_path=dir_path,
+            filename=cfg.dataset.query_file,
+        )
+        extract_phrase_indices(
+            cfg=cfg,
+            dataset_path=dataset_path,
+            tokenized_path=tokenized_path,
+            split_i=current_proc_idx,
+            total=total_proc_num,
+            prefix="query",
+        )
 
-    logger.info("Extracting phrase indices for document...")
-    dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
-    tokenized_path = get_tokenized_path(
-        tokenizer=tokenizers.d_tokenizer,
-        dir_path=os.path.join(dir_path, SPLIT_DIR_NAME),
-        filename=cfg.dataset.corpus_file,
-    )
-    tokenized_file_path = get_partial_data_name(
-        dir_path="",
-        file_name=tokenized_path,
-        total_proc_num=total_proc_num,
-        i=current_proc_idx,
-    )
-    extract_phrase_indices(
-        cfg=cfg,
-        dataset_path=dataset_path,
-        tokenized_path=tokenized_file_path,
-        split_i=current_proc_idx,
-        total=total_proc_num,
-        prefix="doc",
-        is_splited=True,
-    )
+    if "document" in target_data:
+        logger.info("Extracting phrase indices for document...")
+        dataset_path = os.path.join(dir_path, cfg.dataset.corpus_file)
+        tokenized_path = get_tokenized_path(
+            tokenizer=tokenizers.d_tokenizer,
+            dir_path=os.path.join(dir_path, SPLIT_DIR_NAME),
+            filename=cfg.dataset.corpus_file,
+        )
+        tokenized_file_path = get_partial_data_name(
+            dir_path="",
+            file_name=tokenized_path,
+            total_proc_num=total_proc_num,
+            i=current_proc_idx,
+        )
+        extract_phrase_indices(
+            cfg=cfg,
+            dataset_path=dataset_path,
+            tokenized_path=tokenized_file_path,
+            split_i=current_proc_idx,
+            total=total_proc_num,
+            prefix="doc",
+            is_splited=True,
+        )
 
     return None
 
@@ -274,8 +289,8 @@ def extract_phrase_indices(
 
         # Extract phrases
         results: List[List[Tuple[int, int]]] = extractor(
-            texts=sents,
-            tok_ids_list=tok_ids_in_sent,
+            text_or_texts=sents,
+            tok_ids_or_tok_ids_list=tok_ids_in_sent,
             to_token_indices=True,
         )
 
@@ -302,13 +317,17 @@ def extract_phrase_indices(
     file_utils.write_pickle_file(all_results, output_file_path)
 
 
-def merge_wrapper(cfg: DictConfig, total_proc_num: int) -> None:
+def merge_wrapper(
+    cfg: DictConfig, total_proc_num: int, target_data: List[str] = None
+) -> None:
     # Merge the splitted query data
-    logger.info("Merging the splitted query data...")
-    merge(cfg=cfg, prefix="query", total_process_num=total_proc_num)
+    if "query" in target_data:
+        logger.info("Merging the splitted query data...")
+        merge(cfg=cfg, prefix="query", total_process_num=total_proc_num)
 
-    logger.info("Merging the splitted document data...")
-    merge(cfg=cfg, prefix="doc", total_process_num=total_proc_num)
+    if "document" in target_data:
+        logger.info("Merging the splitted document data...")
+        merge(cfg=cfg, prefix="doc", total_process_num=total_proc_num)
 
     return None
 
@@ -368,7 +387,15 @@ def main(cfg: DictConfig) -> None:
         - i (optional): split index
         - indices (optional): indices to extract
         - total: total number of splits
+        - target_data : target data to extract (query, document, or both)
     """
+    # Check config
+    if "target_data" not in cfg:
+        raise ValueError("target_data is not provided")
+    assert (
+        "query" in cfg.target_data or "document" in cfg.target_data
+    ), "target_data must contain query or document"
+
     # Dummy variable to download spacy models in advance (during split_file)
     tmp = PhraseExtractor(tokenizer=None)
 
@@ -378,17 +405,20 @@ def main(cfg: DictConfig) -> None:
             total_proc_num=cfg.total,
             start_idx=cfg.indices[0] if cfg.indices else 0,
             end_idx=cfg.indices[1] if cfg.indices else None,
+            target_data=cfg.target_data,
         )
     elif cfg.op == "merge":
         merge_wrapper(
             cfg=cfg,
             total_proc_num=cfg.total,
+            target_data=cfg.target_data,
         )
     elif cfg.op == "extract":
         extract_wrapper(
             cfg=cfg,
             total_proc_num=cfg.total,
             current_proc_idx=cfg.i,
+            target_data=cfg.target_data,
         )
     else:
         raise ValueError(f"Invalid operation: {cfg.op}")

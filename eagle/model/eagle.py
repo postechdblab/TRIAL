@@ -250,8 +250,8 @@ class EAGLE(BaseModel):
         (
             intra_scores,
             inter_scores,
-            intra_qd_inner_scores,
-            intra_qd_outer_scores,
+            intra_qd_scores,
+            inter_qd_scores,
             intra_selected_d_weights,
         ) = self.compute_scores(
             q_sent=q_sent_projected,
@@ -374,8 +374,8 @@ class EAGLE(BaseModel):
         if is_eval:
             return return_dict, intra_scores.reshape(bsize, -1)
         elif is_analyze:
-            return_dict["intra_qd_inner_scores"] = intra_qd_inner_scores
-            return_dict["intra_qd_outer_scores"] = intra_qd_outer_scores
+            return_dict["intra_qd_scores"] = intra_qd_scores
+            return_dict["inter_qd_scores"] = inter_qd_scores
             return_dict["intra_q_weights"] = q_tok_weight
             return_dict["intra_selected_d_weights"] = intra_selected_d_weights
         return return_dict
@@ -797,13 +797,7 @@ class EAGLE(BaseModel):
             q_scatter_indices_intra = q_scatter_indices.repeat_interleave(nway, dim=0)
 
         # Compute intra scores
-        if self.use_multi_doc_granularity:
-            (
-                intra_sim_scores,
-                intra_sim_elementwise_scores,
-                intra_sim_selected_d_weights,
-            ) = self.multi_granularity_interaction()
-        else:
+        if self.use_relation:
             (
                 intra_sim_scores,
                 intra_sim_elementwise_scores,
@@ -815,6 +809,18 @@ class EAGLE(BaseModel):
                 q_scale_factors=q_scale_factors_intra,
                 relation_encoder=self.relation_encoder,
                 relation_scale_factor=self.relation_scale_factor,
+                return_element_wise_scores=return_element_wise_scores,
+            )
+        else:
+            (
+                intra_sim_scores,
+                intra_sim_elementwise_scores,
+                intra_sim_selected_d_weights,
+            ) = self.multi_granularity_interaction(
+                q_tok=q_vecs_intra,
+                q_tok_weight=q_weight_intra,
+                d_tok=d_tok,
+                q_scale_factors=q_scale_factors_intra,
                 return_element_wise_scores=return_element_wise_scores,
             )
 
@@ -837,13 +843,7 @@ class EAGLE(BaseModel):
             selected_d_vecs_inter: torch.Tensor = d_tok[d_inter_indices]
 
             # Compute inter scores
-            if self.use_multi_doc_granularity:
-                (
-                    inter_sim_scores,
-                    inter_sim_elementwise_scores,
-                    inter_sim_selected_d_weights,
-                ) = self.multi_granularity_interaction()
-            else:
+            if self.use_relation:
                 (
                     inter_sim_scores,
                     inter_sim_elementwise_scores,
@@ -857,6 +857,18 @@ class EAGLE(BaseModel):
                     relation_scale_factor=self.relation_scale_factor,
                     return_element_wise_scores=return_element_wise_scores,
                 )
+            else:
+                (
+                    inter_sim_scores,
+                    inter_sim_elementwise_scores,
+                    inter_sim_selected_d_weights,
+                ) = self.multi_granularity_interaction(
+                    q_tok=q_vecs_inter,
+                    q_tok_weight=q_weight_inter,
+                    d_tok=selected_d_vecs_inter,
+                    q_scale_factors=q_scale_factors_inter,
+                    return_element_wise_scores=return_element_wise_scores,
+                )
 
         return (
             intra_sim_scores,
@@ -867,9 +879,29 @@ class EAGLE(BaseModel):
         )
 
     def multi_granularity_interaction(
-        self, *args, **kwargs
+        self,
+        q_tok: torch.Tensor,
+        q_tok_weight: torch.Tensor,
+        d_tok: torch.Tensor,
+        q_scale_factors: torch.Tensor,
+        return_element_wise_scores: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
-        raise NotImplementedError("TODO: Implement multi-granularity interaction")
+        # Compute maxsim
+        max_q_scores, element_wise_scores, selected_d_weights = self.compute_maxsim(
+            q_vecs=q_tok,
+            q_weights=q_tok_weight,
+            d_vecs=d_tok,
+            d_weights=None,
+            return_element_wise_scores=return_element_wise_scores,
+            use_sum_instead_of_max=False,
+        )
+
+        sim_scores = max_q_scores.sum(dim=1)
+
+        if q_scale_factors is not None:
+            sim_scores = sim_scores * q_scale_factors
+
+        return sim_scores, element_wise_scores, selected_d_weights
 
     def compute_outer_sim(
         self,
@@ -955,7 +987,7 @@ class EAGLE(BaseModel):
             # Compute similarity scores for each q vectors and d vectors
             element_wise_scores = d_vecs @ q_vecs.transpose(-2, -1)
             # Apply weights
-            element_wise_scores_original = element_wise_scores.clone()
+            element_wise_scores_original = element_wise_scores.clone().transpose(-2, -1)
             if q_weights is not None:
                 element_wise_scores = element_wise_scores * q_weights.transpose(1, 2)
             if d_weights is not None:
