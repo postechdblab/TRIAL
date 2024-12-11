@@ -242,3 +242,45 @@ def get_weight_layer(
     else:
         raise ValueError(f"Unsupported weight strategy: {strategy}")
     return layer
+
+
+def change_token_weights_with_phrase_information(
+    token_weights: torch.Tensor, phrase_scatter_indices: torch.Tensor
+) -> torch.Tensor:
+    """Change the token weights with the phrase information"""
+    bsize = token_weights.shape[0]
+    # Check if the shape of the token weights and the phrase scatter indices are the same
+    assert token_weights.squeeze().shape == phrase_scatter_indices.squeeze().shape, (
+        f"The shape of the token weights and the phrase scatter indices must be the same"
+        f"Token weights shape: {token_weights.squeeze().shape}, "
+        f"Phrase scatter indices shape: {phrase_scatter_indices.squeeze().shape}"
+    )
+    new_token_weights = [[] for _ in range(bsize)]
+    for b_idx, phrase_scatter_indices_tensor in enumerate(phrase_scatter_indices):
+        tmp = []
+        for i, idx in enumerate(phrase_scatter_indices_tensor):
+            weight = token_weights[b_idx][idx]
+            if i == 0:
+                tmp.append(weight)
+            else:
+                # Check if the current index is the same as the previous index
+                # if it is, then add the token weight to the tmp list
+                # if it is not, then rescale the token weights and save in the final list. Then add the current index to the tmp list
+                if weight == phrase_scatter_indices_tensor[i - 1]:
+                    tmp.append(weight)
+                else:
+                    # Rescale the token weights and save in the final list
+                    max_value = min(tmp)
+                    new_token_weights[b_idx].extend([max_value] * len(tmp))
+                    tmp = [weight]
+        # Save the left over token weights
+        if len(tmp) > 0:
+            max_value = max(tmp)
+            new_token_weights[b_idx].extend([max_value] * len(tmp))
+
+    # Convert the list of lists to a tensor
+    new_token_weights = torch.tensor(
+        new_token_weights, dtype=token_weights.dtype, device=token_weights.device
+    ).unsqueeze(-1)
+
+    return new_token_weights

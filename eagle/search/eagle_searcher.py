@@ -37,7 +37,7 @@ class EAGLESearcher(BaseSearcher):
         q_tok_att_mask: torch.Tensor,
         q_tok_mask: torch.Tensor,
         pos_doc_indices: List[List[int]] = None,
-        **Kwargs,
+        **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[List, List, List]]]:
         # Config
         bsize = q_tok_ids.size(0)
@@ -50,7 +50,11 @@ class EAGLESearcher(BaseSearcher):
         # Encode query
         with self.timer_encodings.measure():
             result = self.model.encode_q_text(
-                tok_ids=q_tok_ids, att_mask=q_tok_att_mask, tok_mask=q_tok_mask
+                tok_ids=q_tok_ids,
+                att_mask=q_tok_att_mask,
+                tok_mask=q_tok_mask,
+                phrase_mask=kwargs["q_phrase_mask"],
+                phrase_scatter_indices=kwargs["q_phrase_scatter_indices"],
             )
             q_tok_projected = result[1]
             q_tok_weight = result[4]
