@@ -203,7 +203,9 @@ class BatchForEAGLE(BaseBatch):
         q_phrase_scatter_indices = None
         if self.phrase_ranges_queries is not None:
             q_phrase_scatter_indices: List[int] = convert_range_to_scatter(
-                q_phrase_ranges
+                q_phrase_ranges,
+                pad_to_max_len=self.pad_to_max_length,
+                max_len=self.dataset.tokenizers.q_tokenizer.cfg.max_len,
             )
         doc_phrase_scatter_indices = None
         if is_to_encode_doc and self.phrase_ranges_corpus is not None:

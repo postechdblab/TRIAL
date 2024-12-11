@@ -77,7 +77,9 @@ def is_token_included(src: set[int], target: List[int]) -> List[bool]:
     return [False, False] + isin.tolist()[2:-1] + [False]
 
 
-def convert_range_to_scatter(range_indices: List[Tuple[int, int]]) -> List[int]:
+def convert_range_to_scatter(
+    range_indices: List[Tuple[int, int]], pad_to_max_len: False, max_len: int = 0
+) -> List[int]:
     """Convert range indices to scatter indices.
     :param range_indices: List of range indices
     :type range_indices: List[Tuple[int, int]]
@@ -105,6 +107,12 @@ def convert_range_to_scatter(range_indices: List[Tuple[int, int]]) -> List[int]:
     assert (
         len(scatter_indices) == range_indices[-1][-1]
     ), f"Length mismatch: {len(scatter_indices)} vs {range_indices[-1][-1]}"
+
+    if pad_to_max_len:
+        scatter_indices = scatter_indices + [
+            target_idx for _ in range(len(scatter_indices), max_len)
+        ]
+
     return scatter_indices
 
 
