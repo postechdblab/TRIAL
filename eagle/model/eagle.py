@@ -55,6 +55,9 @@ class EAGLE(BaseModel):
         self.use_phrase_level = (
             cfg.use_phrase_level if "use_phrase_level" in cfg else False
         )
+        self.agg_in_phrase_level = (
+            cfg.agg_in_phrase_level if "agg_in_phrase_level" in cfg else False
+        )
         self.use_sum_when_training = (
             cfg.use_sum_when_training if "use_sum_when_training" in cfg else False
         )
@@ -257,6 +260,7 @@ class EAGLE(BaseModel):
             q_sent=q_sent_projected,
             q_phrase=q_phrase_projected,
             q_tok=q_tok_projected,
+            d_tok_mask=doc_tok_mask,
             d_sent=d_sent_projected,
             d_phrase=d_phrase_projected,
             d_tok=d_tok_projected,
@@ -398,38 +402,38 @@ class EAGLE(BaseModel):
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
 
         # Handle phrase embeddings
-        encoded_phrase_vectors = None
+        # encoded_phrase_vectors = None
         projected_phrase_vectors = None
         # Encode phrase-level embeddings
-        if self.use_phrase_level and phrase_scatter_indices is not None:
-            if self.use_attn_for_phrase_encoding:
-                # TODO: Make different phrases into a batch
-                # TODO: Add positional encoding
-                pass
-            else:
-                if projected_tok_vectors.shape[1] != phrase_scatter_indices.shape[1]:
-                    raise RuntimeError("Shape mismatch")
-                encoded_phrase_vectors = aggregate_vectors_with_indices(
-                    src_tensor=projected_tok_vectors,
-                    scatter_indices=phrase_scatter_indices,
-                    reduce=self.reduce_strategy,
-                )
-                projected_phrase_vectors = encoded_phrase_vectors
-                # projected_phrase_vectors = self.phrase_projection_layer(
-                #     encoded_phrase_vectors
-                # )
+        # if self.use_phrase_level and phrase_scatter_indices is not None:
+        #     if self.use_attn_for_phrase_encoding:
+        #         # TODO: Make different phrases into a batch
+        #         # TODO: Add positional encoding
+        #         pass
+        #     else:
+        #         if projected_tok_vectors.shape[1] != phrase_scatter_indices.shape[1]:
+        #             raise RuntimeError("Shape mismatch")
+        #         encoded_phrase_vectors = aggregate_vectors_with_indices(
+        #             src_tensor=projected_tok_vectors,
+        #             scatter_indices=phrase_scatter_indices,
+        #             reduce=self.reduce_strategy,
+        #         )
+        #         projected_phrase_vectors = encoded_phrase_vectors
+        #         # projected_phrase_vectors = self.phrase_projection_layer(
+        #         #     encoded_phrase_vectors
+        #         # )
 
         # Handle sentence-level embeddings
         projected_sent_vectors = None
-        if sent_start_indices is not None:
-            projected_sent_vectors = []
-            for b_idx, start_indices in enumerate(sent_start_indices):
-                projected_sent_vectors.append(
-                    projected_tok_vectors[b_idx, start_indices]
-                )
-            projected_sent_vectors = pad_sequence(
-                projected_sent_vectors, batch_first=True
-            )
+        # if sent_start_indices is not None:
+        #     projected_sent_vectors = []
+        #     for b_idx, start_indices in enumerate(sent_start_indices):
+        #         projected_sent_vectors.append(
+        #             projected_tok_vectors[b_idx, start_indices]
+        #         )
+        #     projected_sent_vectors = pad_sequence(
+        #         projected_sent_vectors, batch_first=True
+        #     )
 
         return (
             encoded_tok_vectors,
@@ -486,10 +490,10 @@ class EAGLE(BaseModel):
         sentence_weights = None
         if self.is_use_q_weight:
             tok_weights = self.q_weight_layer(projected_tok_vectors)
-            if is_create_phrase_vectors:
-                phrase_weights = self.q_weight_layer(projected_phrase_vectors)
-            if is_create_sent_vectors:
-                sentence_weights = self.q_weight_layer(projected_sent_vectors)
+            # if is_create_phrase_vectors:
+            #     phrase_weights = self.q_weight_layer(projected_phrase_vectors)
+            # if is_create_sent_vectors:
+            #     sentence_weights = self.q_weight_layer(projected_sent_vectors)
 
         # Compute normalization scale for each query
         token_scale_factor = get_scale_factor(mask=tok_mask, q_maxlen=self.q_maxlen)
@@ -755,6 +759,7 @@ class EAGLE(BaseModel):
         d_sent: torch.Tensor,
         d_phrase: torch.Tensor,
         d_tok: torch.Tensor,
+        d_tok_mask: torch.Tensor,
         q_tok_weight: torch.Tensor,
         q_phrase_weight: torch.Tensor,
         d_tok_weight_intra: torch.Tensor,
@@ -784,6 +789,7 @@ class EAGLE(BaseModel):
             return_as_tensor=True,
             device=d_tok.device,
         )
+        d_tok_mask = d_tok_mask.view(-1, d_tok_mask.shape[-1])
 
         # Prepare intra scores
         q_vecs_intra = q_tok.repeat_interleave(nway, dim=0)
@@ -797,7 +803,7 @@ class EAGLE(BaseModel):
             q_scatter_indices_intra = q_scatter_indices.repeat_interleave(nway, dim=0)
 
         # Compute intra scores
-        if self.use_relation:
+        if self.use_relation or True:
             (
                 intra_sim_scores,
                 intra_sim_elementwise_scores,
@@ -805,11 +811,14 @@ class EAGLE(BaseModel):
             ) = token_interaction_with_relation(
                 q_tok=q_vecs_intra,
                 q_tok_weight=q_weight_intra,
-                d_tok=d_tok,
                 q_scale_factors=q_scale_factors_intra,
+                q_scatter_indices=q_scatter_indices_intra,
+                d_tok=d_tok,
+                d_tok_mask=d_tok_mask,
                 relation_encoder=self.relation_encoder,
                 relation_scale_factor=self.relation_scale_factor,
                 return_element_wise_scores=return_element_wise_scores,
+                agg_in_phrase_level=self.agg_in_phrase_level
             )
         else:
             (
@@ -841,9 +850,10 @@ class EAGLE(BaseModel):
                     repeat_num_for_inter, dim=0
                 )
             selected_d_vecs_inter: torch.Tensor = d_tok[d_inter_indices]
+            d_tok_mask_inter: torch.Tensor = d_tok_mask[d_inter_indices]
 
             # Compute inter scores
-            if self.use_relation:
+            if self.use_relation or True:
                 (
                     inter_sim_scores,
                     inter_sim_elementwise_scores,
@@ -853,9 +863,11 @@ class EAGLE(BaseModel):
                     q_tok_weight=q_weight_inter,
                     d_tok=selected_d_vecs_inter,
                     q_scale_factors=q_scale_factors_inter,
+                    q_scatter_indices=q_scatter_indices_inter,
                     relation_encoder=self.relation_encoder,
                     relation_scale_factor=self.relation_scale_factor,
                     return_element_wise_scores=return_element_wise_scores,
+                    agg_in_phrase_level=self.agg_in_phrase_level,
                 )
             else:
                 (
@@ -866,6 +878,7 @@ class EAGLE(BaseModel):
                     q_tok=q_vecs_inter,
                     q_tok_weight=q_weight_inter,
                     d_tok=selected_d_vecs_inter,
+                    d_tok_mask=d_tok_mask_inter,
                     q_scale_factors=q_scale_factors_inter,
                     return_element_wise_scores=return_element_wise_scores,
                 )

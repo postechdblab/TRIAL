@@ -297,10 +297,10 @@ class BaseDataModule(L.LightningDataModule):
             logger.info(
                 f"Loaded {len(phrase_ranges_queries)} phrase ranges for queries"
             )
-            phrase_ranges_corpus = file_utils.read_pickle_file(
-                self.target_d_phrase_range_path
-            )
-            logger.info(f"Loaded {len(phrase_ranges_corpus)} phrase ranges for corpus")
+            # phrase_ranges_corpus = file_utils.read_pickle_file(
+            #     self.target_d_phrase_range_path
+            # )
+            # logger.info(f"Loaded {len(phrase_ranges_corpus)} phrase ranges for corpus")
 
         # Load train and val data
         train_dataset = None

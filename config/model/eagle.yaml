@@ -32,3 +32,4 @@ use_multi_doc_granularity: False
 use_phrase_level: False
 use_sum_when_training: False
 relation_scale_factor: 0.1
+agg_in_phrase_level: False

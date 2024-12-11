@@ -2,6 +2,8 @@ from typing import *
 
 import torch
 
+from eagle.model.utils import aggregate_vectors_with_indices
+
 
 def compute_sum_maxsim(
     q_encoded: torch.Tensor,
@@ -150,8 +152,11 @@ def token_interaction_with_relation(
     d_tok: torch.Tensor,
     relation_encoder: torch.nn.Module,
     relation_scale_factor: float = 1.0,
+    d_tok_mask: Optional[torch.Tensor] = None,
     q_scale_factors: Optional[torch.Tensor] = None,
+    q_scatter_indices: Optional[torch.Tensor] = None,
     return_element_wise_scores: bool = False,
+    agg_in_phrase_level: bool = False,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Literal[None]]:
     # Configurations
     q_tok_len = q_tok.shape[1]
@@ -167,7 +172,9 @@ def token_interaction_with_relation(
         dim=2,
     )
     # Forward the relation embeddings to the MLP
-    encoded_q_relations: torch.Tensor = relation_encoder(q_tok_pair_embs)
+    encoded_q_relations = None
+    if relation_encoder is not None:
+        encoded_q_relations: torch.Tensor = relation_encoder(q_tok_pair_embs)
 
     # Find the maximum similarity with relation in considered sequentially
     max_values_batch: List[torch.Tensor] = []
@@ -182,24 +189,36 @@ def token_interaction_with_relation(
             final_selected_wise_scores = selected_element_wise_scores
         else:
             # Get the query relation embedding for the current token
-            selected_q_relations = encoded_q_relations[:, q_tok_idx - 1]
+            if relation_encoder is None:
+                selected_q_relations = torch.ones(
+                    (q_tok.shape[0], q_tok.shape[-1]),
+                    device=q_tok.device,
+                    dtype=q_tok.dtype,
+                )
+            else:
+                selected_q_relations = encoded_q_relations[:, q_tok_idx - 1]
 
-            # Create the document token relation embeddings
-            prev_d_idx_batch = max_indices_batch[q_tok_idx - 1]
-            # selected the document embeddings for the previous token
-            prev_selected_d_toks = d_tok[torch.arange(d_tok.shape[0]), prev_d_idx_batch]
-            # Repeat the previous document embeddings for the current token
-            repeated_prev_selected_d_toks = prev_selected_d_toks.unsqueeze(1).expand(
-                -1, d_tok.shape[1], -1
-            )
+            if relation_encoder is None:
+                encoded_d_relations = torch.ones_like(d_tok)
+            else:
+                # Create the document token relation embeddings
+                prev_d_idx_batch = max_indices_batch[q_tok_idx - 1]
+                # selected the document embeddings for the previous token
+                prev_selected_d_toks = d_tok[
+                    torch.arange(d_tok.shape[0]), prev_d_idx_batch
+                ]
+                # Repeat the previous document embeddings for the current token
+                repeated_prev_selected_d_toks = prev_selected_d_toks.unsqueeze(
+                    1
+                ).expand(-1, d_tok.shape[1], -1)
 
-            # create the document token pair embeddings
-            d_tok_pair_embs = torch.cat(
-                [repeated_prev_selected_d_toks, d_tok],
-                dim=2,
-            )
-            # Forward the relation embeddings to the MLP
-            encoded_d_relations: torch.Tensor = relation_encoder(d_tok_pair_embs)
+                # create the document token pair embeddings
+                d_tok_pair_embs = torch.cat(
+                    [repeated_prev_selected_d_toks, d_tok],
+                    dim=2,
+                )
+                # Forward the relation embeddings to the MLP
+                encoded_d_relations: torch.Tensor = relation_encoder(d_tok_pair_embs)
 
             # Compute the similarity scores between the document token relation embeddings and the query token relation embedding
             element_wise_relation_scores = (
@@ -207,10 +226,32 @@ def token_interaction_with_relation(
                 @ encoded_d_relations.transpose(-2, -1)
             ).squeeze(1)
 
+            if d_tok_mask is None:
+                element_wise_relation_scores = (
+                    relation_scale_factor * element_wise_relation_scores
+                )
+            else:
+                element_wise_relation_scores = (
+                    relation_scale_factor * element_wise_relation_scores
+                ).masked_fill(d_tok_mask == True, float(0))
+
+            if q_scatter_indices is not None:
+                # is_same_phrase shape: [400]
+                is_same_phrase = (
+                    q_scatter_indices[:, q_tok_idx - 1]
+                    == q_scatter_indices[:, q_tok_idx]
+                )
+                # element_wise_relation_scores shape: [400, 184]
+                element_wise_relation_scores = element_wise_relation_scores.masked_fill(
+                    (~is_same_phrase)
+                    .unsqueeze(1)
+                    .expand(-1, element_wise_relation_scores.size(1)),
+                    float(0),
+                )
+
             # Add the similarity scores with the relational similarity scores
             final_selected_wise_scores = (
-                selected_element_wise_scores
-                + relation_scale_factor * element_wise_relation_scores
+                selected_element_wise_scores + element_wise_relation_scores
             )
             # Find the maximum value for the current token
             max_value, max_idx = final_selected_wise_scores.max(dim=1)
@@ -226,12 +267,23 @@ def token_interaction_with_relation(
             element_wise_scores_with_relation_batch.append(final_selected_wise_scores)
 
     # Stack the maximum value and index
+
     max_values = torch.stack(max_values_batch).transpose(0, 1)
     # max_indices = torch.stack(max_indices_batch).transpose(0, 1)
     if return_element_wise_scores:
         element_wise_scores_with_relation_batch = torch.stack(
             element_wise_scores_with_relation_batch
         ).transpose(0, 1)
+
+    if agg_in_phrase_level:
+        assert (
+            q_scatter_indices is not None
+        ), "q_scatter_indices is required for phrase-level retrieval"
+        max_values = aggregate_vectors_with_indices(
+            src_tensor=max_values,
+            scatter_indices=q_scatter_indices,
+            reduce="mean",
+        )
 
     # Compute the final scores
     sim_scores = max_values.sum(dim=1)
