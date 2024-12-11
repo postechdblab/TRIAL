@@ -431,6 +431,7 @@ class PLAID:
             q_tok_weight = q_tok_weight.unsqueeze(0).expand(
                 d_tok_padded.size(0), q_tok_weight.shape[0], q_tok_weight.shape[1]
             )
+            d_tok_mask = d_tok_mask.squeeze(-1)
             (
                 max_scores_by_token,
                 element_wise_scores,
@@ -439,6 +440,7 @@ class PLAID:
                 q_tok=query_tok,
                 q_tok_weight=q_tok_weight,
                 d_tok=d_tok_padded,
+                d_tok_mask=d_tok_mask,
                 q_scale_factors=None,
                 relation_encoder=self.relation_encoder,
                 relation_scale_factor=self.relation_scale_factor,
