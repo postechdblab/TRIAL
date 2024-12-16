@@ -36,6 +36,7 @@ class EAGLESearcher(BaseSearcher):
         q_tok_ids: torch.Tensor,
         q_tok_att_mask: torch.Tensor,
         q_tok_mask: torch.Tensor,
+        q_phrase_scatter_indices: Optional[torch.Tensor] = None,
         pos_doc_indices: List[List[int]] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[Tuple[List, List, List]]]:
@@ -54,7 +55,7 @@ class EAGLESearcher(BaseSearcher):
                 att_mask=q_tok_att_mask,
                 tok_mask=q_tok_mask,
                 phrase_mask=kwargs["q_phrase_mask"],
-                phrase_scatter_indices=kwargs["q_phrase_scatter_indices"],
+                phrase_scatter_indices=q_phrase_scatter_indices,
             )
             q_tok_projected = result[1]
             q_tok_weight = result[4]
@@ -69,6 +70,11 @@ class EAGLESearcher(BaseSearcher):
             query_tok = q_tok_projected[b_idx]
             mask = q_tok_mask[b_idx]
             weight = q_tok_weight[b_idx]
+            q_scatter_indices = (
+                q_phrase_scatter_indices[b_idx]
+                if q_phrase_scatter_indices is not None
+                else None
+            )
 
             # Perform retrieval
             (
@@ -83,6 +89,7 @@ class EAGLESearcher(BaseSearcher):
                 gold_doc_ids=(
                     None if pos_doc_indices is None else pos_doc_indices[b_idx]
                 ),
+                q_scatter_indices=q_scatter_indices,
                 return_intermediate_pids=True,
             )
             retrieved_pids = retrieved_pids.cpu()

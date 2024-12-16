@@ -83,6 +83,7 @@ class PLAID:
         tok_weight: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         gold_doc_ids: Optional[torch.Tensor] = None,
+        q_scatter_indices: Optional[torch.Tensor] = None,
         return_intermediate_pids: bool = False,
         is_debug: bool = False,
     ) -> torch.Tensor:
@@ -126,6 +127,7 @@ class PLAID:
                 q_mask=mask,
                 pids=pids,
                 is_debug=is_debug,
+                q_scatter_indices=q_scatter_indices,
             )
         if is_debug:
             return result[0], result[1], (pids1, pids2, pids3), result[2:]
@@ -337,7 +339,8 @@ class PLAID:
         q_tok_weight: torch.Tensor,
         q_mask: torch.Tensor,
         pids: torch.Tensor,
-        is_debug: bool = False,
+        q_scatter_indices: Optional[torch.Tensor] = None,
+        is_debug: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """This is the stage 4 of the PLAID scoring pipeline.
         We compute the exact scores of the pids using the decomposed embeddings.
@@ -431,6 +434,10 @@ class PLAID:
             q_tok_weight = q_tok_weight.unsqueeze(0).expand(
                 d_tok_padded.size(0), q_tok_weight.shape[0], q_tok_weight.shape[1]
             )
+            q_scatter_indices = q_scatter_indices.unsqueeze(0).expand(
+                d_tok_padded.size(0),
+                q_scatter_indices.shape[0],
+            )
             d_tok_mask = d_tok_mask.squeeze(-1)
             (
                 max_scores_by_token,
@@ -444,6 +451,7 @@ class PLAID:
                 q_scale_factors=None,
                 relation_encoder=self.relation_encoder,
                 relation_scale_factor=self.relation_scale_factor,
+                q_scatter_indices=q_scatter_indices,
                 return_element_wise_scores=True,
             )
             max_sim_by_token = None
