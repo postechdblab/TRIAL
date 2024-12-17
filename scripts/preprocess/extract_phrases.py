@@ -378,6 +378,9 @@ def merge(cfg: DictConfig, prefix: str, total_process_num: int) -> None:
     for file_name in file_names:
         file_path = os.path.join(dir_path, file_name)
         os.remove(file_path)
+    # Check if the directory is empty
+    if not os.listdir(dir_path):
+        os.rmdir(dir_path)
     return None
 
 
