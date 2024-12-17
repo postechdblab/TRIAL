@@ -310,9 +310,11 @@ def extract_phrase_indices(
     output_file_name = get_output_file_name(
         prefix=prefix, total_process_num=total, process_idx=split_i
     )
-    output_file_path = os.path.join(
-        cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME, output_file_name
-    )
+    dir_path = os.path.join(cfg.dataset.dir_path, cfg.dataset.name, SPLIT_DIR_NAME)
+    output_file_path = os.path.join(dir_path, output_file_name)
+    # Create the directory if it doesn't exist
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
     logger.info(f"Saving the {len(all_results)} results to {output_file_path}")
     file_utils.write_pickle_file(all_results, output_file_path)
 
