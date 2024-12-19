@@ -434,10 +434,11 @@ class PLAID:
             q_tok_weight = q_tok_weight.unsqueeze(0).expand(
                 d_tok_padded.size(0), q_tok_weight.shape[0], q_tok_weight.shape[1]
             )
-            q_scatter_indices = q_scatter_indices.unsqueeze(0).expand(
-                d_tok_padded.size(0),
-                q_scatter_indices.shape[0],
-            )
+            if q_scatter_indices is not None:
+                q_scatter_indices = q_scatter_indices.unsqueeze(0).expand(
+                    d_tok_padded.size(0),
+                    q_scatter_indices.shape[0],
+                )
             d_tok_mask = d_tok_mask.squeeze(-1)
             (
                 max_scores_by_token,
