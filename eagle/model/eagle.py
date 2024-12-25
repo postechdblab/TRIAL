@@ -394,9 +394,17 @@ class EAGLE(BaseModel):
         torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]
     ]:
         # LLM encoding
-        encoded_tok_vectors = self.llm(
-            tok_ids, attention_mask=att_mask
-        ).last_hidden_state
+        try:
+            encoded_tok_vectors = self.llm(
+                tok_ids, attention_mask=att_mask
+            ).last_hidden_state
+        except Exception as e:
+            print(f"tok ids: {tok_ids}")
+            print(f"att mask: {att_mask}")
+            print(f"tok ids shape: {tok_ids.shape}")
+            print(f"att mask shape: {att_mask.shape}")
+            print(f"Error encoding text: {e}")
+            raise e
 
         # Perform lower-dimension projection in token-level
         projected_tok_vectors = self.tok_projection_layer(encoded_tok_vectors)
@@ -818,7 +826,7 @@ class EAGLE(BaseModel):
                 relation_encoder=self.relation_encoder,
                 relation_scale_factor=self.relation_scale_factor,
                 return_element_wise_scores=return_element_wise_scores,
-                agg_in_phrase_level=self.agg_in_phrase_level
+                agg_in_phrase_level=self.agg_in_phrase_level,
             )
         else:
             (

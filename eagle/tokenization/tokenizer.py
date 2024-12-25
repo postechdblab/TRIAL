@@ -169,6 +169,11 @@ class Tokenizer:
         # Create attention mask: 1 for tokens, 0 for padding
         attention_mask = (all_combined_tok_ids != self.tokenizer.pad_token_id).long()
 
+        if all_combined_tok_ids.dtype != torch.int64:
+            all_combined_tok_ids = all_combined_tok_ids.to(torch.int64)
+        if attention_mask.dtype != torch.int64:
+            attention_mask = attention_mask.to(torch.int64)
+
         # Return results based on the return_tensors argument
         return {"input_ids": all_combined_tok_ids, "attention_mask": attention_mask}
 
