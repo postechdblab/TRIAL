@@ -454,7 +454,6 @@ class PLAID:
                 relation_scale_factor=self.relation_scale_factor,
                 q_scatter_indices=q_scatter_indices,
                 return_element_wise_scores=True,
-                agg_in_phrase_level=True,
             )
             max_sim_by_token = None
 
