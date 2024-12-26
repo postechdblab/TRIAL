@@ -2,12 +2,10 @@ import torch
 
 
 def main():
-    ckpt_path = (
-        "/root/EAGLE/runs/eagle_relation_lambda_1_distill_from_author/best_model.ckpt"
-    )
+    ckpt_path = "/root/EAGLE/runs/eagle_modern_bert_distill2/best_model.ckpt"
 
     print(f"Loading checkpoint from {ckpt_path}")
-    ckpt = torch.load(ckpt_path, weights_only=False)
+    ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
     # replace the key "model._orig_mod." to "model."
     for key in list(ckpt["state_dict"].keys()):
         if key.startswith("model._orig_mod."):
