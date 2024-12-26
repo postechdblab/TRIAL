@@ -28,6 +28,7 @@ class PLAID:
         d_weight_layer_norm: torch.nn.Module = None,
         relation_encoder: torch.nn.Module = None,
         relation_scale_factor: float = 1.0,
+        agg_in_phrase_level: bool = False,
     ) -> None:
         self.index = IndexLoader(index_path=index_path)
         self.ndocs = ndocs
@@ -41,6 +42,8 @@ class PLAID:
         # For relation-based scoring
         self.relation_encoder = relation_encoder
         self.relation_scale_factor = relation_scale_factor
+        # For aggregation in phrase level
+        self.agg_in_phrase_level = agg_in_phrase_level
         # Set embeddings
         self._set_embeddings_strided(indexer_name)
         # Setting
@@ -454,6 +457,7 @@ class PLAID:
                 relation_scale_factor=self.relation_scale_factor,
                 q_scatter_indices=q_scatter_indices,
                 return_element_wise_scores=True,
+                agg_in_phrase_level=self.agg_in_phrase_level,
             )
             max_sim_by_token = None
 

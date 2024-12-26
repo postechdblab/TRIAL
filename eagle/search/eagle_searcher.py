@@ -26,6 +26,7 @@ class EAGLESearcher(BaseSearcher):
             d_weight_layer_norm=self.model.d_weight_layer_norm,
             relation_encoder=self.model.relation_encoder,
             relation_scale_factor=model.cfg.relation_scale_factor,
+            agg_in_phrase_level=model.cfg.agg_in_phrase_level,
         )
         self.timer_encodings = time_utils.Timer(
             class_name=self.__class__.__name__, func_name="encode"
