@@ -401,17 +401,17 @@ class PLAID:
             if query_tok.dtype != d_tok_packed.dtype:
                 query_tok = query_tok.to(d_tok_packed.dtype)
 
+        # Apply mask
+        if q_mask is not None:
+            # Reshape the mask if necessary
+            if len(query_tok.shape) > len(q_mask.shape):
+                q_mask = q_mask.unsqueeze(-1)
+            query_tok.masked_fill_(q_mask == True, 0)
+
         if self.relation_encoder is None:
             # Apply weights
             if q_tok_weight is not None:
                 query_tok = query_tok * q_tok_weight
-
-            # Apply mask
-            if q_mask is not None:
-                # Reshape the mask if necessary
-                if len(query_tok.shape) > len(q_mask.shape):
-                    q_mask = q_mask.unsqueeze(-1)
-                query_tok.masked_fill_(q_mask == True, 0)
 
             # Compute scores
             (
@@ -454,6 +454,7 @@ class PLAID:
                 relation_scale_factor=self.relation_scale_factor,
                 q_scatter_indices=q_scatter_indices,
                 return_element_wise_scores=True,
+                agg_in_phrase_level=True,
             )
             max_sim_by_token = None
 
