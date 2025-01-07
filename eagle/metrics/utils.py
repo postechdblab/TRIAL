@@ -137,9 +137,12 @@ def compute_metrics(eval_pred: EvalPrediction, prefix: str = None) -> Dict[str, 
 
     # Add custom recall rate
     custom_recall = get_custom_metrics(logits, labels)
+    success_rate = get_success_rate(logits, labels)
 
     # Combine metrics into one dictionary
-    combined_metrics = ndcg | _map | recall | precision | mrr | acc | custom_recall
+    combined_metrics = (
+        ndcg | _map | recall | precision | mrr | acc | custom_recall | success_rate
+    )
     if prefix is not None:
         combined_metrics = {
             f"{prefix}_{key}": value for key, value in combined_metrics.items()
@@ -169,6 +172,37 @@ def get_recall_rates(
         recall = is_correct([pid in ranked_pids[:k] for pid in gold_pids])
         recall_rates[f"@{k}"] = recall
     return recall_rates
+
+
+def get_success_rate(logits: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
+    """Success@k means the percentage of queries that have at least one correct passage in the top-k retrieved passages."""
+    # Logits: (batch_size, num_docs). It contains the scores of the retrieved passages.
+    # Labels: (batch_size, num_docs). It contains the labels of the retrieved passages (0 or 1).
+
+    # Get indices of passages sorted by scores (descending)
+    sorted_indices = torch.argsort(logits, dim=1, descending=True)
+
+    # Reorder labels according to sorted indices
+    sorted_labels = torch.gather(labels, 1, sorted_indices)
+
+    # Calculate cumulative maximum to check if there's any correct passage up to position k
+    cummax_labels = torch.cummax(sorted_labels, dim=1)[0]
+
+    # Calculate success@k for different k values
+    k_values = [1, 3, 5, 10, 50, 100]
+    results = {}
+
+    for k in k_values:
+        if k <= sorted_labels.size(
+            1
+        ):  # Only calculate if k is less than number of documents
+            # Check if there's at least one correct passage in top-k
+            success_at_k = (cummax_labels[:, k - 1] > 0).float().mean().item()
+            results[f"success@{k}"] = success_at_k
+        else:
+            results[f"success@{k}"] = None
+
+    return results
 
 
 def get_custom_metrics(logits: torch.Tensor, labels: torch.Tensor) -> Dict[str, float]:
