@@ -42,12 +42,17 @@ class BaseSearcher:
         :rtype: torch.Tensor
         """
         input_type = type(doc_indices)
+        # Subtract one to the indices to change from 1-based index to 0-based index
         if input_type == list:
-            doc_indices = torch.tensor(doc_indices, dtype=torch.int64, device="cpu")
-        # Convert
-        doc_indices = doc_indices - torch.ones_like(doc_indices)
-        if input_type == list:
-            doc_indices = doc_indices.tolist()
+            # Convert each item in the list to a tensor and subtract one
+            converted_doc_indices: List[List[int]] = []
+            for i in range(len(doc_indices)):
+                tmp = torch.tensor(doc_indices[i], dtype=torch.int64, device="cpu")
+                tmp = tmp - torch.ones_like(tmp)
+                converted_doc_indices.append(tmp.tolist())
+            doc_indices = converted_doc_indices
+        else:
+            doc_indices = doc_indices - torch.ones_like(doc_indices)
         return doc_indices
 
     def postprocess_doc_indices(

@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import *
+import math
 
 import hkkang_utils.data as data_utils
 import hkkang_utils.file as file_utils
@@ -66,10 +67,10 @@ class Corpus:
 
     def get_chunk_size(self, world_size: int) -> int:
         assert len(self), f"The corpus is empty."
-        return min(MINCHUNKSIZE, len(self) // world_size)
+        return min(MINCHUNKSIZE, math.ceil(len(self) / world_size))
 
     def get_num_chunks(self, world_size: int) -> int:
-        return len(self) // self.get_chunk_size(world_size)
+        return math.ceil(len(self) / self.get_chunk_size(world_size))
 
     def enumerate(
         self, rank: int = 0, world_size: int = 1
