@@ -464,7 +464,9 @@ class PLAID:
         max_scores = max_scores_by_token
         # Sort pids based on the scores
         max_scores, indices = torch.sort(max_scores, descending=True)
+        # Reorder base on the scores
         pids = pids[indices]
+        element_wise_scores = element_wise_scores[indices]
 
         if is_debug:
             return (
