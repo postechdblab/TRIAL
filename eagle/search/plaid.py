@@ -134,7 +134,7 @@ class PLAID:
             )
         if is_debug:
             return result[0], result[1], (pids1, pids2, pids3), result[2:]
-        final_pids, scores, element_wise_scores = result
+        final_pids, scores, element_wise_scores = result[:3]
         if return_intermediate_pids:
             return final_pids, scores, element_wise_scores, (pids1, pids2, pids3)
 
@@ -467,14 +467,17 @@ class PLAID:
         # Reorder base on the scores
         pids = pids[indices]
         element_wise_scores = element_wise_scores[indices]
+        if max_sim_by_token is not None:
+            max_sim_by_token = max_sim_by_token[indices]
+        if max_key_tok_ids is not None:
+            max_key_tok_ids = max_key_tok_ids[indices]
 
         if is_debug:
             return (
                 pids,
                 max_scores,
-                max_scores_by_token[indices],
-                max_sim_by_token[indices],
-                max_key_tok_ids[indices],
+                element_wise_scores,
+                k_ids_padded[indices],
             )
 
         return pids, max_scores, element_wise_scores
