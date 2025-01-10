@@ -9,7 +9,7 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from omegaconf import DictConfig, open_dict
 from transformers import EvalPrediction
 
-from eagle.metrics.utils import get_recall_rates
+from eagle.evaluation.metric import get_recall_rates
 
 # Create a cache object
 cache = dc.Cache("/tmp/diskcache")

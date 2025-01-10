@@ -232,3 +232,29 @@ def custome_recall_rate(
     for key, value in recalls.items():
         final_recalls[key] = sum(value) / len(value)
     return final_recalls
+
+
+def move_first_retrieved_item_to_end(
+    pids_in_batch: List[torch.Tensor],
+    scores_in_batch: List[torch.Tensor],
+) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    """
+    Move the first retrieved item to the end of the list.
+    This is for correctly format the input for the evaluation script for BEIR-Arguana.
+    - pids_in_batch: shape (batch_size, num_docs)
+    - scores_in_batch: shape (batch_size, num_docs)
+    """
+    new_pids_in_batch: List[torch.Tensor] = []
+    new_scores_in_batch: List[torch.Tensor] = []
+    for pids, scores in zip(pids_in_batch, scores_in_batch, strict=True):
+        new_pids = torch.cat([pids[1:], pids[0:1]], dim=0)
+        new_scores = torch.cat(
+            [
+                scores[1:],
+                torch.tensor([0], device=scores.device, dtype=scores.dtype),
+            ],
+            dim=0,
+        )
+        new_pids_in_batch.append(new_pids)
+        new_scores_in_batch.append(new_scores)
+    return new_pids_in_batch, new_scores_in_batch
