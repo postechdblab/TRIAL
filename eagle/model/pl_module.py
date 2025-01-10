@@ -14,10 +14,11 @@ from torch.optim.swa_utils import SWALR, AveragedModel
 from transformers import EvalPrediction, get_linear_schedule_with_warmup
 
 from eagle.dataset.corpus import Corpus
-from eagle.metrics.utils import (
+from eagle.evaluation.metric import (
     aggregate_final_metrics,
     aggregate_intermediate_metrics,
     compute_metrics,
+    move_first_retrieved_item_to_end,
 )
 from eagle.model.base_model import BaseModel
 from eagle.model.registry import MODEL_REGISTRY
@@ -188,29 +189,20 @@ class LightningNewModel(L.LightningModule):
                         f"Q Token {i:2d}: {q_tok:<10}\t->\tD token {max_idx:2d}: {doc_token:<10}\t(Score: {max_score:.5f})"
                     )
 
-                # print("Query tokens:")
-                # pretty_print_tokens_with_their_indices(
-                #     decoded_tokens=q_toks, max_tokens_per_line=20
-                # )
-                # print("Document tokens:")
-                # pretty_print_tokens_with_their_indices(
-                #     decoded_tokens=decoded_doc_tokens, max_tokens_per_line=20
-                # )
-                # print("")
-
         return None
 
     def _test_full_retrieval(self, batch: Dict, batch_idx: int) -> None:
-        bsize = len(batch["pos_doc_ids"])
+        bsize = len(batch["q_tok_ids"])
         # Load the searcher if not loaded
         if self.searcher is None:
             self._load_searcher()
 
         # Get the gold document ids if use_oracle_candidate is True
-        pos_doc_ids = None
-        if self.use_oracle_candidate:
-            pos_doc_ids = batch["pos_doc_ids"]
-
+        pos_doc_ids_batch: List[List[int]] = []
+        for pos_doc_ids_dic in batch["pos_doc_ids"]:
+            pos_doc_ids_batch.append(
+                [item for v in pos_doc_ids_dic.values() for item in v]
+            )
         # if self.corpus is None:
         #     import os
         #     from eagle.dataset.utils import read_corpus
@@ -226,39 +218,19 @@ class LightningNewModel(L.LightningModule):
 
         # Perform search on the index
         all_pids, all_scores, all_qd_scores, all_intermediate_pids = self.searcher(
-            **batch, pos_doc_indices=pos_doc_ids
+            **batch,
+            pos_doc_indices=pos_doc_ids_batch if self.use_oracle_candidate else None,
         )
-
-        # Analyze
-        # Get pid
-        # pid = all_pids[0][0].item()
-        # # Get the document
-        # doc = " ".join(self.corpus[str(pid)])
-        # tmp = preprocess(doc, self.tokenizers.d_tokenizer, False)
 
         # Post-process the results if the dataset is BEIR-ArguAna
         if self.dataset_name == "beir-arguana":
-            new_pids = []
-            new_scores = []
-            for pids, scores in zip(all_pids, all_scores, strict=True):
-                # Remove the rank 1 document (i.e., the same text as the query)
-                pids = torch.cat([pids[1:], pids[0:1]], dim=0)
-                scores = torch.cat(
-                    [
-                        scores[1:],
-                        torch.tensor([0], device=scores.device, dtype=scores.dtype),
-                    ],
-                    dim=0,
-                )
-                new_pids.append(pids)
-                new_scores.append(scores)
-            all_pids = new_pids
-            all_scores = new_scores
+            all_pids, all_scores = move_first_retrieved_item_to_end(
+                pids_in_batch=all_pids,
+                scores_in_batch=all_scores,
+            )
         # Prepare evaluation
         # Get max positive document number
-        max_pos_doc_num = max(
-            [len(pos_doc_idxs) for pos_doc_idxs in batch["pos_doc_ids"]]
-        )
+        max_pos_doc_num = max([len(pos_doc_idxs) for pos_doc_idxs in pos_doc_ids_batch])
         # number of positive doc ids to append
         num_pids_to_append = (
             max_pos_doc_num
@@ -273,7 +245,7 @@ class LightningNewModel(L.LightningModule):
         for b_idx, (pids, scores) in enumerate(zip(all_pids, all_scores, strict=True)):
             pids, pos_indices = append_dummy_pid(
                 pids=pids,
-                target_pids=[int(item) for item in batch["pos_doc_ids"][b_idx]],
+                target_pids=[item for item in pos_doc_ids_batch[b_idx]],
                 max_num=num_pids_to_append,
             )
             scores = torch.cat(
@@ -312,7 +284,7 @@ class LightningNewModel(L.LightningModule):
             )
             metrics.append(compute_metrics(eval_preds, prefix="test"))
             # Evaluate the intermediate results
-            pos_doc_ids = [item for item in batch["pos_doc_ids"][b_idx]]
+            pos_doc_ids = [item for item in pos_doc_ids_batch[b_idx]]
             all_stage_1_accs.append(
                 pid_found_percentage(pos_doc_ids, all_intermediate_pids[b_idx][0])
             )

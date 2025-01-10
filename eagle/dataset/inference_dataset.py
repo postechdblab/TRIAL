@@ -39,13 +39,13 @@ class InferenceDataset(BaseDataset):
     def __getitem__(self, idx: int) -> Tuple[int, List[str]]:
         if type(self.data[idx]) == list:
             qid = str(self.data[idx][0])
-            pos_doc_ids = [self.data[idx][1]]
+            pos_doc_ids: Dict[str, List[str]] = {"1": [self.data[idx][1]]}
             # Get token and attention mask
             q_tok_ids = self.tokenized_queries[qid]
             q_tok_att_mask = [True] * len(q_tok_ids)
         elif type(self.data[idx]) == dict:
             qid = self.data[idx]["id"]
-            pos_doc_ids = [item for item in self.data[idx]["answers"]]
+            pos_doc_ids: Dict[str, List[str]] = self.data[idx]["answers"]
             # Convert data type
             qid = str(qid)
             # Get token and attention mask

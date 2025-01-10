@@ -99,7 +99,7 @@ class DistillationDataset(BaseDataset):
             "q_id": qid,
             "q_tok_ids": q_tok_ids,
             "doc_tok_ids": d_tok_ids,
-            "pos_doc_ids": pos_doc_ids,
+            "pos_doc_ids": {"1": pos_doc_ids},
             "neg_doc_ids": neg_doc_ids,
             "q_sent_start_indices": q_sent_start_indices,
             "doc_sent_start_indices": d_sent_start_indices,

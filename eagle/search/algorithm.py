@@ -259,6 +259,9 @@ def token_interaction_with_relation(
         # Apply the query weight if it exists
         if q_tok_weight is not None:
             max_value = max_value * q_tok_weight[:, q_tok_idx].squeeze(-1)
+            final_selected_wise_scores = (
+                final_selected_wise_scores * q_tok_weight[:, q_tok_idx]
+            )
 
         # Save the maximum value and index
         max_values_batch.append(max_value)

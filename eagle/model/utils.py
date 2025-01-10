@@ -150,7 +150,7 @@ def append_dummy_pid(
         if target_pid in pids:
             # Find the dummy index that is not in the pids list
             for i in range(100000):
-                if i not in pids:
+                if i not in pids and i not in target_pids and i not in pids_to_append:
                     pids_to_append.append(i)
                     break
         else:
@@ -159,7 +159,7 @@ def append_dummy_pid(
     for i in range(max_num - len(target_pids)):
         # Find the dummy index that is not in the pids list
         for i in range(100000):
-            if i not in pids:
+            if i not in pids and i not in target_pids and i not in pids_to_append:
                 pids_to_append.append(i)
                 break
 
