@@ -98,6 +98,13 @@ def check_arguments(cfg: DictConfig) -> DictConfig:
     check_argument(
         cfg.args, name="ckpt_path", arg_type=str, help="Path to the checkpoint"
     )
+    for k, v in cfg.args.items():
+        assert k in [
+            "mode",
+            "use_slack",
+            "ckpt_path",
+            "use_oracle_candidate",
+        ], f"Invalid argument: {k}"
     return cfg.args
 
 
