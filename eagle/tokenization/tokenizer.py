@@ -130,7 +130,7 @@ class Tokenizer:
         # Aggregate all sentences
         all_sentences = []
         all_sent_num = []
-        for doc in docs:
+        for d_idx, doc in enumerate(docs):
             all_sent_num.append(len(doc.title_and_sents))
             for sent_idx, sent in enumerate(doc.title_and_sents):
                 if sent_idx == 0:

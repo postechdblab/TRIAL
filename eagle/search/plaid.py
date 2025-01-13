@@ -391,10 +391,13 @@ class PLAID:
             d_tok_packed, d_tok_length, use_gpu=True
         ).as_padded_tensor()
         d_tok_mask = ~d_tok_mask
+        d_tok_padded.masked_fill_(d_tok_mask == True, 0)
 
         k_ids_padded, _ = StridedTensor(
             d_tok_ids, d_tok_length, use_gpu=True
         ).as_padded_tensor()
+        # Make out k_ids_padded to be the same as d_tok_padded
+        k_ids_padded.masked_fill_(d_tok_mask.squeeze(-1) == True, 0)
 
         if self.use_higher_precision:
             query_tok = query_tok.float()
