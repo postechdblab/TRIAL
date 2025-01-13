@@ -18,8 +18,12 @@ class Tokenizers(abc.ABC):
         ), f"Tokenizers have the same sizes: {len(self.q_tokenizer)} vs {len(self.d_tokenizer)}"
 
     @property
-    def skip_tok_ids(self) -> List[int]:
-        return list(set(self.q_tokenizer.skip_tok_ids + self.d_tokenizer.skip_tok_ids))
+    def q_skip_tok_ids(self) -> List[int]:
+        return list(set(self.q_tokenizer.skip_tok_ids))
+
+    @property
+    def d_skip_tok_ids(self) -> List[int]:
+        return list(set(self.d_tokenizer.skip_tok_ids))
 
     @property
     def vocab_num(self) -> int:

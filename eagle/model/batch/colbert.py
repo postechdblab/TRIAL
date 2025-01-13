@@ -118,11 +118,11 @@ class BatchForColBERT(BaseBatch):
                 )
 
         # Get token masks
-        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
+        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.q_skip_tok_ids)
         q_tok_att_mask = get_att_mask(input_ids=q_tok_ids, skip_ids=[0])
         doc_tok_mask = doc_tok_att_mask = None
         if doc_tok_ids is not None:
-            doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
+            doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.d_skip_tok_ids)
             doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         return {

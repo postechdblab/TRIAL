@@ -10,11 +10,13 @@ class BaseBatch(TorchDataset):
     def __init__(
         self,
         dataset: BaseDataset,
-        skip_tok_ids: List[int] = None,
+        q_skip_tok_ids: List[int] = None,
+        d_skip_tok_ids: List[int] = None,
         pad_to_max_length: bool = False,
     ) -> None:
         self.dataset = dataset
-        self.skip_tok_ids = skip_tok_ids if skip_tok_ids is not None else []
+        self.q_skip_tok_ids = q_skip_tok_ids if q_skip_tok_ids is not None else []
+        self.d_skip_tok_ids = d_skip_tok_ids if d_skip_tok_ids is not None else []
         self.pad_to_max_length = pad_to_max_length
 
     def __len__(self) -> int:

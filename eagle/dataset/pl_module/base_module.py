@@ -340,14 +340,16 @@ class BaseDataModule(L.LightningDataModule):
         if not self.skip_train:
             train_batch = self.data_batching_cls(
                 dataset=train_dataset,
-                skip_tok_ids=self.tokenizers.skip_tok_ids,
+                q_skip_tok_ids=self.tokenizers.q_skip_tok_ids,
+                d_skip_tok_ids=self.tokenizers.d_skip_tok_ids,
                 pad_to_max_length=self.cfg_global.training.pad_to_max_length,
                 **add_kwargs,
             )
 
         val_batch = self.data_batching_cls(
             dataset=val_dataset,
-            skip_tok_ids=self.tokenizers.skip_tok_ids,
+            q_skip_tok_ids=self.tokenizers.q_skip_tok_ids,
+            d_skip_tok_ids=self.tokenizers.d_skip_tok_ids,
             pad_to_max_length=self.cfg_global.training.pad_to_max_length,
             **add_kwargs,
         )

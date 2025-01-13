@@ -34,14 +34,16 @@ class BatchForEAGLE(BaseBatch):
     def __init__(
         self,
         dataset: BaseDataset,
-        skip_tok_ids: List[int],
+        q_skip_tok_ids: List[int],
+        d_skip_tok_ids: List[int],
         pad_to_max_length: bool = False,
         phrase_ranges_queries=None,
         phrase_ranges_corpus=None,
     ):
         super().__init__(
             dataset=dataset,
-            skip_tok_ids=skip_tok_ids,
+            q_skip_tok_ids=q_skip_tok_ids,
+            d_skip_tok_ids=d_skip_tok_ids,
             pad_to_max_length=pad_to_max_length,
         )
         self.phrase_ranges_queries: List[List[Tuple[int, int]]] = phrase_ranges_queries
@@ -143,7 +145,7 @@ class BatchForEAGLE(BaseBatch):
         # Pad the input ids to the maximum length
         if self.pad_to_max_length:
             q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
-                q_tok_ids
+                q_tok_ids, use_mask_tok=True
             )
             if is_to_encode_doc:
                 doc_tok_ids = (
@@ -231,11 +233,11 @@ class BatchForEAGLE(BaseBatch):
 
         # Create mask
         # Create token masks
-        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.skip_tok_ids)
+        q_tok_mask = get_mask(input_ids=q_tok_ids, skip_ids=self.q_skip_tok_ids)
         q_tok_att_mask = get_att_mask(input_ids=q_tok_ids, skip_ids=[0])
         doc_tok_mask = doc_tok_att_mask = None
         if is_to_encode_doc:
-            doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.skip_tok_ids)
+            doc_tok_mask = get_mask(input_ids=doc_tok_ids, skip_ids=self.d_skip_tok_ids)
             doc_tok_att_mask = get_att_mask(input_ids=doc_tok_ids, skip_ids=[0])
 
         # Create phrase masks

@@ -1071,7 +1071,7 @@ class EAGLE(BaseModel):
 
             # Create mask
             tok_mask = get_mask(
-                input_ids=ids, skip_ids=self.tokenizers.skip_tok_ids
+                input_ids=ids, skip_ids=self.tokenizers.d_skip_tok_ids
             ).bool()
 
             # Save the original order

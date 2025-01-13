@@ -76,6 +76,13 @@ class Tokenizer:
                 tok for tok in self.special_toks_ids if tok != self.new_special_tok_id
             ]
         # skip_tok_ids = special_toks_ids + self.punctuations
+        if self.cfg.use_mask_tok:
+            # Remove mask token id from the skip_tok_ids
+            special_toks_ids = [
+                item
+                for item in special_toks_ids
+                if item != self.tokenizer.mask_token_id
+            ]
         skip_tok_ids = special_toks_ids
         return skip_tok_ids
 
@@ -236,18 +243,31 @@ class Tokenizer:
         ]
         return sent_start_indices
 
-    def pad_1d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+    def pad_1d_tensor_by_max_len(
+        self, data: torch.Tensor, use_mask_tok: bool = False
+    ) -> torch.Tensor:
+        pad_tok = (
+            self.tokenizer.mask_token_id
+            if use_mask_tok
+            else self.tokenizer.pad_token_id
+        )
         if len(data) >= self.cfg.max_len:
             return data
         return torch.tensor(
-            data.tolist()
-            + [self.tokenizer.pad_token_id] * (self.cfg.max_len - len(data)),
+            data.tolist() + [pad_tok] * (self.cfg.max_len - len(data)),
             dtype=data.dtype,
             device=data.device,
         )
 
-    def pad_2d_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+    def pad_2d_tensor_by_max_len(
+        self, data: torch.Tensor, use_mask_tok: bool = False
+    ) -> torch.Tensor:
         assert len(data.shape) == 2, f"Unsupported shape: {data.shape}"
+        pad_tok = (
+            self.tokenizer.mask_token_id
+            if use_mask_tok
+            else self.tokenizer.pad_token_id
+        )
         if data.shape[1] >= self.cfg.max_len:
             return data
         # Create a tensor with the maximum length
@@ -257,24 +277,26 @@ class Tokenizer:
             device=data.device,
         )
         # Fill with pad token
-        if self.tokenizer.pad_token_id != 0:
-            tmp.fill_(self.tokenizer.pad_token_id)
+        if pad_tok != 0:
+            tmp.fill_(pad_tok)
         # Copy the original data
         tmp[:, : data.shape[1]] = data
         return tmp
 
-    def pad_tensor_by_max_len(self, data: torch.Tensor) -> torch.Tensor:
+    def pad_tensor_by_max_len(
+        self, data: torch.Tensor, use_mask_tok: bool = False
+    ) -> torch.Tensor:
         if len(data.shape) == 1:
-            return self.pad_1d_tensor_by_max_len(data)
+            return self.pad_1d_tensor_by_max_len(data, use_mask_tok=use_mask_tok)
         elif len(data.shape) == 2:
-            return self.pad_2d_tensor_by_max_len(data)
+            return self.pad_2d_tensor_by_max_len(data, use_mask_tok=use_mask_tok)
         raise ValueError(f"Unsupported shape: {data.shape}")
 
     def pad_sequence_by_max_len(
-        self, data: Union[List, torch.Tensor]
+        self, data: Union[List, torch.Tensor], use_mask_tok: bool = False
     ) -> Union[List, torch.Tensor]:
         if isinstance(data, torch.Tensor):
-            return self.pad_tensor_by_max_len(data)
+            return self.pad_tensor_by_max_len(data, use_mask_tok=self.cfg.use_mask_tok)
         raise ValueError(f"Unsupported type: {type(data)}")
 
     def decode(self, *args, **kwargs) -> Any:

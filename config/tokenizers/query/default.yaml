@@ -2,3 +2,4 @@ new_tok_offset: 0
 special_tok: "[QXQ]"
 skip_new_special_token: False
 max_len: 32
+use_mask_tok: False
