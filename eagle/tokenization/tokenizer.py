@@ -75,15 +75,17 @@ class Tokenizer:
             special_toks_ids = [
                 tok for tok in self.special_toks_ids if tok != self.new_special_tok_id
             ]
-        # skip_tok_ids = special_toks_ids + self.punctuations
-        if self.cfg.use_mask_tok:
+        if not self.cfg.skip_mask_token:
             # Remove mask token id from the skip_tok_ids
             special_toks_ids = [
                 item
                 for item in special_toks_ids
                 if item != self.tokenizer.mask_token_id
             ]
-        skip_tok_ids = special_toks_ids
+        if self.cfg.skip_punctuation:
+            skip_tok_ids = special_toks_ids
+        else:
+            skip_tok_ids = special_toks_ids + self.punctuations
         return skip_tok_ids
 
     @functools.cached_property
@@ -293,10 +295,12 @@ class Tokenizer:
         raise ValueError(f"Unsupported shape: {data.shape}")
 
     def pad_sequence_by_max_len(
-        self, data: Union[List, torch.Tensor], use_mask_tok: bool = False
+        self, data: Union[List, torch.Tensor]
     ) -> Union[List, torch.Tensor]:
         if isinstance(data, torch.Tensor):
-            return self.pad_tensor_by_max_len(data, use_mask_tok=self.cfg.use_mask_tok)
+            return self.pad_tensor_by_max_len(
+                data, use_mask_tok=not self.cfg.skip_mask_token
+            )
         raise ValueError(f"Unsupported type: {type(data)}")
 
     def decode(self, *args, **kwargs) -> Any:

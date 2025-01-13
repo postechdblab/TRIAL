@@ -145,7 +145,7 @@ class BatchForEAGLE(BaseBatch):
         # Pad the input ids to the maximum length
         if self.pad_to_max_length:
             q_tok_ids = self.dataset.tokenizers.q_tokenizer.pad_sequence_by_max_len(
-                q_tok_ids, use_mask_tok=True
+                q_tok_ids
             )
             if is_to_encode_doc:
                 doc_tok_ids = (

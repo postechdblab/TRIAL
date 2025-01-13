@@ -28,6 +28,8 @@ LOTTE_SUB_DATASET_NAMES = [
 BIER_URL_PREFIX = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/"
 LOTTE_URL = "https://downloads.cs.stanford.edu/nlp/data/colbert/colbertv2/lotte.tar.gz"
 
+DOWNLOAD_DIR_PATH = "/root/EAGLE/data/tmp/"
+
 
 def bar_custom(current, total, width=80):
     width = 30
@@ -79,22 +81,27 @@ def clean_corpus(corpus: Dict[str, Dict[str, str]], output_path: str) -> None:
     return mapping
 
 
-def save_dev_file(queries: List, qrels: Dict, mapping: Dict, output_path: str) -> None:
+def save_dev_file(
+    queries: List, qrels: Dict, mapping: Dict[str, int], output_path: str
+) -> None:
     logger.info(f"Saving dev file as {output_path}...")
     dev = []
     for key, query in queries.items():
-        answers = qrels[key]
-        answers = list(answers.keys())
-        found_answers = []
-        for answer in answers:
-            if answer in mapping:
-                found_answers.append(mapping[answer])
-            else:
-                logger.info(f"Cannot find {answer} in mapping")
-        if len(found_answers) == 0:
-            logger.info(f"Skip {key} as no answers are found")
-            continue
-        dev.append({"id": key, "query": query, "answers": found_answers})
+        answers: Dict[str, int] = qrels[key]
+
+        # Build inverted index
+        answer_iv_index: Dict[int, List[int]] = {}
+        for str_key, answer_id in answers.items():
+            answer_id = int(answer_id)
+            # Don't include the answer with score 0
+            if answer_id == 0:
+                continue
+            if answer_id not in answer_iv_index:
+                answer_iv_index[answer_id] = []
+            if str_key not in mapping:
+                raise ValueError(f"Cannot find {str_key} in mapping")
+            answer_iv_index[answer_id].append(mapping[str_key])
+        dev.append({"id": key, "query": query, "answers": answer_iv_index})
     file_utils.write_jsonl_file(dev, output_path)
     logger.info(f"Saved {len(dev)} data as {output_path}")
 
@@ -252,12 +259,11 @@ def main(dataset_names: List[str]):
     #### Download scifact.zip dataset and unzip the dataset
     failed_list = []
     for dataset_name in tqdm.tqdm(dataset_names):
-        download_path = "/root/EAGLE/data/beir/"
-        if os.path.exists(os.path.join(download_path, dataset_name)):
-            logger.info(f"{dataset_name} already exists in {download_path}")
+        if os.path.exists(os.path.join(DOWNLOAD_DIR_PATH, dataset_name)):
+            logger.info(f"{dataset_name} already exists in {DOWNLOAD_DIR_PATH}")
             continue
         try:
-            download_dataset(download_path, dataset_name)
+            download_dataset(DOWNLOAD_DIR_PATH, dataset_name)
         except:
             logger.info(f"Failed to download {dataset_name}")
             failed_list.append(dataset_name)
