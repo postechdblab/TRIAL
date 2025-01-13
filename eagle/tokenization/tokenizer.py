@@ -70,9 +70,11 @@ class Tokenizer:
     @property
     def skip_tok_ids(self) -> List[int]:
         if self.cfg.skip_new_special_token:
-            special_toks_ids = self.special_toks_ids[0:1] + self.special_toks_ids[2:]
-        else:
             special_toks_ids = self.special_toks_ids
+        else:
+            special_toks_ids = [
+                tok for tok in special_toks_ids if tok != self.new_special_tok_id
+            ]
         # skip_tok_ids = special_toks_ids + self.punctuations
         skip_tok_ids = special_toks_ids
         return skip_tok_ids
