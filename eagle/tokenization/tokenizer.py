@@ -73,7 +73,8 @@ class Tokenizer:
             special_toks_ids = self.special_toks_ids[0:1] + self.special_toks_ids[2:]
         else:
             special_toks_ids = self.special_toks_ids
-        skip_tok_ids = special_toks_ids + self.punctuations
+        # skip_tok_ids = special_toks_ids + self.punctuations
+        skip_tok_ids = special_toks_ids
         return skip_tok_ids
 
     @functools.cached_property
