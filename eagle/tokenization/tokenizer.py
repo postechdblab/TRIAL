@@ -73,7 +73,7 @@ class Tokenizer:
             special_toks_ids = self.special_toks_ids
         else:
             special_toks_ids = [
-                tok for tok in special_toks_ids if tok != self.new_special_tok_id
+                tok for tok in self.special_toks_ids if tok != self.new_special_tok_id
             ]
         # skip_tok_ids = special_toks_ids + self.punctuations
         skip_tok_ids = special_toks_ids
