@@ -93,20 +93,20 @@ class EAGLESearcher(BaseSearcher):
                 q_scatter_indices=q_scatter_indices,
                 return_intermediate_pids=True,
             )
-            retrieved_pids = retrieved_pids.cpu()
-
             # Increase the values of pids by 1 (0-based indexing)
             with self.timer.pause():
+                retrieved_pids = retrieved_pids.cpu()
+
                 retrieved_pids = self.postprocess_doc_indices(retrieved_pids)
                 stage_1_pids = self.postprocess_doc_indices(intermediate_pids[0])
                 stage_2_pids = self.postprocess_doc_indices(intermediate_pids[1])
                 stage_3_pids = self.postprocess_doc_indices(intermediate_pids[2])
 
-            # Aggregate results
-            all_pids.append(retrieved_pids)
-            all_scores.append(scores.cpu())
-            all_intermediate_pids.append((stage_1_pids, stage_2_pids, stage_3_pids))
-            all_qd_scores.append(qd_scores)
+                # Aggregate results
+                all_pids.append(retrieved_pids)
+                all_scores.append(scores.cpu())
+                all_intermediate_pids.append((stage_1_pids, stage_2_pids, stage_3_pids))
+                all_qd_scores.append(qd_scores)
 
         return (
             all_pids,
