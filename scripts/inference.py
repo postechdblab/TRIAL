@@ -30,7 +30,7 @@ def single_inference(
     d_text: str,
     q_tokenizer: Tokenizer,
     d_tokenizer: Tokenizer,
-) -> None:
+) -> Tuple[List[float], List[float]]:
     # Prepare the input
     preprocessed_query = preprocess([q_text], tokenizer=q_tokenizer)
     preprocessed_document = preprocess([d_text], tokenizer=d_tokenizer)
@@ -130,6 +130,13 @@ def single_inference(
         decoded_tokens=decoded_d_tokens, max_tokens_per_line=20
     )
     print("")
+    if q_weights is None:
+        q_weights = torch.ones_like(max_scores).tolist()
+    else:
+        q_weights = q_weights.tolist()
+    max_scores = max_scores.tolist()
+
+    return max_scores, q_weights
 
 
 def inference(cfg: DictConfig, ckpt_path: str, is_analyze: bool = True) -> None:

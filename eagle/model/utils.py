@@ -45,8 +45,12 @@ def l2_regularization(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def pid_found_percentage(pids_to_find: List[int], pids_corpus: List[int]) -> float:
-    """Calculate the percentage of pids that are found in the corpus"""
-    return len(set(pids_to_find).intersection(set(pids_corpus))) / len(pids_to_find)
+    """Calculate the RECALL (i.e., percentage of pids that are found in the corpus)"""
+    if len(pids_to_find) == 0 or len(pids_corpus) == 0:
+        return 0.0
+    div_num = min(len(pids_to_find), len(pids_corpus))
+    found_num = len(set(pids_to_find).intersection(set(pids_corpus)))
+    return found_num / div_num
 
 
 def initialize_weights(m):
