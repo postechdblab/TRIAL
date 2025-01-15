@@ -67,6 +67,7 @@ class PLAID:
         self.timer_d_weight = time_utils.Timer(
             class_name=self.__class__.__name__, func_name="d_weight"
         )
+        self.apply_weights = True
 
     @property
     def is_use_d_weight(self) -> bool:
@@ -221,8 +222,7 @@ class PLAID:
         )
 
         # Apply weights
-        apply_weights = True
-        if apply_weights and weight is not None:
+        if self.apply_weights and weight is not None:
             centroid_scores = centroid_scores * weight.transpose(0, 1).expand(
                 centroid_scores.shape[0], -1
             )
