@@ -42,18 +42,19 @@ def fix_corpus_index(dir_path: str, do_add_offset: bool = True) -> bool:
     is_ok = False if do_add_offset else True
     add_offset = 1 if do_add_offset else 0
     # Fix the corpus index
+    start_cnt = 1
     cnt = 0
     new_data: List[Dict] = []
     for data in tqdm.tqdm(corpus_data, desc="Idx"):
-        if int(data["_id"]) != cnt:
+        if int(data["_id"]) != cnt + start_cnt:
             is_ok = False
             # Append dummy data
             for j in range(cnt, int(data["_id"])):
-                new_data.append({"_id": j + add_offset, "text": [""], "title": ""})
+                new_data.append({"_id": j + 1, "text": [""], "title": ""})
                 cnt += 1
         data["_id"] = cnt + 1
         new_data.append(data)
-        cnt += add_offset
+        cnt += 1
     # Save the new data
     if not is_ok:
         logger.info(f"Fixing the corpus index for {dir_path} ...")
@@ -70,7 +71,7 @@ def main(cfg: DictConfig) -> None:
     for dataset_name in tqdm.tqdm(DATASET_NAMES, desc="Datasets"):
         logger.info(f"Validating the corpus: {dataset_name} ...")
         dir_path: str = os.path.join(base_path, dataset_name)
-        fix_dev_index(dir_path=dir_path)
+        # fix_dev_index(dir_path=dir_path)
         is_good = fix_corpus_index(dir_path=dir_path)
         if not is_good:
             bad_datasets.append(dataset_name)

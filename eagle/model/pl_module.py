@@ -385,6 +385,30 @@ class LightningNewModel(L.LightningModule):
             dir_path,
             f"{file_prefix}_speed.json",
         )
+        # Gather timing results from all devices
+        if self.searcher is not None:
+            summarized_time: Dict[str, float] = (
+                self.searcher.timer.summarize_measured_times(silent=True, in_dict=True)
+            )
+
+            # Gather timing results from all devices
+            gathered_times: List[Dict[str, torch.Tensor]] = self.all_gather(
+                summarized_time
+            )
+
+            averaged_time: List[Dict[str, Union[str, int, float]]] = []
+            # Average the times across devices
+            if gathered_times:
+                for idx, time_dic in enumerate(gathered_times):
+                    new_dict: Dict[str, Union[str, int, float]] = {}
+                    for key, value in time_dic.items():
+                        if key == "call_cnt":
+                            new_dict[key] = sum(value).item()
+                        elif type(value) == torch.Tensor:
+                            new_dict[key] = sum(value).item() / len(value)
+                        else:
+                            new_dict[key] = value
+                    averaged_time.append(new_dict)
 
         if self.trainer.is_global_zero:
             logger.info(
@@ -406,9 +430,7 @@ class LightningNewModel(L.LightningModule):
             )
             if self.searcher is not None:
                 file_utils.write_json_file(
-                    self.searcher.timer.summarize_measured_times(
-                        silent=True, in_dict=True
-                    ),
+                    averaged_time,
                     speed_result_path,
                 )
             # Print the evaluation results
