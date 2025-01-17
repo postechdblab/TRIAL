@@ -157,7 +157,9 @@ def preprocess(
                 phrase_ranges, tokenizer.cfg.max_len
             )
             # Get scatter indices for phrases
-            scatter_indices: List[int] = convert_range_to_scatter(phrase_ranges)
+            scatter_indices: List[int] = convert_range_to_scatter(
+                phrase_ranges, pad_to_max_len=False
+            )
             # # Cut off phrase scatter indices if it exceeds the maximum length
             # scatter_indices = tokenizer.cutoff_by_max_len(
             #     scatter_indices, maintain_special_tokens=False
