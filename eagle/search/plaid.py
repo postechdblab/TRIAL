@@ -90,6 +90,8 @@ class PLAID:
         q_scatter_indices: Optional[torch.Tensor] = None,
         return_intermediate_pids: bool = False,
         is_debug: bool = False,
+        debug_tok_ids: Optional[torch.Tensor] = None,
+        debug_tokenizers: Optional[Any] = None,
     ) -> torch.Tensor:
         # Stage 1: Get initial candidate pids
         with self.timer_stage1.measure():
@@ -132,6 +134,9 @@ class PLAID:
                 pids=pids,
                 is_debug=is_debug,
                 q_scatter_indices=q_scatter_indices,
+                debug_tok_ids=debug_tok_ids,
+                debug_tokenizers=debug_tokenizers,
+                indices_of_gold_doc=[pids.tolist().index(i) for i in gold_doc_ids],
             )
         if is_debug:
             return result[0], result[1], (pids1, pids2, pids3), result[2:]
@@ -344,6 +349,9 @@ class PLAID:
         pids: torch.Tensor,
         q_scatter_indices: Optional[torch.Tensor] = None,
         is_debug: Optional[bool] = False,
+        debug_tok_ids: Optional[torch.Tensor] = None,
+        debug_tokenizers: Optional[Any] = None,
+        indices_of_gold_doc: Optional[List[int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """This is the stage 4 of the PLAID scoring pipeline.
         We compute the exact scores of the pids using the decomposed embeddings.
@@ -461,6 +469,10 @@ class PLAID:
                 q_scatter_indices=q_scatter_indices,
                 return_element_wise_scores=True,
                 agg_in_phrase_level=self.agg_in_phrase_level,
+                debug_tok_ids=debug_tok_ids,
+                debug_d_tok_ids=k_ids_padded,
+                debug_tokenizers=debug_tokenizers,
+                indices_of_gold_doc=indices_of_gold_doc,
             )
             max_sim_by_token = None
 

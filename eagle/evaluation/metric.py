@@ -46,6 +46,8 @@ def aggregate_final_metrics(
                     for key, value in metric.items():
                         if key not in aggregated_metrics:
                             aggregated_metrics[key] = 0.0
+                        if value is None or rank_idx is None:
+                            continue
                         aggregated_metrics[key] += value[rank_idx].item()
     # Check all items are evaluated
     assert (

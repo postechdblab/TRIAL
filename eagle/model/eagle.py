@@ -278,6 +278,8 @@ class EAGLE(BaseModel):
             q_sent_scale_factor=q_sent_scale_factor,
             is_inference=is_inference,
             return_element_wise_scores=is_analyze,
+            debug_tok_ids=q_tok_ids,
+            debug_d_tok_ids=doc_tok_ids,
         )
 
         # Compute loss
@@ -782,6 +784,8 @@ class EAGLE(BaseModel):
         q_sent_scale_factor: torch.Tensor,
         is_inference: bool = False,
         return_element_wise_scores: bool = False,
+        debug_tok_ids: Optional[torch.Tensor] = None,
+        debug_d_tok_ids: Optional[torch.Tensor] = None,
     ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]
     ]:
@@ -827,6 +831,10 @@ class EAGLE(BaseModel):
                 relation_scale_factor=self.relation_scale_factor,
                 return_element_wise_scores=return_element_wise_scores,
                 agg_in_phrase_level=self.agg_in_phrase_level,
+                debug_tok_ids=debug_tok_ids,
+                debug_d_tok_ids=debug_d_tok_ids,
+                debug_q_phrase_indices=q_scatter_indices,
+                debug_tokenizers=self.tokenizers,
             )
         else:
             (

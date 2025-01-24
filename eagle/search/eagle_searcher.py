@@ -92,6 +92,8 @@ class EAGLESearcher(BaseSearcher):
                 ),
                 q_scatter_indices=q_scatter_indices,
                 return_intermediate_pids=True,
+                debug_tok_ids=q_tok_ids[b_idx].unsqueeze(0),
+                debug_tokenizers=self.model.tokenizers,
             )
             # Increase the values of pids by 1 (0-based indexing)
             with self.timer.pause():

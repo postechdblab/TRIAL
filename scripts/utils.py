@@ -36,11 +36,11 @@ BEIR_DATASET_NAMES = [
     "scifact",
     "trec-covid",
     "webis-touche2020",
-    # "cqadupstack",
-    # "bioasq",
-    # "signal1m",
-    # "trec-news",
-    # "robust04",
+    "cqadupstack",
+    "bioasq",
+    "signal1m",
+    "trec-news",
+    "robust04",
 ]
 LOTTE_DATASET_NAMES = [
     "lifestyle-forum",

@@ -2,7 +2,7 @@ import torch
 
 
 def main():
-    ckpt_path = "/root/EAGLE/runs/eagle_modern_bert_distill2/best_model.ckpt"
+    ckpt_path = "/root/EAGLE/runs/eagle_distill_from_author_v0_all_tok/best_model.ckpt"
 
     print(f"Loading checkpoint from {ckpt_path}")
     ckpt = torch.load(ckpt_path, weights_only=False, map_location="cpu")
