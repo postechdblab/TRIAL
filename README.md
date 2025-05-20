@@ -1,4 +1,4 @@
-# EAGLE: Efficient Retrieval Using Aggregated Scores from Multiple Granularity Embeddings
+# TRIAL: Token Relations and Importance Aware Late-interaction for Accurate Text Retrieval
 
 # Preprocess dataset
 ## 0. Clean the corpus (remove documents with empty text)
